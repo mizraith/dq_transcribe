@@ -59,7 +59,39 @@ and confirming that a 2–3 hour session holds up.
 from that session, and will get timing where possible. Matching the audio to
 these real DQs is what lets us build and measure component 2.
 
-## 4. The DQ record
+## 4. Meets, days and sessions, and the DQ record
+
+### 4.0 Meet structure (stated)
+
+- **Meet:** one to many days (usually 1 to 4, sometimes 5). A meet has a **name**.
+  Its unique id is its **date and name**, which is also how meets are sorted.
+- **Day:** a date within the meet. A day has one or more sessions (sometimes 2,
+  even 3).
+- **Session:** usually about 4 hours, always under 8.
+
+```mermaid
+flowchart TD
+    meet["Meet: name + dates (unique id = start date + name)"] --> day1[Day 1]
+    meet --> day2[Day 2 ... up to 5]
+    day1 --> s1[Session 1 ~4 h]
+    day1 --> s2[Session 2]
+    day1 --> s3[Session 3, sometimes]
+    s1 --> clips[Recordings, transcripts, DQs]
+```
+
+**Proposed:**
+- **Meet records:** meets are stored as records (name, first and last date, Meet
+  Manager file versions). Days and sessions belong to a meet.
+- **Choosing the session:** the main window shows the active meet and session.
+  Starting to capture asks which session it is for, defaulting to the current or
+  next one, so a session can be chosen in one tap.
+- **What belongs to a session:** every clip, transcript and DQ belongs to a
+  session, and through it to a day and a meet.
+- **Folders:** recordings move from one folder per day to
+  `recordings/<meet start date>_<meet-name>/<YYYY-MM-DD>/session-<n>/`. Today's
+  per-day folders already fit inside that layout.
+- **DQ keys:** a DQ is unique by meet + event + heat + lane (and swimmer, for
+  relays). See open questions on whether event numbers restart each session.
 
 ### 4.1 Fields
 
@@ -328,9 +360,21 @@ file for Friday's meet. These files can be **updated mid-meet**, so the main app
 window needs a way to **browse for and load a new file** at any time.
 
 **Proposed for the Meet Manager file:**
-- **Loading:** a "Load meet file" button on the main window opens the tablet's
-  file picker. The app imports the file and shows when it was loaded and what it
-  contains (meet name, events, number of entries).
+- **Loading (stated: file picker or web address):** a "Load meet file" button on
+  the main window offers two ways in:
+  1. **Pick a file:** the tablet's file picker, which covers local storage,
+     Downloads and, **proposed**, a **USB thumb drive**. Android tablets can usually
+     read a USB-C thumb drive, or a USB-A drive through an adapter, and Chrome's
+     file picker can then choose files from it. Not yet tested on this tablet; worth
+     trying before Friday.
+  2. **Enter a web address:** the app downloads the file from a URL (for example a
+     shared-drive link or a page on the meet's local network). This needs some
+     network access at that moment. Meet networks are rough, so the file picker
+     stays the fallback.
+- **After loading:** the app imports the file and shows when it was loaded, where
+  it came from, and what it contains (meet name, events, number of entries).
+- **Context (stated):** Meet Manager runs on Windows, and the file is usually moved
+  by USB thumb drive.
 - **Versions:** each loaded file is kept as a dated version, and the newest one is
   active. Nothing loaded earlier is overwritten.
 - **Reloading never overwrites:** after a new file is loaded, DQs whose looked-up
@@ -362,11 +406,14 @@ window needs a way to **browse for and load a new file** at any time.
 4. **Recording notification and protests:** who marks a coach as notified, and who records that a
    protest was filed (admin, referee, coach)?
 5. **Overturned:** is it final, or can it be protested again (for example by another team)?
-6. **Meets and sessions:** does a meet run over several days and sessions, and should records be
-   grouped by meet?
+6. **Event numbers:** are event numbers unique across the whole meet, or can they repeat between
+   days or sessions? This decides whether a DQ's key is meet + event + heat + lane, or needs the
+   session too.
 7. **Corrections after publication:** what happens if a published DQ has a typo (wrong lane)? Is it
    corrected in place with an audit entry, or republished?
-8. **Local LLM size:** how much tablet time and storage can a local model use? This decides
+8. **Relays:** a relay DQ belongs to a team in a lane, not one swimmer. Should "swimmer name" hold
+   the relay team name, with the offending leg as an extra field?
+9. **Local LLM size:** how much tablet time and storage can a local model use? This decides
    whether an LLM backend is practical or the rule-based matcher carries the load.
 
 ### Answered
@@ -386,3 +433,7 @@ window needs a way to **browse for and load a new file** at any time.
   uses Terminal, and Windows uses **WSL only (no PowerShell)**.
 - **Swimmer name and club** (2026-10-10): from the Hy-Tek Meet Manager file, auto-filled by
   event/heat/lane. The file can change mid-meet, so a new one can be loaded from the main window.
+- **Meet structure** (2026-10-10): meet → days (1–5) → sessions (1–3 a day, about 4 h, under 8).
+  A meet is identified and sorted by date + name.
+- **Getting the Meet Manager file** (2026-10-10): load it from the file picker or a web address.
+  Usually it comes by USB thumb drive from the Windows Meet Manager machine.
