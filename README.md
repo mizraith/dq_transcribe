@@ -4,7 +4,19 @@ Local-first audio recording and transcription. Records from the device
 microphone, transcribes on-device, and keeps results in an editable local
 database. Nothing leaves the device.
 
-**Status:** project scaffold only. No application code yet.
+**Status:** early. A local server and a microphone test page exist; transcription and storage are not built yet.
+
+## Try the mic test (Termux)
+
+```bash
+bash scripts/termux_setup.sh                 # once
+PYTHONPATH=src python -m dq_transcribe       # start the server
+```
+
+Then open <http://localhost:8000> in Chrome, tap **Record**, and allow the microphone.
+Recordings are saved under `~/.dq_transcribe/recordings/`.
+
+Run the tests with `PYTHONPATH=src python -m unittest discover -s tests`.
 
 ## Target platform
 

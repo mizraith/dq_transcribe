@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-SYSTEM_PACKAGES="python git clang cmake make ffmpeg termux-api"
+SYSTEM_PACKAGES="python git clang cmake make ffmpeg"
 VIRTUAL_ENV_DIRECTORY=".venv"
 
 echo "Updating package lists..."
@@ -30,6 +30,6 @@ python -m venv "${VIRTUAL_ENV_DIRECTORY}"
 
 echo
 echo "Done. Next steps:"
-echo "  1. Install the Termux:API app from the SAME source as Termux (F-Droid or GitHub)."
-echo "  2. Android Settings > Apps > Termux:API > Permissions > allow Microphone."
-echo "  3. Test the mic:  termux-microphone-record -f ~/test.m4a -l 5 && ls -lh ~/test.m4a"
+echo "  1. Start the app:   PYTHONPATH=src python -m dq_transcribe"
+echo "  2. In Chrome on this tablet, open http://localhost:8000"
+echo "  3. Tap Record, allow the microphone, and speak for a few seconds."

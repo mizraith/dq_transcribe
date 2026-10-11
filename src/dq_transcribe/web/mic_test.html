@@ -1,0 +1,84 @@
+<!doctype html>
+<!--
+  Microphone test page for dq_transcribe.
+
+  Records a short clip with the browser's MediaRecorder and uploads it to the
+  local server. This file is a string.Template: the dollar-brace placeholders
+  are filled in by dq_transcribe.server.render_mic_test_page from constants.py,
+  so never use a literal dollar sign anywhere in this file.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>dq_transcribe mic test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 32rem; margin: 2rem auto; padding: 0 1rem; }
+    button { font-size: 1.25rem; padding: 1rem 1.5rem; width: 100%; }
+    #status { margin-top: 1.5rem; font-size: 1.1rem; min-height: 3rem; }
+  </style>
+</head>
+<body>
+  <h1>Microphone test</h1>
+  <p>Records ${record_seconds} seconds and sends it to the app running on this device.</p>
+  <button id="record-button" type="button">Record ${record_seconds} seconds</button>
+  <p id="status" role="status"></p>
+
+  <script>
+    const UPLOAD_ENDPOINT = "${upload_endpoint}";
+    const RECORD_SECONDS = ${record_seconds};
+    const KEY_SAVED_AS = "${key_saved_as}";
+    const KEY_SIZE_BYTES = "${key_size_bytes}";
+    const KEY_ERROR = "${key_error}";
+
+    const recordButton = document.getElementById("record-button");
+    const statusLine = document.getElementById("status");
+
+    /** Show a message under the button. */
+    function setStatus(message) {
+      statusLine.textContent = message;
+    }
+
+    /** Record RECORD_SECONDS of microphone audio, upload it, and report the result. */
+    async function recordAndUpload() {
+      recordButton.disabled = true;
+      try {
+        setStatus("Requesting microphone...");
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream);
+        const chunks = [];
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) { chunks.push(event.data); }
+        };
+        const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+
+        recorder.start();
+        setStatus("Recording... speak now");
+        await new Promise((resolve) => setTimeout(resolve, RECORD_SECONDS * 1000));
+        recorder.stop();
+        await stopped;
+        stream.getTracks().forEach((track) => track.stop());
+
+        const clip = new Blob(chunks, { type: recorder.mimeType });
+        setStatus("Uploading " + clip.size + " bytes...");
+        const response = await fetch(UPLOAD_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": clip.type },
+          body: clip,
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result[KEY_ERROR] || response.statusText);
+        }
+        setStatus("Saved " + result[KEY_SAVED_AS] + " (" + result[KEY_SIZE_BYTES] + " bytes). The mic works.");
+      } catch (error) {
+        setStatus("Failed: " + error.message);
+      } finally {
+        recordButton.disabled = false;
+      }
+    }
+
+    recordButton.addEventListener("click", recordAndUpload);
+  </script>
+</body>
+</html>
