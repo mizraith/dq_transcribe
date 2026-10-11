@@ -63,18 +63,25 @@ these real DQs is what lets us build and measure component 2.
 
 ### 4.1 Fields
 
-| Field | Required | Notes |
+**Stated: a DQ cannot be published until all of these are complete:** Event,
+Heat, Lane, Swimmer name, Swimmer club, DQ Official, Referee and short DQ
+description. The DQ code is optional but wanted when available.
+
+**Stated: the default sort is Event, then Heat, then Lane.** That is how DQs are
+always looked up.
+
+| Field | Required to publish | Notes |
 |-------|----------|-------|
-| Event | yes | First key |
-| Heat | yes | Second key |
-| Lane | yes | Third key |
-| Swimmer name | later | Looked up from Meet Manager files using event/heat/lane |
-| Club | later | Same lookup |
-| DQ code | no | From the DQ slip. Some DQs have no code, and codes change between seasons |
-| Description | yes | Short description. More universal than the code |
-| Official | yes | Name of the person who made the call |
+| Event | **yes** | First sort key |
+| Heat | **yes** | Second sort key |
+| Lane | **yes** | Third sort key |
+| Swimmer name | **yes** | Entered by the admin for now. Later looked up from Meet Manager files using event/heat/lane |
+| Swimmer club | **yes** | Same as swimmer name |
+| DQ code | no, but wanted | From the DQ slip. Some DQs have no code, and codes change between seasons |
+| Description | **yes** | Short description. More universal than the code |
+| Official | **yes** | Name of the person who made the call |
 | Chief Judge | no | |
-| Referee | yes | Name of the person who accepts the call (usually the deck referee, over the radio) |
+| Referee | **yes** | Name of the person who accepts the call (usually the deck referee, over the radio) |
 | State | yes | See 4.2 |
 | State history | yes | Every state change with its time (and, **proposed**, who made it) |
 | Declined by / reason | when declined | Role and name of whoever declined it, and why (**proposed**) |
@@ -224,13 +231,18 @@ The owner wants a touch-friendly way to view, manage, edit, approve and decline 
   popup has an **icon to play back the audio**.
 
 **Proposed:**
-- **Queue:** newest first, filterable by state. Each row shows event/heat/lane,
-  description, people, state, the age of the record, and the link icon.
-- **Missing fields stand out:** blank or uncertain fields (event, heat, lane,
-  description) are highlighted, and the queue can show "incomplete first". A DQ
-  cannot be published while event, heat, lane or description is blank.
+- **Queue:** sorted by **event, heat, lane** by default (stated). Other sorts
+  (newest first, incomplete first) are optional. The queue can be filtered by
+  state. Each row shows event/heat/lane, swimmer and club, description, people,
+  state, the age of the record, and the link icon.
+- **Missing fields stand out:** any blank or uncertain field that publishing
+  needs is highlighted. Publish stays disabled until every required field in 4.1
+  is filled, and it lists what is still missing.
 - **Fast entry, no keyboard:**
   - Tapping a missing field opens a large number pad or stepper (event, heat, lane).
+  - Swimmer name and club: typed or picked for now. **Proposed:** once a meet's
+    entries are loaded (from Meet Manager, or a simple CSV first), they fill in
+    automatically from event/heat/lane.
   - Description and code use a searchable picker from the current season's list,
     with the detector's best guesses shown first as one-tap choices.
   - The official and referee are picked from the roster.
@@ -274,13 +286,17 @@ what is needed, and anything off the device needs access control.
 **Stated:** llama.cpp must be included in the install on Android, ChromeOS,
 Windows and Mac.
 
+**Stated:** use each platform's built-in tools where possible.
+
 **Proposed:**
 - **One installer script per platform:**
-  - **Android:** `scripts/termux_setup.sh`.
-  - **ChromeOS:** the Linux container, or Termux as on Android. Which one to use
-    is still open.
-  - **Windows:** a PowerShell script.
-  - **Mac:** a shell script.
+  - **Android:** Termux (already working), `scripts/termux_setup.sh`.
+  - **ChromeOS:** the built-in Linux development environment (a Debian container).
+  - **Mac:** the built-in Terminal (zsh) with Apple's Command Line Tools. macOS is
+    Unix-like but not Debian, so it gets its own script.
+  - **Windows:** built-in PowerShell, using the prebuilt Windows binaries that
+    whisper.cpp and llama.cpp publish. WSL (Windows' built-in Linux) is a fallback
+    if native Windows is a problem.
 - **What each installer does:**
   - installs Python;
   - builds or downloads **whisper.cpp** and **llama.cpp** (pinned versions), using
@@ -306,6 +322,10 @@ Windows and Mac.
 | 4 | DQ record, state machine and touch review UI | Phase 2; can start in parallel with phase 3 |
 | 5 | Publication (print and local page first), protest workflow and timers | Phase 4 |
 | 6 | Meet Manager lookup, SMS, semi-private page, Windows port | Sample files and decisions |
+
+Swimmer name and club are required to publish, so loading meet entries (a CSV
+first, Meet Manager later) is worth pulling forward. Without it, the admin types
+them for every DQ.
 
 ## 10. Needed from the owner
 
@@ -346,3 +366,8 @@ Windows and Mac.
 - **Protest window start** (2026-10-10): at Notification, which may be the same moment as
   publication. In the paper process, handing the coach a copy of the slip is notification. The
   window is typically 30 minutes.
+- **Required to publish** (2026-10-10): event, heat, lane, swimmer name, swimmer club, DQ official,
+  referee and short description. The DQ code is optional but wanted. Default sort is
+  event/heat/lane.
+- **Install targets** (2026-10-10): use built-in tools. ChromeOS uses its Linux environment;
+  Windows uses its native tools.
