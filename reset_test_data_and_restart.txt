@@ -1,0 +1,11 @@
+task: reset_test_data_and_restart
+started: 2026-10-10T19:51:32-07:00
+finished: 2026-10-10T19:51:36-07:00
+work_repo_commit: 4357e2f
+exit_code: 0
+--- output ---
+server.log
+tmp
+whisper.cpp
+whisper_build.log
+whisper_build_result.txt
