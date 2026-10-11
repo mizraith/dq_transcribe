@@ -139,6 +139,7 @@ becomes "relay name" and the leg is required to publish.
 | DQ code | no, but wanted | From the DQ slip. Some DQs have no code, and codes change between seasons |
 | Description | **yes** | Short description. More universal than the code |
 | Official | **yes** | Name of the person who made the call |
+| Official role | **yes** | Stated: one of **Judge, Chief Judge, Referee, RTO** (relay take-off) or **Starter**. Stroke and turn judges are not told apart, since one person usually does both |
 | Chief Judge | no | |
 | Referee | **yes** | Name of the person who accepts the call (usually the deck referee, over the radio) |
 | State | yes | See 4.2 |
@@ -223,8 +224,11 @@ stateDiagram-v2
 - **Validation can stand in for acceptance (stated):** the admin may publish a DQ
   the referee did not accept over the radio. **Proposed:** the history then shows
   Called → Published with "accepted by admin validation".
-- **Protest-cycle limit:** not decided yet. It is a setting (default 2) until the
-  rules are checked.
+- **Protest-cycle limit: 2** for now (stated), kept as a setting. The first
+  protest usually goes to the **Deck Referee**. The second, "level-up" protest goes
+  to the **Meet Referee**. There is usually nobody beyond that, though much bigger
+  meets sometimes have review committees. **Proposed:** each protest cycle records
+  which level heard it (Deck Referee, Meet Referee, or committee).
 - **Trash:** the admin can permanently delete calls from the trash only **after
   the meet** (stated). **Proposed:** a meet gets a "Close meet" action that
   unlocks emptying the trash.
@@ -303,6 +307,8 @@ the app will often not know which DQ a piece belongs to. Putting unmatched piece
 in an inbox and creating draft DQs both need the same thing: **a workflow for
 linking pieces of calls to each other and to a DQ.** This needs real design work,
 using the Friday audio.
+
+**Stated:** linking may be tricky, and it **must work well on a touch tablet**.
 
 **Proposed starting point for that design:**
 - **Exchanges:** the unit is the radio exchange (the call/response groups the app
@@ -431,7 +437,9 @@ The owner listed these possible outputs:
   protected change.
 - **Semi-private web page:** needs hosting off the tablet, plus some form of
   access control.
-- **SMS pushes:** needs an SMS gateway or service, and coach phone numbers.
+- **SMS pushes:** **later, and a much bigger addition (stated).** It likely
+  means hosting a web site where coaches sign up, then pushing SMS to the coaches
+  who signed up. Not part of the first versions.
 
 **Workflow:** publishing a DQ leads to coach notification (sometimes it *is* the
 notification). The 30-minute protest window runs from the race. A
@@ -517,6 +525,20 @@ window needs a way to **browse for and load a new file** at any time.
   (a backup `.zip` holding the database, or an exported entries/results file) is
   still to be confirmed.
 
+## 9b. Next steps
+
+**Owner (reminders requested 2026-10-10):**
+1. **Send a photo of a current DQ slip** (codes and descriptions).
+2. **Do the dry run with the radio cable**: set the radio volume using the
+   "TOO LOUD" indicator, reset the start and quiet sliders, and confirm that Chrome
+   uses the USB-C audio adapter as its mic.
+3. Get the Hy-Tek Meet Manager file for Friday's meet.
+4. Friday 2026-10-16: capture 2–3 hours, and keep the event/heat/lane list of every
+   DQ (with times where possible).
+
+**Assistant:** after Friday, review the audio (phase 1). Meanwhile, design the
+touch-friendly call-linking workflow and the DQ data model.
+
 ## 10. Needed from the owner
 
 - [ ] Current DQ slips (photo or PDF), including codes and descriptions
@@ -529,8 +551,7 @@ window needs a way to **browse for and load a new file** at any time.
 
 ## 11. Open questions
 
-1. **Protest-cycle limit:** the rulebook sets none (see 6.1), so it is local practice. A setting, default 2.
-2. **Linking call fragments:** what does a quick, touch-friendly way to attach a radio exchange to a DQ look like? To design once the Friday audio shows how calls really arrive.
+1. **Linking call fragments:** what does a quick, touch-friendly way to attach a radio exchange to a DQ look like? To design once the Friday audio shows how calls really arrive.
 
 ### Answered
 
@@ -583,3 +604,8 @@ window needs a way to **browse for and load a new file** at any time.
 - **First published output** (2026-10-10): a list of DQs by event/heat/lane, for posting.
 - **Late protests** (2026-10-10): the referee, or the admin with permission, can accept a protest
   after the 30 minutes for extenuating circumstances. This is rare, but must always be possible.
+- **Official roles** (2026-10-10): Judge, Chief Judge, Referee, RTO, Starter. Stroke and turn
+  judges are not told apart.
+- **Protest levels** (2026-10-10): limit 2 for now. First protest to the Deck Referee, second to
+  the Meet Referee. Big meets may have review committees.
+- **SMS** (2026-10-10): later. Likely a hosted sign-up site plus SMS push. A much bigger addition.

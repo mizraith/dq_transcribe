@@ -14,6 +14,8 @@ You are continuing work on **dq_transcribe**, a local-first audio recording and 
 
 **Running things on the tablet (the relay):** write a shell script, then run `COMMIT_TRAILERS="<trailers>" bash scripts/run_on_device.sh path/to/task.sh [wait_seconds]`. It commits the script to `device_tasks/` on `main`, and the tablet's `scripts/device_agent.sh` (which the owner starts once in Termux and leaves running) pulls it, runs it from the repo root, and publishes the output as a report on the `device-reports` branch. The helper prints the report. Round trips take roughly 15 to 40 seconds. If no report arrives, the agent is probably stopped: ask the owner to run `bash ~/dq_transcribe/scripts/device_agent.sh`. Start with read-only probe scripts. Tasks run unattended with the owner's permissions, so keep them small and non-destructive.
 
+**Remind the owner first (he asked for these reminders):** (1) send a photo of a current DQ slip; (2) do the radio-cable dry run before Friday 2026-10-16 (volume via the TOO LOUD indicator, sliders, USB-C adapter as Chrome's mic). See `ai_docs/product_plan.md` section 9b.
+
 **Next steps (confirm with the owner before building):**
 1. Owner records 2-3 hours of FRS audio (target Friday 2026-10-16). Afterward, inspect clips, thresholds (`SILENCE_DBFS`, `TURN_GAP_SECONDS`, capture start/end levels) and transcript quality using the stored raw data.
 2. Re-measure whisper speed repeatably; compare `tiny`, `base`, `small`.
