@@ -37,8 +37,17 @@ Facts and decisions to carry across sessions. Update this file as things change;
 - Whisper `base` speed was inconsistent: about 6 s for an 11 s clip, but 15.6 s for a 5 s clip. Re-measure under repeatable conditions (idle device, repeated runs), and compare `tiny` and `small`.
 - Whether recording continues with the screen off or Chrome in the background.
 
+## Architecture (as of 2026-10-10)
+
+- Browser captures mic (AudioWorklet, energy VAD, pre-roll, 16 kHz mono WAV) and uploads clips to `/api/clips`; clips queue in SQLite and a worker thread splits each into turns at pauses (>= 0.8 s below -45 dBFS) and runs whisper.cpp per turn.
+- Clips are stored under `recordings/YYYY-MM-DD/` (owner request: group by day). `audio_filename` in the DB is the path relative to `recordings/`.
+- Conversation groups are computed on the fly from clip times (gap < 5 s => same group), so retuning needs no reprocessing.
+- Raw tuning data is kept: levels, pauses, analysis params, capture info, whisper JSON.
+- Stability measures for long sessions: unlimited upload retry (only 4xx drops a clip), audio-context resume, mic-disconnect and no-audio warnings, wake-lock re-acquire.
+
 ## Status log
 
 - 2026-10-10: Repo scaffolded; Termux environment set up on the tablet; browser mic-test slice written and unit-tested in the cloud workspace. Not yet run on the tablet.
 - 2026-10-10: Device relay (agent + run_on_device) built and passed a local simulated end-to-end test. Waiting for the owner to start the agent on the tablet.
 - 2026-10-10: Agent started on the tablet. Mic test passed, whisper.cpp built, first transcription verified. Next: wire recording, conversion, transcription and SQLite storage into the app.
+- 2026-10-10: Capture app built, 23 unit tests pass, deployed and verified on the tablet with JFK samples (2-turn clip split correctly; ~0.4x real time with `base`). Owner plans a 2-3 hour recording session on Friday 2026-10-16 to gather real FRS audio. Test data was cleared afterward.
