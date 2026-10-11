@@ -90,8 +90,10 @@ flowchart TD
 - **Folders:** recordings move from one folder per day to
   `recordings/<meet start date>_<meet-name>/<YYYY-MM-DD>/session-<n>/`. Today's
   per-day folders already fit inside that layout.
-- **DQ keys:** a DQ is unique by meet + event + heat + lane (and swimmer, for
-  relays). See open questions on whether event numbers restart each session.
+- **DQ keys (stated):** event numbers are unique across the whole meet, so a DQ is
+  found by **meet + event + heat + lane**. In the rare case of a conflict, events
+  are told apart by adding a letter (for example "Event 2b"). **Proposed:** store
+  the event as text ("2", "2b") and sort it as number then letter, so 2 < 2b < 10.
 
 ### 4.1 Fields
 
@@ -107,8 +109,15 @@ always looked up.
 | Event | **yes** | First sort key |
 | Heat | **yes** | Second sort key |
 | Lane | **yes** | Third sort key |
+| Relay leg | relays only | Which leg the infraction was called on: 1st, 2nd, 3rd or 4th (stated) |
 | Swimmer name | **yes** | Auto-filled from the meet's Hy-Tek Meet Manager file using event/heat/lane (future). The admin types it when the lookup has nothing |
 | Swimmer club | **yes** | Same as swimmer name |
+
+**Relays (stated):** for a relay DQ, record the **leg** (1st to 4th swimmer) and,
+instead of a swimmer name, the **relay name** written as club + "-" + relay letter
+(for example "PASA-A", "PASA-B"). **Proposed:** a DQ has an "is relay" flag, set
+from the Meet Manager event when known. For relays, the swimmer-name field
+becomes "relay name" and the leg is required to publish.
 | DQ code | no, but wanted | From the DQ slip. Some DQs have no code, and codes change between seasons |
 | Description | **yes** | Short description. More universal than the code |
 | Official | **yes** | Name of the person who made the call |
@@ -406,14 +415,9 @@ window needs a way to **browse for and load a new file** at any time.
 4. **Recording notification and protests:** who marks a coach as notified, and who records that a
    protest was filed (admin, referee, coach)?
 5. **Overturned:** is it final, or can it be protested again (for example by another team)?
-6. **Event numbers:** are event numbers unique across the whole meet, or can they repeat between
-   days or sessions? This decides whether a DQ's key is meet + event + heat + lane, or needs the
-   session too.
-7. **Corrections after publication:** what happens if a published DQ has a typo (wrong lane)? Is it
+6. **Corrections after publication:** what happens if a published DQ has a typo (wrong lane)? Is it
    corrected in place with an audit entry, or republished?
-8. **Relays:** a relay DQ belongs to a team in a lane, not one swimmer. Should "swimmer name" hold
-   the relay team name, with the offending leg as an extra field?
-9. **Local LLM size:** how much tablet time and storage can a local model use? This decides
+7. **Local LLM size:** how much tablet time and storage can a local model use? This decides
    whether an LLM backend is practical or the rule-based matcher carries the load.
 
 ### Answered
@@ -437,3 +441,7 @@ window needs a way to **browse for and load a new file** at any time.
   A meet is identified and sorted by date + name.
 - **Getting the Meet Manager file** (2026-10-10): load it from the file picker or a web address.
   Usually it comes by USB thumb drive from the Windows Meet Manager machine.
+- **Event numbers** (2026-10-10): unique across the meet. A rare conflict is broken with a letter
+  (Event 2b).
+- **Relays** (2026-10-10): record the leg (1st to 4th) and the relay name as club-letter
+  (PASA-A) in place of a swimmer name.
