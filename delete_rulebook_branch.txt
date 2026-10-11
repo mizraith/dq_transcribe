@@ -1,0 +1,8 @@
+task: delete_rulebook_branch
+started: 2026-10-10T20:46:54-07:00
+finished: 2026-10-10T20:46:55-07:00
+work_repo_commit: 14f35ad
+exit_code: 1
+--- output ---
+error: unable to delete 'rulebook-import': remote ref does not exist
+error: failed to push some refs to 'https://github.com/mizraith/dq_transcribe.git'
