@@ -16,6 +16,8 @@ dist/*
 *.sqlite3
 *.wav
 *.m4a
+*.webm
+*.ogg
 *.bin
 *.gguf
 
