@@ -1,0 +1,14 @@
+task: 20261011T022925Z_transcribe_test
+started: 2026-10-10T19:29:44-07:00
+finished: 2026-10-10T19:30:06-07:00
+work_repo_commit: c7f37e9
+exit_code: 0
+--- output ---
+== bundled sample (jfk.wav, about 11 s of audio) ==
+
+ And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.transcription took 6.1 seconds
+
+== your recording (recording_20261010_192327_469910.webm, about 5 s of audio) ==
+
+ Test, test, test, test, test.transcription took 15.6 seconds
+
