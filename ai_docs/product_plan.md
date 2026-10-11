@@ -312,6 +312,41 @@ list. Then score the detector each time it or its model changes:
 - Keep a short summary of the relevant rules in the repo with the rules version
   and date, plus a reminder to check it each season.
 
+### 6.1 What the 2026 rulebook says about DQs and protests
+
+Checked 2026-10-10 against `rulebook/usa-swimming-rulebook-2026_downloaded-2026-10-10.pdf`.
+These are short summaries; the rulebook text governs.
+
+- **102.21.1:** only the official in whose area the infraction happened can make the
+  disqualification. The Referee, stroke, turn and relay take-off judges must
+  immediately raise one hand overhead, or there is no DQ (unless the meet runs
+  under World Aquatics procedures).
+- **102.21.2:** the Referee or designated official makes every reasonable effort to
+  tell the swimmer or coach the reason. **Failure to notify does not cancel the
+  DQ.**
+- **102.22.1:** protests against **judgment decisions** of starters and of stroke,
+  turn, place and relay take-off judges can be considered **only by the Referee,
+  whose decision is final**.
+- **102.22.4:** all other competition-related protests go to the Referee **in
+  writing within 30 minutes after the race** in which the alleged infraction
+  happened.
+- **102.22.5:** apart from 102.22.1, rulings can be appealed off-deck (to the Rules &
+  Regulations Committee within 10 days, or the National Board of Review). This is
+  outside what the app tracks at the meet.
+- **102.22.6:** results of a protested race are not announced, and awards and
+  points are held, until the protest is resolved or withdrawn.
+- The rulebook sets **no protest-cycle limit**, so the 2–3 cycle limit is local
+  practice.
+
+**How this affects the plan:**
+- **When the protest clock starts:** the rulebook counts the 30 minutes from the
+  end of the race, while local practice (stated) counts from notification.
+  **Proposed:** store both times and make the start point a setting. See open
+  questions.
+- **Protest cycles:** for judgment-call DQs, which are most of them, the Referee's
+  ruling is final under 102.22.1. Repeated protest cycles therefore come from
+  local practice, not the rulebook.
+
 ## 7. Component 3: DQ management (touch-screen)
 
 The owner wants a touch-friendly way to view, manage, edit, approve and decline DQs.
@@ -457,7 +492,7 @@ window needs a way to **browse for and load a new file** at any time.
 ## 10. Needed from the owner
 
 - [ ] Current DQ slips (photo or PDF), including codes and descriptions
-- [ ] USA Swimming technical rules (current edition), or the sections that matter here
+- [x] USA Swimming technical rules: 2026 rulebook stored in `rulebook/` (2026-10-10)
 - [ ] Friday ground truth: event/heat/lane of every DQ (promised), with timing where possible
 - [ ] Typical radio wording: varies a lot (stated). The Friday audio will show real examples
 - [ ] Officials and referee names for a meet (roster format)
@@ -468,7 +503,8 @@ window needs a way to **browse for and load a new file** at any time.
 
 1. **Local LLM size:** how much tablet time and storage can a local model use? This decides
    whether an LLM backend is practical or the rule-based matcher carries the load.
-2. **Protest-cycle limit:** 2 or 3? To check in the rulebook (Article 102, protests). A setting until then.
+2. **Protest-cycle limit:** the rulebook sets none (see 6.1), so it is local practice. A setting, default 2.
+3. **When the protest clock starts:** the rulebook counts from the end of the race (102.22.4); local practice counts from notification. Which should the countdown use, or should both be shown?
 
 ### Answered
 
