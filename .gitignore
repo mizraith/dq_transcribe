@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Build output (folders are kept via .gitkeep)
+build/*
+!build/.gitkeep
+dist/*
+!dist/.gitkeep
+
+# Local data and models: never commit recordings, databases, or model weights
+*.db
+*.sqlite3
+*.wav
+*.m4a
+*.bin
+*.gguf
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
