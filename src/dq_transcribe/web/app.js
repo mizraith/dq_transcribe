@@ -159,9 +159,26 @@ function positionThresholdMarker() {
 }
 
 /** Update the meter and the level readout. */
-function showLevel(dbfs) {
+function showLevel(dbfs, clipped) {
+  if (clipped) {
+    lastClippedAtMs = Date.now();
+  }
+  const tooLoud = lastClippedAtMs !== null
+    && Date.now() - lastClippedAtMs < CONFIG.clippingWarningSeconds * MILLISECONDS_PER_SECOND;
   meterBar.style.width = meterPercent(dbfs) + "%";
-  levelText.textContent = "Level " + Math.round(dbfs) + " dBFS";
+  meterBar.classList.toggle("clipping", tooLoud);
+  levelText.textContent = "Level " + Math.round(dbfs) + " dBFS"
+    + (tooLoud ? " - TOO LOUD (clipping): turn the radio volume down" : "");
+}
+
+/** True if any sample reaches the clipping amplitude. */
+function isClipped(samples) {
+  for (let index = 0; index < samples.length; index += 1) {
+    if (Math.abs(samples[index]) >= CONFIG.clippingAmplitude) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Join audio chunks into one Float32Array. */
@@ -229,6 +246,7 @@ let mediaStream = null;
 let workletNode = null;
 let wakeLock = null;
 let lastChunkAtMs = 0;
+let lastClippedAtMs = null; // when the input last clipped (too loud)
 let lastAudioAtMs = null; // when sound above the start level was last heard
 let watchdogTimer = null;
 
@@ -237,6 +255,7 @@ let clipChunks = null; // null while waiting for audio; an array while a clip is
 let loudChunkCount = 0;
 let clipSilentSeconds = 0;
 let clipPeakDbfs = CONFIG.dbfsFloor;
+let clipWasClipped = false; // true if any part of the current clip clipped
 let clipStartedAtMs = 0;
 let idleLevelDbfs = null; // slow running average of the level while nothing is being recorded
 
@@ -248,7 +267,8 @@ function onChunk(samples) {
   lastChunkAtMs = Date.now();
   const chunkSeconds = samples.length / audioContext.sampleRate;
   const level = toDbfs(rmsOf(samples));
-  showLevel(level);
+  const clipped = isClipped(samples);
+  showLevel(level, clipped);
   if (level >= settings.startDbfs) {
     lastAudioAtMs = lastChunkAtMs;
   }
@@ -256,6 +276,10 @@ function onChunk(samples) {
     handleWaitingChunk(samples, level, chunkSeconds);
   } else {
     handleClipChunk(samples, level, chunkSeconds);
+  }
+  // Mark the clip in progress (if any) as clipped; this chunk may have just started it.
+  if (clipped && clipChunks !== null) {
+    clipWasClipped = true;
   }
 }
 
@@ -283,6 +307,7 @@ function beginClip(chunkSeconds) {
   prerollChunks = [];
   clipSilentSeconds = 0;
   clipPeakDbfs = CONFIG.dbfsFloor;
+  clipWasClipped = false;
   loudChunkCount = 0;
   clipStartedAtMs = Date.now() - clipChunks.length * chunkSeconds * MILLISECONDS_PER_SECOND;
   setCaptureState("receiving");
@@ -308,6 +333,7 @@ function finishClip(chunkSeconds) {
   }
   const chunks = clipChunks;
   const peakDbfs = clipPeakDbfs;
+  const wasClipped = clipWasClipped;
   const startedAtMs = clipStartedAtMs;
   const sourceRate = audioContext.sampleRate;
 
@@ -328,6 +354,7 @@ function finishClip(chunkSeconds) {
   info[CONFIG.infoKeyEndedAt] = new Date(startedAtMs + durationSeconds * MILLISECONDS_PER_SECOND).toISOString();
   info.sourceSampleRate = sourceRate;
   info.peakDbfs = Math.round(peakDbfs * 10) / 10;
+  info.clipped = wasClipped;
   info.idleLevelDbfs = idleLevelDbfs === null ? null : Math.round(idleLevelDbfs * 10) / 10;
   info.startDbfs = settings.startDbfs;
   info.endDbfs = settings.endDbfs;

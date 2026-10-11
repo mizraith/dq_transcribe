@@ -86,6 +86,8 @@ def build_web_config() -> dict[str, Any]:
         "infoKeyStartedAt": constants.CAPTURE_INFO_KEY_STARTED_AT,
         "infoKeyEndedAt": constants.CAPTURE_INFO_KEY_ENDED_AT,
         "meterFloorDbfs": constants.METER_FLOOR_DBFS,
+        "clippingAmplitude": constants.CLIPPING_AMPLITUDE,
+        "clippingWarningSeconds": constants.CLIPPING_WARNING_SECONDS,
         "textKey": constants.REQUEST_KEY_TEXT,
         "audioSuffix": constants.CLIP_AUDIO_SUFFIX,
         "reprocessSuffix": constants.CLIP_REPROCESS_SUFFIX,

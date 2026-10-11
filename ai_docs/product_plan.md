@@ -55,6 +55,23 @@ Already in place (details in `README.md` and `ai_docs/memory.md`):
 **Remaining before Friday:** a dry run with the real radio, setting the levels,
 and confirming that a 2–3 hour session holds up.
 
+**Radio setup (stated):**
+- One radio channel carries all the DQ calls and acceptances.
+- The tablet is fed by a **cable from the radio**, not by its built-in mic
+  listening to a speaker.
+- The radio wording **varies a lot** from official to official, so detection
+  cannot rely on one fixed phrase order.
+
+**Proposed for the cable:**
+- A radio's earpiece or speaker output can be much hotter than a mic input expects.
+  The page now shows **"TOO LOUD (clipping)"**, turns the meter red, and flags
+  clipped clips in their capture info, so the radio volume can be set during the
+  dry run.
+- The start and quiet levels will likely need resetting for the cable, using the
+  sliders.
+- **Check during the dry run** that Chrome uses the USB-C audio adapter as its mic
+  input.
+
 **Ground truth for Friday:** the owner will have the event/heat/lane of every DQ
 from that session, and will get timing where possible. Matching the audio to
 these real DQs is what lets us build and measure component 2.
@@ -198,6 +215,9 @@ stateDiagram-v2
 - **The admin enters protests and rulings:** a coach's protest and the referee's
   Upheld or Overturned ruling are both entered by the admin. A "by" drop-down
   records who ruled.
+- **Validation can stand in for acceptance (stated):** the admin may publish a DQ
+  the referee did not accept over the radio. **Proposed:** the history then shows
+  Called → Published with "accepted by admin validation".
 - **Protest-cycle limit:** not decided yet. It is a setting (default 2) until the
   rules are checked.
 - **Trash:** the admin can permanently delete calls from the trash only **after
@@ -439,18 +459,16 @@ window needs a way to **browse for and load a new file** at any time.
 - [ ] Current DQ slips (photo or PDF), including codes and descriptions
 - [ ] USA Swimming technical rules (current edition), or the sections that matter here
 - [ ] Friday ground truth: event/heat/lane of every DQ (promised), with timing where possible
-- [ ] Typical radio wording: how a call and an acceptance usually sound
+- [ ] Typical radio wording: varies a lot (stated). The Friday audio will show real examples
 - [ ] Officials and referee names for a meet (roster format)
 - [x] Protest window: typically 30 minutes from notification (answered 2026-10-10)
 - [ ] Hy-Tek Meet Manager file for Friday's meet (owner is getting it)
 
 ## 11. Open questions
 
-1. **Validation order:** in practice, can an admin validate or publish a DQ the referee has not
-   accepted?
-2. **Local LLM size:** how much tablet time and storage can a local model use? This decides
+1. **Local LLM size:** how much tablet time and storage can a local model use? This decides
    whether an LLM backend is practical or the rule-based matcher carries the load.
-3. **Protest-cycle limit:** 2 or 3? To check in the rulebook (Article 102, protests). A setting until then.
+2. **Protest-cycle limit:** 2 or 3? To check in the rulebook (Article 102, protests). A setting until then.
 
 ### Answered
 
@@ -494,3 +512,6 @@ window needs a way to **browse for and load a new file** at any time.
 - **Protests** (2026-10-10): the admin enters both the protest and the ruling, with a "by"
   drop-down for who ruled.
 - **Trash** (2026-10-10): the admin can permanently delete only after the meet.
+- **Validation** (2026-10-10): the admin can publish a DQ the referee has not accepted.
+- **Radio** (2026-10-10): one channel. Audio comes into the tablet by cable from the radio.
+  Wording varies a lot between officials.
