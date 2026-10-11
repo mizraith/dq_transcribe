@@ -1,0 +1,15 @@
+task: check_server
+started: 2026-10-10T19:52:28-07:00
+finished: 2026-10-10T19:52:28-07:00
+work_repo_commit: 4f91b1c
+exit_code: 0
+--- output ---
+server status 200
+{"clips": []}
+notes.db
+recordings
+server.log
+tmp
+whisper.cpp
+whisper_build.log
+whisper_build_result.txt
