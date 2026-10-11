@@ -1,0 +1,18 @@
+task: 20261011T022426Z_check_recording
+started: 2026-10-10T19:24:41-07:00
+finished: 2026-10-10T19:24:42-07:00
+work_repo_commit: c457cea
+exit_code: 0
+--- output ---
+== recordings ==
+total 76K
+-rw-------. 1 u0_a307 u0_a307 75K Oct 10 19:23 recording_20261010_192327_469910.webm
+
+== newest: recording_20261010_192327_469910.webm ==
+  Duration: 00:00:04.74, start: 0.000000, bitrate: 128 kb/s
+  Stream #0:0(eng): Audio: opus, 48000 Hz, mono, fltp (default)
+
+== conversion to 16000 Hz mono WAV ==
+-rw-------. 1 u0_a307 u0_a307 151K Oct 10 19:24 /data/data/com.termux/files/home/.dq_transcribe/tmp/conversion_test.wav
+  Duration: 00:00:04.80, bitrate: 256 kb/s
+  Stream #0:0: Audio: pcm_s16le ([1][0][0][0] / 0x0001), 16000 Hz, 1 channels, s16, 256 kb/s
