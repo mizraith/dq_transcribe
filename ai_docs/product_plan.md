@@ -55,10 +55,9 @@ Already in place (details in `README.md` and `ai_docs/memory.md`):
 **Remaining before Friday:** a dry run with the real radio, setting the levels,
 and confirming that a 2–3 hour session holds up.
 
-**Proposed for Friday:** collect *ground truth* alongside the recording. The most
-valuable item is the day's paper DQ slips, or photos of them, plus any notes on
-when calls happened. Matching the audio to the real DQs is what will let us build
-and measure component 2.
+**Ground truth for Friday:** the owner will have the event/heat/lane of every DQ
+from that session, and will get timing where possible. Matching the audio to
+these real DQs is what lets us build and measure component 2.
 
 ## 4. The DQ record
 
@@ -75,9 +74,11 @@ and measure component 2.
 | Description | yes | Short description. More universal than the code |
 | Official | yes | Name of the person who made the call |
 | Chief Judge | no | |
-| Referee | yes | Name of the person who accepts the call |
+| Referee | yes | Name of the person who accepts the call (usually the deck referee, over the radio) |
 | State | yes | See 4.2 |
 | State history | yes | Every state change with its time (and, **proposed**, who made it) |
+| Declined by / reason | when declined | Role and name of whoever declined it, and why (**proposed**) |
+| Notified at | when notified | Starts the protest window (see 4.2) |
 | Protest cycle count | yes | Number of protests so far |
 
 **Proposed additional fields:**
@@ -90,17 +91,32 @@ and measure component 2.
 ### 4.2 States and lifecycle
 
 States the owner described: **Called → Accepted → (admin validates) → Published
-(coaches notified) → Protested → Under Investigation → Upheld or Overturned.**
+→ Notified → Protested → Under Investigation → Upheld or Overturned.**
 An Upheld DQ can be protested again, up to 2 (maybe 3) cycles, never without limit.
+
+**Who can decline (stated):**
+- Technically only the referee declines a DQ.
+- In practice anyone in the chain can decline one that is unclear, confusing or
+  poorly written: Chief Judge, Deck Referee, Meet Referee or Admin Official.
+- Most calls are accepted over the radio at the time of the call. The meet referee
+  may decline one later, and sometimes the admin is the one who checks the box.
+- **The benefit of the doubt always goes to the swimmer.**
+
+**Notification (stated):**
+- The protest window starts at **Notification**, not at Published.
+- In the paper process, handing the coach a copy of the DQ slip is the notification.
+- Depending on how publication works, publishing may also count as notification.
+- Coaches typically have **30 minutes** to protest.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Called: heard on radio or entered by hand
-    Called --> Accepted: referee accepts
-    Called --> Declined: not a DQ / false detection (proposed)
-    Accepted --> Published: admin validates; coaches notified
-    Accepted --> Declined: admin declines (proposed)
-    Published --> Protested: coach protests within the protest window
+    Called --> Accepted: referee accepts (usually over the radio)
+    Called --> Declined: anyone in the chain declines
+    Accepted --> Declined: meet referee or admin declines later
+    Accepted --> Published: admin validates
+    Published --> Notified: coach notified (may be the same moment as Published)
+    Notified --> Protested: coach protests within 30 minutes of notification
     Protested --> UnderInvestigation: referee investigates
     UnderInvestigation --> Upheld
     UnderInvestigation --> Overturned
@@ -111,24 +127,44 @@ stateDiagram-v2
 ```
 
 **Rules:**
-- Record the time of every state change. The **Published** time matters most,
+- Record the time of every state change. The **Notified** time matters most,
   because it starts the coach's protest window.
 - A protest is only allowed while the protest window is open and the
   protest-cycle limit (2 or 3) has not been reached.
-- **Proposed:** the protest window length and the cycle limit are settings, not
-  hard-coded values. They get confirmed against the USA Swimming rules (section 6).
+- **Proposed:** the protest window length (default 30 minutes), the cycle limit,
+  and whether publishing counts as notifying are settings, not hard-coded values.
+- **Proposed:** the UI shows a countdown of the time left in the protest window.
 - **Proposed:** state changes are append-only history rows, not overwritten
-  columns, so the full audit trail survives.
+  columns, so the full audit trail survives. Each row records the role and name
+  of the person who made the change.
+- **Proposed:** when the app is unsure (an ambiguous detection), it says so and
+  leaves the decision to a person. It never fills in a guess as fact, because
+  the benefit of the doubt goes to the swimmer.
 
-## 5. Component 2: DQ detection (without AI)
+## 5. Component 2: DQ detection (no online AI)
 
-The owner wants calls matched to DQs **without AI**.
+**What "without AI" means (stated):**
+- **No online or cloud AI.** The network at swim meets is always rough.
+- **A local model is allowed**, including a local LLM, if a free one can be
+  installed on the tablet **as part of this app**.
+- The model must be deployable with the solution.
+- It should be possible to plug in new models as they evolve.
 
-**Proposed reading:** no LLM or cloud service. whisper.cpp stays (it is already
-the transcriber), and matching is rule-based and explainable. See Open questions.
+**Proposed: models behind interfaces.**
+- Detection sits behind a small `DqMatcher` interface, the same way the speech
+  engine already sits behind the `Transcriber` interface.
+- Possible backends: (a) a rule-based matcher, which is the baseline and always
+  available, and (b) an optional local LLM backend. For example, llama.cpp with a
+  small model; it can be built on the tablet the same way whisper.cpp was.
+- Both are scored against the same labeled data, so swapping in a new model is a
+  measured decision.
+- Model files live under `~/.dq_transcribe/models/`, and the model name and
+  version are stored with every result.
+- Whether a useful LLM runs fast enough on this tablet (8 GB RAM) is unknown, so it
+  gets measured before we rely on it.
 
-**Proposed approach:** a deterministic pipeline that produces *candidates*, never
-final answers.
+**Proposed approach (rule-based baseline):** a deterministic pipeline that produces
+*candidates*, never final answers.
 
 1. **Normalize the text:** lowercase, spell out or parse numbers ("event twelve" → 12), and fix
    common mishearings using a table we maintain.
@@ -149,9 +185,11 @@ final answers.
 vocabulary (stroke names, DQ terms, officials' names) may improve accuracy. This
 can be tested on the Friday audio.
 
-**Proposed: measure it.** Hand-label the Friday DQs. Then score the detector
-(how many real DQs it found, how many false ones, and how many fields were right)
-each time it changes.
+**Proposed: measure it.** Label the Friday DQs using the owner's event/heat/lane
+list. Then score the detector each time it or its model changes:
+- how many real DQs it found,
+- how many false ones it produced,
+- how many fields it got right.
 
 ## 6. Reference data and versioning
 
@@ -198,7 +236,8 @@ The owner listed these possible outputs:
   access control.
 - **SMS pushes:** needs an SMS gateway or service, and coach phone numbers.
 
-**Workflow:** a published DQ notifies coaches and starts the protest window. A
+**Workflow:** publishing a DQ leads to coach notification (sometimes it *is* the
+notification), and notification starts the 30-minute protest window. A
 coach protest moves the DQ to Under Investigation. The referee then rules Upheld
 or Overturned, and each ruling is time-stamped. Up to 2 or 3 protest cycles are
 allowed.
@@ -225,27 +264,38 @@ what is needed, and anything off the device needs access control.
 
 - [ ] Current DQ slips (photo or PDF), including codes and descriptions
 - [ ] USA Swimming technical rules (current edition), or the sections that matter here
-- [ ] Friday ground truth: the day's DQ slips or a list of DQs, ideally with rough times
+- [ ] Friday ground truth: event/heat/lane of every DQ (promised), with timing where possible
 - [ ] Typical radio wording: how a call and an acceptance usually sound
 - [ ] Officials and referee names for a meet (roster format)
-- [ ] Protest window length and protest-cycle limit, or where the rule says
+- [x] Protest window: typically 30 minutes from notification (answered 2026-10-10)
+- [ ] Protest-cycle limit (2 or 3?), or where the rule says
 - [ ] Later: sample Meet Manager files
 
 ## 11. Open questions
 
-1. **"Without AI":** does this rule out only LLMs and cloud services, or also local machine-learning
-   models other than whisper (for example a local classifier)?
-2. **Declined:** who can decline a DQ? Is it the admin only, or also the referee (a call that is
-   heard but not accepted)? Is a declined record kept or deleted? (**Proposed:** kept, hidden by
-   default.)
-3. **Validation:** does admin validation happen before or after the referee's acceptance in
-   practice? Can an admin publish a DQ the referee has not accepted?
-4. **Who is the admin:** one person per meet? Do we need logins, or is a single trusted tablet
+1. **Declined records:** is a declined DQ kept, hidden by default, or deleted?
+   (**Proposed:** kept, with who declined it and why, for the audit trail.)
+2. **Validation order:** in practice, can an admin validate or publish a DQ the referee has not
+   accepted?
+3. **Who is the admin:** one person per meet? Do we need logins, or is a single trusted tablet
    enough for now?
-5. **Protest window:** does it start at Published, at coach notification, or at results posting?
-   Who records that a protest was filed (admin, referee, coach)?
-6. **Overturned:** is it final, or can it be protested again (for example by another team)?
-7. **Meets and sessions:** does a meet run over several days and sessions, and should records be
+4. **Recording notification and protests:** who marks a coach as notified, and who records that a
+   protest was filed (admin, referee, coach)?
+5. **Overturned:** is it final, or can it be protested again (for example by another team)?
+6. **Meets and sessions:** does a meet run over several days and sessions, and should records be
    grouped by meet?
-8. **Corrections after publication:** what happens if a published DQ has a typo (wrong lane)? Is it
+7. **Corrections after publication:** what happens if a published DQ has a typo (wrong lane)? Is it
    corrected in place with an audit entry, or republished?
+8. **Local LLM size:** how much tablet time and storage can a local model use? This decides
+   whether an LLM backend is practical or the rule-based matcher carries the load.
+
+### Answered
+
+- **"Without AI"** (2026-10-10): no online AI, because meet networks are rough. Local models,
+  including a local LLM, are fine if they ship with the app, and models should be pluggable.
+- **Who declines** (2026-10-10): technically the referee. In practice anyone in the chain (Chief
+  Judge, Deck Referee, Meet Referee, Admin Official) can decline an unclear call. The benefit of
+  the doubt always goes to the swimmer.
+- **Protest window start** (2026-10-10): at Notification, which may be the same moment as
+  publication. In the paper process, handing the coach a copy of the slip is notification. The
+  window is typically 30 minutes.
