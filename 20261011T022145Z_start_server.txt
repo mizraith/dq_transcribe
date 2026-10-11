@@ -1,0 +1,9 @@
+task: 20261011T022145Z_start_server
+started: 2026-10-10T19:21:55-07:00
+finished: 2026-10-10T19:21:58-07:00
+work_repo_commit: 9d87e02
+exit_code: 0
+--- output ---
+server answered with status 200 and 3108 bytes of HTML
+--- server log ---
+2026-10-10 19:21:58,231 127.0.0.1 - "GET / HTTP/1.1" 200 -
