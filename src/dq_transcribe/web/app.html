@@ -1,0 +1,99 @@
+<!doctype html>
+<!--
+  Main page for dq_transcribe: start/stop capturing, a blinking REC light, a
+  level meter, and the transcript grouped into call/response conversations.
+
+  This file is a string.Template: dollar-brace placeholders are filled in by
+  dq_transcribe.server.render_app_page, so never use a literal dollar sign here.
+  The page's behavior lives in the script served at the script route.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>dq_transcribe</title>
+  <style>
+    :root { --idle: #8a8f98; --rec: #e11d2e; --go: #15803d; --ink: #1f2430; --paper: #f4f5f7; --card: #ffffff; --line: #d7dbe2; }
+    body { font-family: system-ui, sans-serif; font-size: 18px; color: var(--ink); background: var(--paper); margin: 0; padding: 1rem; max-width: 52rem; margin-inline: auto; }
+    h1 { font-size: 1.3rem; margin: 0 0 0.75rem; }
+
+    #capture-panel { background: var(--card); border: 1px solid var(--line); border-radius: 0.75rem; padding: 1rem; }
+    #rec-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+    #rec-dot { width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--idle); flex: none; }
+    #rec-label { font-weight: 700; letter-spacing: 0.04em; }
+    #capture-panel[data-state="listening"] #rec-dot { background: var(--rec); animation: blink 1.2s ease-in-out infinite; }
+    #capture-panel[data-state="receiving"] #rec-dot { background: var(--rec); box-shadow: 0 0 0 0.35rem rgba(225, 29, 46, 0.35); animation: blink 0.45s ease-in-out infinite; }
+    #capture-panel[data-state="listening"] #rec-label, #capture-panel[data-state="receiving"] #rec-label { color: var(--rec); }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
+    @media (prefers-reduced-motion: reduce) { #rec-dot { animation: none !important; } }
+
+    #capture-button { width: 100%; font-size: 1.3rem; font-weight: 700; padding: 1rem; border: 0; border-radius: 0.6rem; color: #fff; background: var(--go); }
+    #capture-button.active { background: var(--rec); }
+    #capture-button:disabled { opacity: 0.6; }
+
+    #meter { position: relative; height: 0.9rem; background: #e6e8ec; border-radius: 0.45rem; margin-top: 0.9rem; overflow: hidden; }
+    #meter-bar { height: 100%; width: 0; background: #2563eb; transition: width 0.06s linear; }
+    #meter-threshold { position: absolute; top: 0; bottom: 0; width: 3px; background: #111; }
+    #level-text, #status, #queue-text { margin: 0.4rem 0 0; font-size: 0.9rem; min-height: 1.2rem; }
+
+    details { margin-top: 0.75rem; font-size: 0.95rem; }
+    details label { display: block; margin: 0.5rem 0 0.15rem; }
+    details input { font-size: 1rem; width: 6rem; padding: 0.3rem; }
+    .hint { color: #555b66; font-size: 0.85rem; margin: 0.25rem 0 0; }
+    .links { margin: 0.9rem 0; font-size: 0.95rem; }
+
+    .group { background: var(--card); border: 1px solid var(--line); border-left: 0.35rem solid #2563eb; border-radius: 0.6rem; padding: 0.6rem 0.8rem; margin-bottom: 0.9rem; }
+    .group-header { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; }
+    .group-header span { font-weight: 400; color: #555b66; }
+    .clip { border-top: 1px solid var(--line); padding: 0.5rem 0; }
+    .clip:first-of-type { border-top: 0; }
+    .clip-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #555b66; }
+    .badge { padding: 0.05rem 0.5rem; border-radius: 0.8rem; background: #e6e8ec; color: var(--ink); }
+    .badge.done { background: #dcfce7; }
+    .badge.failed { background: #fee2e2; }
+    .badge.queued, .badge.processing { background: #fef3c7; }
+    .clip audio { height: 2rem; max-width: 100%; }
+    .clip button { font-size: 0.85rem; padding: 0.2rem 0.6rem; }
+    .utterance-text { display: block; width: 100%; box-sizing: border-box; font: inherit; margin-top: 0.4rem; padding: 0.4rem 0.5rem; border: 1px solid var(--line); border-radius: 0.4rem; resize: vertical; }
+    .utterance-text.saved { border-color: var(--go); }
+    .note { font-size: 0.9rem; color: #555b66; margin: 0.4rem 0 0; }
+    .error { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>dq_transcribe</h1>
+
+  <section id="capture-panel" data-state="idle">
+    <div id="rec-row">
+      <span id="rec-dot"></span>
+      <span id="rec-label">Not capturing</span>
+    </div>
+    <button id="capture-button" type="button">Start capturing</button>
+    <div id="meter"><div id="meter-bar"></div><div id="meter-threshold"></div></div>
+    <p id="level-text"></p>
+    <p id="status"></p>
+    <p id="queue-text"></p>
+
+    <details>
+      <summary>Capture settings</summary>
+      <label for="start-dbfs">Start recording above (dBFS)</label>
+      <input id="start-dbfs" type="number" step="1">
+      <label for="end-dbfs">Count as quiet below (dBFS)</label>
+      <input id="end-dbfs" type="number" step="1">
+      <label for="hang-seconds">End the clip after this many quiet seconds</label>
+      <input id="hang-seconds" type="number" step="0.5" min="1">
+      <p class="hint">The black line on the meter marks the start level. Watch the meter while the radio is quiet and while it is talking, then set the start level between the two.</p>
+    </details>
+  </section>
+
+  <p class="links">
+    <a href="${transcript_route}" download>Download transcript</a> &middot;
+    <a href="${export_route}" download>Download all data (JSON)</a> &middot;
+    <a href="${mic_test_route}">Mic test</a>
+  </p>
+
+  <main id="clips"></main>
+
+  <script src="${script_route}"></script>
+</body>
+</html>
