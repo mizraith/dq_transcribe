@@ -1,0 +1,11 @@
+task: 20261011T060149Z_check_start_script
+started: 2026-10-10T23:05:18-07:00
+finished: 2026-10-10T23:05:18-07:00
+work_repo_commit: adf54eb
+exit_code: 0
+--- output ---
+[dq_transcribe] device agent: running
+[dq_transcribe] app server:   running (http://localhost:8000)
+ls: cannot access '/data/data/com.termux/files/usr/bin/dq_transcribe': No such file or directory
+/data/data/com.termux/files/usr/bin/termux-wake-lock
+/data/data/com.termux/files/usr/bin/termux-open-url
