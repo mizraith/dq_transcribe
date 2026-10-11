@@ -1,0 +1,8 @@
+task: 20261011T034645Z_delete_rulebook_branch
+started: 2026-10-10T20:46:51-07:00
+finished: 2026-10-10T20:46:52-07:00
+work_repo_commit: 14f35ad
+exit_code: 0
+--- output ---
+To https://github.com/mizraith/dq_transcribe.git
+ - [deleted]         rulebook-import
