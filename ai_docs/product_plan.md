@@ -171,6 +171,7 @@ stateDiagram-v2
     UnderInvestigation --> Overturned
     Upheld --> Protested: another protest, if cycles remain
     Upheld --> [*]
+    Overturned --> Protested: reopened by a further protest, if cycles remain
     Overturned --> [*]: kept for the paper trail
     Declined --> Trash: marked for deletion
     Trash --> Declined: recovered
@@ -189,6 +190,10 @@ stateDiagram-v2
   **republished**.
 - If the mistake shows the call itself was confused, the DQ is usually declined
   instead.
+- **Republishing restarts the protest window:** a corrected, republished DQ
+  is notified again, and the new notification starts a fresh 30-minute window.
+- **Overturned can be reopened:** a further protest can bring back an Overturned
+  DQ, within the protest-cycle limit.
 - **Notification** is recorded with a "Notified by" drop-down, since several
   people can notify (Chief Judge, Meet Referee, Deck Referee, Admin). The
   drop-down also offers "SMS Push", "HTML Publish" and "None Required".
@@ -304,7 +309,10 @@ The owner wants a touch-friendly way to view, manage, edit, approve and decline 
     event/heat/lane, and can still be edited.
   - Description and code use a searchable picker from the current season's list,
     with the detector's best guesses shown first as one-tap choices.
-  - The official and referee are picked from the roster.
+  - The official and referee are picked from the roster. **Stated:** the admin
+    types the roster of officials (Officials, Chief Judges, Referees) at the start
+    of each meet. **Proposed:** names from earlier meets are offered to save
+    typing.
 - **Transcript popup** (from the link icon):
   - The transcript of every turn in the call/response group, with the time.
   - A play icon for the audio. Per-turn play is **proposed**.
@@ -432,14 +440,10 @@ window needs a way to **browse for and load a new file** at any time.
 
 1. **Validation order:** in practice, can an admin validate or publish a DQ the referee has not
    accepted?
-2. **Who is the admin:** one person per meet? Do we need logins, or is a single trusted tablet
-   enough for now?
-3. **Overturned:** is it final, or can it be protested again (for example by another team)?
-4. **Local LLM size:** how much tablet time and storage can a local model use? This decides
+2. **Local LLM size:** how much tablet time and storage can a local model use? This decides
    whether an LLM backend is practical or the rule-based matcher carries the load.
-5. **Republish and the protest window:** when a published DQ is corrected and republished (for example a fixed swimmer name), does the 30-minute protest window restart from the new notification?
-6. **Who records a protest:** who enters that a coach protested, and who records the referee's Upheld or Overturned ruling? Is it the same "by" drop-down idea?
-7. **Permanent deletion:** who may empty the trash? Is it only the admin, and only after the meet?
+3. **Who records a protest:** who enters that a coach protested, and who records the referee's Upheld or Overturned ruling? Is it the same "by" drop-down idea?
+4. **Permanent deletion:** who may empty the trash? Is it only the admin, and only after the meet?
 
 ### Answered
 
@@ -473,3 +477,8 @@ window needs a way to **browse for and load a new file** at any time.
   plus "SMS Push", "HTML Publish" and "None Required".
 - **Corrections** (2026-10-10): rare. Usually a swimmer-name fix, which is corrected and
   republished. A confused call is declined instead.
+- **Republish** (2026-10-10): a correction is republished and notified again, which starts a fresh
+  30-minute protest window.
+- **Users** (2026-10-10): one admin on one tablet. No logins for now.
+- **Overturned** (2026-10-10): can be reopened by a further protest, within the cycle limit.
+- **Officials roster** (2026-10-10): typed by the admin for each meet.
