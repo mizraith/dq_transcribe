@@ -58,3 +58,4 @@ Facts and decisions to carry across sessions. Update this file as things change;
 - 2026-10-10: Required to publish: E/H/L, swimmer name, club, official, referee, description (code optional but wanted). Default sort E/H/L. Install uses built-in tools per platform (ChromeOS Linux, Mac Terminal, Windows PowerShell).
 - 2026-10-10: Windows target is WSL only (owner hates PowerShell); Mac uses Terminal. Swimmer name/club will come from the Hy-Tek Meet Manager file by E/H/L; files can update mid-meet, so the main window needs browse/load-new-file. Owner is getting Friday's file.
 - 2026-10-10: Meet structure: meet (date+name id) -> days (1-5) -> sessions (1-3/day, ~4 h, <8). Meet Manager file loaded via file picker or URL; usually arrives on a USB thumb drive from Windows.
+- 2026-10-10: Event numbers unique per meet (rare conflicts get a letter, e.g. 2b). Relay DQs record the leg (1st-4th) and relay name club-letter (PASA-A) instead of swimmer name.
