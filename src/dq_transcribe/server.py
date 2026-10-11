@@ -100,6 +100,16 @@ def build_web_config() -> dict[str, Any]:
         "startDbfs": constants.CAPTURE_START_DBFS,
         "endDbfs": constants.CAPTURE_END_DBFS,
         "hangSeconds": constants.CAPTURE_HANG_SECONDS,
+        "levelSlider": {
+            "min": constants.CAPTURE_LEVEL_SLIDER_MIN_DBFS,
+            "max": constants.CAPTURE_LEVEL_SLIDER_MAX_DBFS,
+            "step": constants.CAPTURE_LEVEL_SLIDER_STEP_DBFS,
+        },
+        "hangSlider": {
+            "min": constants.CAPTURE_HANG_SLIDER_MIN_SECONDS,
+            "max": constants.CAPTURE_HANG_SLIDER_MAX_SECONDS,
+            "step": constants.CAPTURE_HANG_SLIDER_STEP_SECONDS,
+        },
         "prerollSeconds": constants.CAPTURE_PREROLL_SECONDS,
         "trailSeconds": constants.CAPTURE_TRAIL_SECONDS,
         "minClipSeconds": constants.CAPTURE_MIN_CLIP_SECONDS,
