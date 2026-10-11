@@ -474,6 +474,17 @@ handled and Meet Manager is updated. So:
   Meet Manager" if a protest or correction touches it later, so the operator knows
   to re-enter it.
 
+**Separate tab for review (stated):** while the computer operator reviews DQs and
+enters them into Meet Manager, they work in a **separate Chrome tab**, so the main
+capture-and-transcribe tab keeps running.
+
+**Risk:** Android Chrome may slow down or pause background tabs. **Test it in the
+dry run** by watching "Last audio received" on the capture tab while working in
+the review tab.
+
+**Fallbacks:** split screen with two Chrome windows (Android tablets support
+this), or putting the review view inside the capture page.
+
 **Meet Manager entry (stated):** once calls are final and the **event is
 closed**, the app shows or prints a **summary for that event**. The computer
 operator then types the DQs into Hy-Tek Meet Manager by hand. **The app never
@@ -595,6 +606,7 @@ window needs a way to **browse for and load a new file** at any time.
 2. **Do the dry run with the radio cable**: set the radio volume using the
    "TOO LOUD" indicator, reset the start and quiet sliders, and confirm that Chrome
    uses the USB-C audio adapter as its mic.
+   Also check that capture keeps running while you work in a second Chrome tab.
 3. Get the Hy-Tek Meet Manager file for Friday's meet.
 4. Friday 2026-10-16: capture 2–3 hours, and keep the event/heat/lane list of every
    DQ (with times where possible).
