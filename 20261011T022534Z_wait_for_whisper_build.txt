@@ -1,0 +1,38 @@
+task: 20261011T022534Z_wait_for_whisper_build
+started: 2026-10-10T19:25:39-07:00
+finished: 2026-10-10T19:29:09-07:00
+work_repo_commit: 5fd4cf2
+exit_code: 0
+--- output ---
+result: DONE
+--- last log lines ---
+  0      0   0      0   0      0      0      0                              0100   1135 100   1135   0      0   5445      0                              0100   1135 100   1135   0      0   5436      0                              0
+  0      0   0      0   0      0      0      0                              0  1 141.0M   1  2.35M   0      0  1.75M      0   01:20   00:01   01:19  2.32M  8 141.0M   8 12.09M   0      0  5.16M      0   00:27   00:02   00:25  6.01M 17 141.0M  17 24.32M   0      0  7.26M      0   00:19   00:03   00:16  8.05M 22 141.0M  22 32.30M   0      0  7.41M      0   00:19   00:04   00:15  8.02M 27 141.0M  27 38.53M   0      0  7.17M      0   00:19   00:05   00:14  7.64M 33 141.0M  33 47.56M   0      0  7.44M      0   00:18   00:06   00:12  8.96M 41 141.0M  41 57.87M   0      0  7.83M      0   00:18   00:07   00:11  9.07M 48 141.0M  48 67.86M   0      0  8.09M      0   00:17   00:08   00:09  8.64M 56 141.0M  56 79.25M   0      0  8.44M      0   00:16   00:09   00:07  9.33M 62 141.0M  62 88.29M   0      0  8.49M      0   00:16   00:10   00:06  9.89M 68 141.0M  68 97.33M   0      0  8.53M      0   00:16   00:11   00:05  9.92M 74 141.0M  74 104.9M   0      0  8.45M      0   00:16   00:12   00:04  9.36M 79 141.0M  79 112.3M   0      0  8.37M      0   00:16   00:13   00:03  8.83M 83 141.0M  83 117.5M   0      0  8.15M      0   00:17   00:14   00:03  7.60M 86 141.0M  86 121.3M   0      0  7.86M      0   00:17   00:15   00:02  6.57M 89 141.0M  89 126.5M   0      0  7.69M      0   00:18   00:16   00:02  5.79M 92 141.0M  92 130.8M   0      0  7.50M      0   00:18   00:17   00:01  5.16M 97 141.0M  97 137.5M   0      0  7.45M      0   00:18   00:18          5.00M100 141.0M 100 141.0M   0      0  7.48M      0   00:18   00:18          5.00M100 141.0M 100 141.0M   0      0  7.48M      0   00:18   00:18          5.00M100 141.0M 100 141.0M   0      0  7.48M      0   00:18   00:18          5.00M
+Done! Model 'base' saved in '/data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/models/ggml-base.bin'
+You can now use it like this:
+
+  $ ./build/bin/whisper-cli -m /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/models/ggml-base.bin -f samples/jfk.wav
+
+== 2026-10-10T19:28:59-07:00 done ==
+--- artifacts ---
+total 12M
+-rwx------. 1 u0_a307 u0_a307   46K Oct 10 19:25 bench
+lrwxrwxrwx. 1 u0_a307 u0_a307    17 Oct 10 19:26 libggml-base.so -> libggml-base.so.0
+lrwxrwxrwx. 1 u0_a307 u0_a307    22 Oct 10 19:26 libggml-base.so.0 -> libggml-base.so.0.26.0
+-rwx------. 1 u0_a307 u0_a307  1.8M Oct 10 19:26 libggml-base.so.0.26.0
+lrwxrwxrwx. 1 u0_a307 u0_a307    16 Oct 10 19:26 libggml-cpu.so -> libggml-cpu.so.0
+lrwxrwxrwx. 1 u0_a307 u0_a307    21 Oct 10 19:26 libggml-cpu.so.0 -> libggml-cpu.so.0.26.0
+-rwx------. 1 u0_a307 u0_a307 1022K Oct 10 19:26 libggml-cpu.so.0.26.0
+lrwxrwxrwx. 1 u0_a307 u0_a307    12 Oct 10 19:26 libggml.so -> libggml.so.0
+lrwxrwxrwx. 1 u0_a307 u0_a307    17 Oct 10 19:26 libggml.so.0 -> libggml.so.0.26.0
+-rwx------. 1 u0_a307 u0_a307   82K Oct 10 19:26 libggml.so.0.26.0
+lrwxrwxrwx. 1 u0_a307 u0_a307    16 Oct 10 19:27 libparakeet.so -> libparakeet.so.1
+lrwxrwxrwx. 1 u0_a307 u0_a307    20 Oct 10 19:27 libparakeet.so.1 -> libparakeet.so.1.9.5
+-rwx------. 1 u0_a307 u0_a307  155K Oct 10 19:27 libparakeet.so.1.9.5
+lrwxrwxrwx. 1 u0_a307 u0_a307    15 Oct 10 19:27 libwhisper.so -> libwhisper.so.1
+lrwxrwxrwx. 1 u0_a307 u0_a307    19 Oct 10 19:27 libwhisper.so.1 -> libwhisper.so.1.9.5
+-rwx------. 1 u0_a307 u0_a307  485K Oct 10 19:27 libwhisper.so.1.9.5
+-rwx------. 1 u0_a307 u0_a307   46K Oct 10 19:25 main
+-rwx------. 1 u0_a307 u0_a307  597K Oct 10 19:28 parakeet-cli
+-rwx------. 1 u0_a307 u0_a307  154K Oct 10 19:28 parakeet-quantize
+-rw-------. 1 u0_a307 u0_a307 142M Oct 10 19:28 /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/models/ggml-base.bin
