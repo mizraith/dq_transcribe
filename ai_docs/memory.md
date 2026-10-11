@@ -52,3 +52,4 @@ Facts and decisions to carry across sessions. Update this file as things change;
 - 2026-10-10: Agent started on the tablet. Mic test passed, whisper.cpp built, first transcription verified. Next: wire recording, conversion, transcription and SQLite storage into the app.
 - 2026-10-10: Capture app built, 23 unit tests pass, deployed and verified on the tablet with JFK samples (2-turn clip split correctly; ~0.4x real time with `base`). Owner plans a 2-3 hour recording session on Friday 2026-10-16 to gather real FRS audio. Test data was cleared afterward.
 - 2026-10-10: Capture settings are touch sliders (no typing; limits in constants.py). Added the "last audio received" status line. Owner will run a test in the next few days (before the Friday 2026-10-16 long session).
+- 2026-10-10: Owner described the product (swim-meet DQ capture -> detection -> review -> publication/protests). Captured in `ai_docs/product_plan.md`, with proposals and open questions marked.

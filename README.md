@@ -59,5 +59,5 @@ the repo private. Test the relay itself with `bash tests/test_device_relay.sh`.
 
 ## For AI assistants
 
-Start with `ai_docs/handoff_prompt.md`, then read `ai_docs/guidelines.md` and
+Start with `ai_docs/handoff_prompt.md` and `ai_docs/product_plan.md`, then read `ai_docs/guidelines.md` and
 `ai_docs/memory.md`.
