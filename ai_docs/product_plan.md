@@ -75,7 +75,7 @@ always looked up.
 | Event | **yes** | First sort key |
 | Heat | **yes** | Second sort key |
 | Lane | **yes** | Third sort key |
-| Swimmer name | **yes** | Entered by the admin for now. Later looked up from Meet Manager files using event/heat/lane |
+| Swimmer name | **yes** | Auto-filled from the meet's Hy-Tek Meet Manager file using event/heat/lane (future). The admin types it when the lookup has nothing |
 | Swimmer club | **yes** | Same as swimmer name |
 | DQ code | no, but wanted | From the DQ slip. Some DQs have no code, and codes change between seasons |
 | Description | **yes** | Short description. More universal than the code |
@@ -240,9 +240,8 @@ The owner wants a touch-friendly way to view, manage, edit, approve and decline 
   is filled, and it lists what is still missing.
 - **Fast entry, no keyboard:**
   - Tapping a missing field opens a large number pad or stepper (event, heat, lane).
-  - Swimmer name and club: typed or picked for now. **Proposed:** once a meet's
-    entries are loaded (from Meet Manager, or a simple CSV first), they fill in
-    automatically from event/heat/lane.
+  - Swimmer name and club are auto-filled from the loaded Meet Manager file using
+    event/heat/lane, and can still be edited.
   - Description and code use a searchable picker from the current season's list,
     with the detector's best guesses shown first as one-tap choices.
   - The official and referee are picked from the roster.
@@ -292,11 +291,11 @@ Windows and Mac.
 - **One installer script per platform:**
   - **Android:** Termux (already working), `scripts/termux_setup.sh`.
   - **ChromeOS:** the built-in Linux development environment (a Debian container).
-  - **Mac:** the built-in Terminal (zsh) with Apple's Command Line Tools. macOS is
-    Unix-like but not Debian, so it gets its own script.
-  - **Windows:** built-in PowerShell, using the prebuilt Windows binaries that
-    whisper.cpp and llama.cpp publish. WSL (Windows' built-in Linux) is a fallback
-    if native Windows is a problem.
+  - **Mac (stated):** the built-in Terminal. **Proposed:** a shell script using
+    Apple's Command Line Tools.
+  - **Windows (stated):** **WSL** (Windows Subsystem for Linux) only. No PowerShell
+    scripts. **Proposed:** the Linux install script runs unchanged inside WSL (Ubuntu
+    or Debian), and the browser on Windows opens the app at `localhost`.
 - **What each installer does:**
   - installs Python;
   - builds or downloads **whisper.cpp** and **llama.cpp** (pinned versions), using
@@ -323,9 +322,23 @@ Windows and Mac.
 | 5 | Publication (print and local page first), protest workflow and timers | Phase 4 |
 | 6 | Meet Manager lookup, SMS, semi-private page, Windows port | Sample files and decisions |
 
-Swimmer name and club are required to publish, so loading meet entries (a CSV
-first, Meet Manager later) is worth pulling forward. Without it, the admin types
-them for every DQ.
+**Meet Manager file (stated):** swimmer name and club will come from the meet's
+Hy-Tek Meet Manager file, auto-filled from event/heat/lane. The owner will get the
+file for Friday's meet. These files can be **updated mid-meet**, so the main app
+window needs a way to **browse for and load a new file** at any time.
+
+**Proposed for the Meet Manager file:**
+- **Loading:** a "Load meet file" button on the main window opens the tablet's
+  file picker. The app imports the file and shows when it was loaded and what it
+  contains (meet name, events, number of entries).
+- **Versions:** each loaded file is kept as a dated version, and the newest one is
+  active. Nothing loaded earlier is overwritten.
+- **Reloading never overwrites:** after a new file is loaded, DQs whose looked-up
+  name or club would change are flagged for the admin to confirm. A name the admin
+  typed or confirmed is never silently replaced.
+- **First step:** use Friday's file to work out the format. Which file type it is
+  (a backup `.zip` holding the database, or an exported entries/results file) is
+  still to be confirmed.
 
 ## 10. Needed from the owner
 
@@ -336,7 +349,7 @@ them for every DQ.
 - [ ] Officials and referee names for a meet (roster format)
 - [x] Protest window: typically 30 minutes from notification (answered 2026-10-10)
 - [ ] Protest-cycle limit (2 or 3?), or where the rule says
-- [ ] Later: sample Meet Manager files
+- [ ] Hy-Tek Meet Manager file for Friday's meet (owner is getting it)
 
 ## 11. Open questions
 
@@ -369,5 +382,7 @@ them for every DQ.
 - **Required to publish** (2026-10-10): event, heat, lane, swimmer name, swimmer club, DQ official,
   referee and short description. The DQ code is optional but wanted. Default sort is
   event/heat/lane.
-- **Install targets** (2026-10-10): use built-in tools. ChromeOS uses its Linux environment;
-  Windows uses its native tools.
+- **Install targets** (2026-10-10): use built-in tools. ChromeOS uses its Linux environment, Mac
+  uses Terminal, and Windows uses **WSL only (no PowerShell)**.
+- **Swimmer name and club** (2026-10-10): from the Hy-Tek Meet Manager file, auto-filled by
+  event/heat/lane. The file can change mid-meet, so a new one can be loaded from the main window.
