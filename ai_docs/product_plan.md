@@ -160,6 +160,9 @@ stateDiagram-v2
   measured decision.
 - Model files live under `~/.dq_transcribe/models/`, and the model name and
   version are stored with every result.
+- **llama.cpp is the chosen local LLM runtime (stated).** It must be part of the
+  install on every target: Android (Termux), ChromeOS, Windows and Mac. See
+  section 9a for how the install handles it.
 - Whether a useful LLM runs fast enough on this tablet (8 GB RAM) is unknown, so it
   gets measured before we rely on it.
 
@@ -195,7 +198,9 @@ list. Then score the detector each time it or its model changes:
 
 - **DQ slips:** the owner will supply them. They include DQ codes and are updated almost
   every year, and codes can change.
-- **USA Swimming technical rules:** for review. They are also updated and need refreshing.
+- **USA Swimming technical rules:** they are also updated and need refreshing. The
+  2026 rulebook is stored in `rulebook/`, with dated file names and a README that
+  records the source, date and checksum.
 - **Meet Manager files:** in the future, to look up swimmer and club from event/heat/lane.
 
 **Proposed:**
@@ -210,16 +215,32 @@ list. Then score the detector each time it or its model changes:
 
 The owner wants a touch-friendly way to view, manage, edit, approve and decline DQs.
 
+**Stated:**
+- Transcribed calls will often be missing key information. The **Admin** (our main
+  user) fills in the gaps, and must be able to do it **quickly**.
+- The priority is to get **Event / Heat / Lane** complete promptly and to make sure
+  the **short description** is captured.
+- **Each call has a link icon** that opens a **popup with the transcript**. The
+  popup has an **icon to play back the audio**.
+
 **Proposed:**
-- **Queue:** newest first, filterable by state. Each card shows event/heat/lane,
-  description, people, state and the age of the record.
-- **Big controls:** large tap targets with no typing needed for common edits.
-  Event, heat and lane use steppers. Code and description use a searchable picker
-  from the current table. Officials and referee are picked from the roster.
-  (Sliders and steppers suit a tablet better than the keyboard.)
-- **Source audio:** play the source clip and see its transcript on the same card.
-- **Actions:** Approve, Decline, Merge duplicates, Split, and Add DQ by hand for
-  calls the radio missed.
+- **Queue:** newest first, filterable by state. Each row shows event/heat/lane,
+  description, people, state, the age of the record, and the link icon.
+- **Missing fields stand out:** blank or uncertain fields (event, heat, lane,
+  description) are highlighted, and the queue can show "incomplete first". A DQ
+  cannot be published while event, heat, lane or description is blank.
+- **Fast entry, no keyboard:**
+  - Tapping a missing field opens a large number pad or stepper (event, heat, lane).
+  - Description and code use a searchable picker from the current season's list,
+    with the detector's best guesses shown first as one-tap choices.
+  - The official and referee are picked from the roster.
+- **Transcript popup** (from the link icon):
+  - The transcript of every turn in the call/response group, with the time.
+  - A play icon for the audio. Per-turn play is **proposed**.
+  - Values the detector pulled out are highlighted in the text, so the admin can
+    confirm them at a glance.
+- **Actions:** Approve, Decline (with who and why), Merge duplicates, Split, and
+  Add DQ by hand for calls the radio missed.
 - **Edit history:** every edit is kept, and the original detected values remain
   visible.
 
@@ -247,6 +268,32 @@ offline. Add SMS and the semi-private page later.
 
 **Privacy (proposed):** many swimmers are minors. Published pages should show only
 what is needed, and anything off the device needs access control.
+
+## 9a. Install and packaging
+
+**Stated:** llama.cpp must be included in the install on Android, ChromeOS,
+Windows and Mac.
+
+**Proposed:**
+- **One installer script per platform:**
+  - **Android:** `scripts/termux_setup.sh`.
+  - **ChromeOS:** the Linux container, or Termux as on Android. Which one to use
+    is still open.
+  - **Windows:** a PowerShell script.
+  - **Mac:** a shell script.
+- **What each installer does:**
+  - installs Python;
+  - builds or downloads **whisper.cpp** and **llama.cpp** (pinned versions), using
+    prebuilt release binaries where they exist and building from source on Termux
+    (as already done there for whisper.cpp);
+  - downloads the chosen model files into `~/.dq_transcribe/models/`, checking
+    each one's checksum.
+- **Model list:** a small `models.json` (or constants) records each model's name,
+  URL, size and checksum, so adding a new model is a data change.
+- **Health check:** the app shows which engines and models are installed and
+  working, so a broken install is obvious before a meet.
+- **Offline:** the install needs the internet once. After that, everything runs
+  offline at the meet.
 
 ## 9. Roadmap
 
