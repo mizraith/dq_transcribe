@@ -1,0 +1,35 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Termux environment setup for dq_transcribe.
+#
+# Installs the system packages the project needs and creates a Python virtual
+# environment in the repo. Safe to re-run.
+#
+# Usage (from the repo root, inside Termux):
+#     bash scripts/termux_setup.sh
+#
+# Note: written without access to a device. Report any error text so it can be fixed.
+
+set -euo pipefail
+
+SYSTEM_PACKAGES="python git clang cmake make ffmpeg termux-api"
+VIRTUAL_ENV_DIRECTORY=".venv"
+
+echo "Updating package lists..."
+pkg update -y
+pkg upgrade -y
+
+echo "Installing system packages: ${SYSTEM_PACKAGES}"
+# shellcheck disable=SC2086  # word splitting of the package list is intended
+pkg install -y ${SYSTEM_PACKAGES}
+
+echo "Requesting shared-storage access (tap Allow if prompted)..."
+termux-setup-storage || true
+
+echo "Creating virtual environment in ${VIRTUAL_ENV_DIRECTORY}..."
+python -m venv "${VIRTUAL_ENV_DIRECTORY}"
+
+echo
+echo "Done. Next steps:"
+echo "  1. Install the Termux:API app from the SAME source as Termux (F-Droid or GitHub)."
+echo "  2. Android Settings > Apps > Termux:API > Permissions > allow Microphone."
+echo "  3. Test the mic:  termux-microphone-record -f ~/test.m4a -l 5 && ls -lh ~/test.m4a"
