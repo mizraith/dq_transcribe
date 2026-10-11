@@ -1,0 +1,24 @@
+task: 20261011T060606Z_link_check
+started: 2026-10-10T23:06:14-07:00
+finished: 2026-10-10T23:06:14-07:00
+work_repo_commit: 6c5dad9
+exit_code: 0
+--- output ---
+[dq_transcribe] device agent: running
+[dq_transcribe] app server:   running (http://localhost:8000)
+lrwxrwxrwx. 1 u0_a307 u0_a307 66 Oct 10 23:05 /data/data/com.termux/files/usr/bin/dq_transcribe -> /data/data/com.termux/files/home/dq_transcribe/scripts/start_dq.sh
+/data/data/com.termux/files/usr/bin/termux-wake-lock
+/data/data/com.termux/files/usr/bin/termux-open-url
+audiobooks
+dcim
+documents
+downloads
+external-0
+media-0
+movies
+music
+pictures
+podcasts
+2026-10-10 23:05:37,605 127.0.0.1 - "GET /api/clips HTTP/1.1" 200 -
+2026-10-10 23:05:38,593 127.0.0.1 - "GET /api/clips HTTP/1.1" 200 -
+2026-10-10 23:05:40,641 127.0.0.1 - "GET /api/clips HTTP/1.1" 200 -
