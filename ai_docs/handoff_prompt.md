@@ -6,7 +6,7 @@ Paste this (or point a new session at this file) to resume work.
 
 You are continuing work on **dq_transcribe**, a local-first audio recording and transcription app, in the private repo `mizraith/dq_transcribe`.
 
-**Read first:** `ai_docs/guidelines.md` (coding standards and rules) and `ai_docs/memory.md` (facts, decisions, open items).
+**Read first:** `ai_docs/product_plan.md` (what the app is for: capturing swim-meet DQ radio calls, the four components, DQ record and state machine, roadmap), `ai_docs/guidelines.md` (coding standards and rules) and `ai_docs/memory.md` (facts, decisions, open items).
 
 **Current state:** a working capture-and-queue app: browser capture UI with Start/Stop and a blinking REC light (`web/app.html`, `app.js`, `capture_worklet.js`), stdlib server (`server.py`), SQLite store (`database.py`), turn splitting (`audio_analysis.py`), whisper.cpp transcriber (`transcriber.py`), worker thread (`worker.py`), conversation grouping (`grouping.py`). Verified on the tablet end to end. Unit tests: `PYTHONPATH=src:tests python3 -m unittest discover -s tests`. Not yet tested: real FRS audio, sessions of hours, thresholds tuning.
 
