@@ -432,14 +432,47 @@ The owner listed these possible outputs:
 
 - **Printout:** **first output (stated):** a list of published DQs sorted by
   event/heat/lane, for posting. A per-DQ slip like the paper one can come later.
-- **Local network page:** served on the meet's local network. The server
-  currently listens only on the tablet itself, so this needs a deliberate,
-  protected change.
+- **Local network page (stated, the preferred route):**
+  - The tablet joins the meet's local network and serves a small coach page
+    itself.
+  - The app shows a **QR code** that coaches scan to open the page.
+  - Access is a **single meet password**, enough to keep curious parents out for
+    the length of the meet. DQs are not usually private at the smaller meets this
+    starts with.
+  - Forced password rotation and per-club access are later additions.
+  - **Proposed technical approach** (looks feasible, still to be tested):
+    - **Coach server:** the Python server in Termux can serve on the tablet's
+      Wi-Fi address. Only a **separate, read-only coach server** listens on the
+      network, behind the password. The capture and admin pages stay on the
+      tablet only (`localhost`), and the mic needs that anyway.
+    - **Network risk:** some venue Wi-Fi blocks devices from reaching each other
+      ("client isolation"). The fallback is the tablet's own **hotspot**, which
+      coaches join.
+    - **QR code:** made on the tablet with a small bundled library, so it works
+      with no internet.
+    - **Quick test before relying on it:** start a test page on the tablet's
+      Wi-Fi address and open it from a phone on the same network.
 - **Semi-private web page:** needs hosting off the tablet, plus some form of
   access control.
 - **SMS pushes:** **later, and a much bigger addition (stated).** It likely
   means hosting a web site where coaches sign up, then pushing SMS to the coaches
   who signed up. Not part of the first versions.
+
+**Closing an event (stated):** the **admin decides** when no more calls are coming
+and the event can be entered into Meet Manager. This often happens **before** the
+protest window ends, because protests are rare. If a protest comes in later, it is
+handled and Meet Manager is updated. So:
+- a view that **isolates a single event** quickly is important;
+- **selecting and editing a single DQ** must be easy and fast.
+
+**Proposed:**
+- **Event picker:** a big event picker (a number pad, or swipe between events)
+  above the DQ list.
+- **Editing in place:** tapping a DQ opens its edit panel right there, with no
+  page change.
+- **Re-entry flag:** an event closed earlier is flagged "changed since entered in
+  Meet Manager" if a protest or correction touches it later, so the operator knows
+  to re-enter it.
 
 **Meet Manager entry (stated):** once calls are final and the **event is
 closed**, the app shows or prints a **summary for that event**. The computer
@@ -648,3 +681,8 @@ touch-friendly call-linking workflow and the DQ data model.
 - **Archive** (2026-10-10): keep at least 1 year, as a zip with summary reports and source files
   for the meet host.
 - **Time format** (2026-10-10): 12-hour.
+- **Closing an event** (2026-10-10): the admin decides, often before the protest window ends.
+  Protests are handled afterward, and Meet Manager is updated. Quick single-event view and fast
+  single-DQ edit are needed.
+- **Coach access** (2026-10-10): a single meet password for now, with the page served from the
+  tablet on the local network and a QR code for coaches. Password rotation comes later.
