@@ -118,6 +118,7 @@ instead of a swimmer name, the **relay name** written as club + "-" + relay lett
 (for example "PASA-A", "PASA-B"). **Proposed:** a DQ has an "is relay" flag, set
 from the Meet Manager event when known. For relays, the swimmer-name field
 becomes "relay name" and the leg is required to publish.
+| Infractions | **yes, at least one** | **Stated:** a DQ can carry **several infractions**. Each has a short description (required) and a code (optional). Fields below describe one infraction |
 | DQ code | no, but wanted | From the DQ slip. Some DQs have no code, and codes change between seasons |
 | Description | **yes** | Short description. More universal than the code |
 | Official | **yes** | Name of the person who made the call |
@@ -194,6 +195,14 @@ stateDiagram-v2
   is notified again, and the new notification starts a fresh 30-minute window.
 - **Overturned can be reopened:** a further protest can bring back an Overturned
   DQ, within the protest-cycle limit.
+- **The admin enters protests and rulings:** a coach's protest and the referee's
+  Upheld or Overturned ruling are both entered by the admin. A "by" drop-down
+  records who ruled.
+- **Protest-cycle limit:** not decided yet. It is a setting (default 2) until the
+  rules are checked.
+- **Trash:** the admin can permanently delete calls from the trash only **after
+  the meet** (stated). **Proposed:** a meet gets a "Close meet" action that
+  unlocks emptying the trash.
 - **Notification** is recorded with a "Notified by" drop-down, since several
   people can notify (Chief Judge, Meet Referee, Deck Referee, Admin). The
   drop-down also offers "SMS Push", "HTML Publish" and "None Required".
@@ -433,7 +442,6 @@ window needs a way to **browse for and load a new file** at any time.
 - [ ] Typical radio wording: how a call and an acceptance usually sound
 - [ ] Officials and referee names for a meet (roster format)
 - [x] Protest window: typically 30 minutes from notification (answered 2026-10-10)
-- [ ] Protest-cycle limit (2 or 3?), or where the rule says
 - [ ] Hy-Tek Meet Manager file for Friday's meet (owner is getting it)
 
 ## 11. Open questions
@@ -442,8 +450,7 @@ window needs a way to **browse for and load a new file** at any time.
    accepted?
 2. **Local LLM size:** how much tablet time and storage can a local model use? This decides
    whether an LLM backend is practical or the rule-based matcher carries the load.
-3. **Who records a protest:** who enters that a coach protested, and who records the referee's Upheld or Overturned ruling? Is it the same "by" drop-down idea?
-4. **Permanent deletion:** who may empty the trash? Is it only the admin, and only after the meet?
+3. **Protest-cycle limit:** 2 or 3? To check in the rulebook (Article 102, protests). A setting until then.
 
 ### Answered
 
@@ -482,3 +489,8 @@ window needs a way to **browse for and load a new file** at any time.
 - **Users** (2026-10-10): one admin on one tablet. No logins for now.
 - **Overturned** (2026-10-10): can be reopened by a further protest, within the cycle limit.
 - **Officials roster** (2026-10-10): typed by the admin for each meet.
+- **Infractions** (2026-10-10): a DQ can carry several infractions (each with a description and
+  an optional code).
+- **Protests** (2026-10-10): the admin enters both the protest and the ruling, with a "by"
+  drop-down for who ruled.
+- **Trash** (2026-10-10): the admin can permanently delete only after the meet.
