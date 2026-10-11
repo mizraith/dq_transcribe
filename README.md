@@ -10,6 +10,19 @@ into call/response conversations, and stored in an editable local database.
 
 ## Run it (Termux)
 
+One command starts everything (wake lock, code update, device agent, app server)
+and opens the app in Chrome:
+
+```bash
+bash ~/dq_transcribe/scripts/start_dq.sh
+```
+
+To make it a short command, run this once:
+`ln -sf ~/dq_transcribe/scripts/start_dq.sh "$PREFIX/bin/dq_transcribe"`.
+Then type `dq_transcribe` (or `dq_transcribe stop`, `dq_transcribe status`).
+
+First-time setup and the manual way:
+
 ```bash
 bash scripts/termux_setup.sh                 # once
 PYTHONPATH=src python -m dq_transcribe       # start the server
