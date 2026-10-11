@@ -144,7 +144,8 @@ becomes "relay name" and the leg is required to publish.
 | State | yes | See 4.2 |
 | State history | yes | Every state change with its time (and, **proposed**, who made it) |
 | Declined by / reason | when declined | Role and name of whoever declined it, and why (**proposed**) |
-| Notified at | when notified | Starts the protest window (see 4.2) |
+| Race time | **yes** | When the race ended. **Starts the protest window** (decided 2026-10-10, following rulebook 102.22.4). **Proposed:** pre-filled from the time of the first radio call for the DQ, and editable |
+| Notified at | when notified | Recorded for the paper trail (does not start the clock) |
 | Notified by | when notified | Drop-down (stated): a person's role and name (Chief Judge, Meet Referee, Deck Referee, Admin) or "SMS Push", "HTML Publish" or "None Required" |
 | Protest cycle count | yes | Number of protests so far |
 
@@ -169,11 +170,14 @@ An Upheld DQ can be protested again, up to 2 (maybe 3) cycles, never without lim
   may decline one later, and sometimes the admin is the one who checks the box.
 - **The benefit of the doubt always goes to the swimmer.**
 
-**Notification (stated):**
-- The protest window starts at **Notification**, not at Published.
-- In the paper process, handing the coach a copy of the DQ slip is the notification.
-- Depending on how publication works, publishing may also count as notification.
-- Coaches typically have **30 minutes** to protest.
+**Notification and the protest clock (stated):**
+- In the paper process, handing the coach a copy of the DQ slip is the
+  notification. Depending on how publication works, publishing may also count as
+  notification.
+- Coaches have **30 minutes** to protest.
+- **Decided (2026-10-10):** the countdown follows the rulebook (102.22.4) and runs
+  **30 minutes from the race**. Local practice had been to count from notification.
+  The notification time is still recorded.
 
 ```mermaid
 stateDiagram-v2
@@ -183,7 +187,7 @@ stateDiagram-v2
     Accepted --> Declined: meet referee or admin declines later
     Accepted --> Published: admin validates
     Published --> Notified: coach notified (may be the same moment as Published)
-    Notified --> Protested: coach protests within 30 minutes of notification
+    Notified --> Protested: coach protests within 30 minutes of the race
     Protested --> UnderInvestigation: referee investigates
     UnderInvestigation --> Upheld
     UnderInvestigation --> Overturned
@@ -208,8 +212,9 @@ stateDiagram-v2
   **republished**.
 - If the mistake shows the call itself was confused, the DQ is usually declined
   instead.
-- **Republishing restarts the protest window:** a corrected, republished DQ
-  is notified again, and the new notification starts a fresh 30-minute window.
+- **Republishing:** a corrected, republished DQ is notified again. The owner said
+  earlier that this restarts the 30-minute window, but the clock now runs from the
+  race, so how a republish affects it is an open question (see section 11).
 - **Overturned can be reopened:** a further protest can bring back an Overturned
   DQ, within the protest-cycle limit.
 - **The admin enters protests and rulings:** a coach's protest and the referee's
@@ -228,8 +233,8 @@ stateDiagram-v2
   drop-down also offers "SMS Push", "HTML Publish" and "None Required".
 
 **Rules:**
-- Record the time of every state change. The **Notified** time matters most,
-  because it starts the coach's protest window.
+- Record the time of every state change. The **race time** matters most, because
+  it starts the coach's protest window.
 - A protest is only allowed while the protest window is open and the
   protest-cycle limit (2 or 3) has not been reached.
 - **Proposed:** the protest window length (default 30 minutes), the cycle limit,
@@ -285,6 +290,24 @@ stateDiagram-v2
 6. **Mark unclear clips:** anything ambiguous becomes a "needs review" candidate rather than being
    dropped.
 
+**Call fragments (stated, a hard problem):** the radio pieces of one DQ (the
+call, the referee's acceptance, follow-ups or corrections) may arrive apart, and
+the app will often not know which DQ a piece belongs to. Putting unmatched pieces
+in an inbox and creating draft DQs both need the same thing: **a workflow for
+linking pieces of calls to each other and to a DQ.** This needs real design work,
+using the Friday audio.
+
+**Proposed starting point for that design:**
+- **Exchanges:** the unit is the radio exchange (the call/response groups the app
+  already builds).
+- **Links:** a DQ links to one or more exchanges, and an exchange can be linked,
+  unlinked or moved between DQs.
+- **Suggestions:** the app suggests links using closeness in time and overlapping
+  event, heat or lane. The admin accepts a suggestion with one tap; nothing links
+  silently.
+- **Unlinked inbox:** exchanges linked to no DQ stay visible in an "unlinked" list,
+  so nothing is lost.
+
 **Proposed: help the transcriber.** Passing whisper an initial prompt with meet
 vocabulary (stroke names, DQ terms, officials' names) may improve accuracy. This
 can be tested on the Friday audio.
@@ -339,10 +362,8 @@ These are short summaries; the rulebook text governs.
   practice.
 
 **How this affects the plan:**
-- **When the protest clock starts:** the rulebook counts the 30 minutes from the
-  end of the race, while local practice (stated) counts from notification.
-  **Proposed:** store both times and make the start point a setting. See open
-  questions.
+- **When the protest clock starts:** **decided:** from the race, as the rulebook
+  says. The notification time is still recorded.
 - **Protest cycles:** for judgment-call DQs, which are most of them, the Referee's
   ruling is final under 102.22.1. Repeated protest cycles therefore come from
   local practice, not the rulebook.
@@ -396,8 +417,8 @@ The owner wants a touch-friendly way to view, manage, edit, approve and decline 
 
 The owner listed these possible outputs:
 
-- **Printout:** **proposed** as a print-friendly page per DQ or per event, laid out
-  like a DQ slip.
+- **Printout:** **first output (stated):** a list of published DQs sorted by
+  event/heat/lane, for posting. A per-DQ slip like the paper one can come later.
 - **Local network page:** served on the meet's local network. The server
   currently listens only on the tablet itself, so this needs a deliberate,
   protected change.
@@ -406,7 +427,7 @@ The owner listed these possible outputs:
 - **SMS pushes:** needs an SMS gateway or service, and coach phone numbers.
 
 **Workflow:** publishing a DQ leads to coach notification (sometimes it *is* the
-notification), and notification starts the 30-minute protest window. A
+notification). The 30-minute protest window runs from the race. A
 coach protest moves the DQ to Under Investigation. The referee then rules Upheld
 or Overturned, and each ruling is time-stamped. Up to 2 or 3 protest cycles are
 allowed.
@@ -496,15 +517,14 @@ window needs a way to **browse for and load a new file** at any time.
 - [ ] Friday ground truth: event/heat/lane of every DQ (promised), with timing where possible
 - [ ] Typical radio wording: varies a lot (stated). The Friday audio will show real examples
 - [ ] Officials and referee names for a meet (roster format)
-- [x] Protest window: typically 30 minutes from notification (answered 2026-10-10)
+- [x] Protest window: 30 minutes from the race, per rulebook 102.22.4 (decided 2026-10-10)
 - [ ] Hy-Tek Meet Manager file for Friday's meet (owner is getting it)
 
 ## 11. Open questions
 
-1. **Local LLM size:** how much tablet time and storage can a local model use? This decides
-   whether an LLM backend is practical or the rule-based matcher carries the load.
-2. **Protest-cycle limit:** the rulebook sets none (see 6.1), so it is local practice. A setting, default 2.
-3. **When the protest clock starts:** the rulebook counts from the end of the race (102.22.4); local practice counts from notification. Which should the countdown use, or should both be shown?
+1. **Protest-cycle limit:** the rulebook sets none (see 6.1), so it is local practice. A setting, default 2.
+2. **Republish vs. the race clock:** with the 30 minutes running from the race, does a corrected and republished DQ get a fresh 30 minutes from the new notification, or keep the original deadline?
+3. **Linking call fragments:** what does a quick, touch-friendly way to attach a radio exchange to a DQ look like? To design once the Friday audio shows how calls really arrive.
 
 ### Answered
 
@@ -551,3 +571,7 @@ window needs a way to **browse for and load a new file** at any time.
 - **Validation** (2026-10-10): the admin can publish a DQ the referee has not accepted.
 - **Radio** (2026-10-10): one channel. Audio comes into the tablet by cable from the radio.
   Wording varies a lot between officials.
+- **Protest clock** (2026-10-10): 30 minutes from the race, per rulebook 102.22.4.
+- **Local LLM budget** (2026-10-10): measure first. Benchmark a few model sizes on the Friday
+  audio before choosing.
+- **First published output** (2026-10-10): a list of DQs by event/heat/lane, for posting.
