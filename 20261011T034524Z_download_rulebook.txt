@@ -1,0 +1,16 @@
+task: 20261011T034524Z_download_rulebook
+started: 2026-10-10T20:45:41-07:00
+finished: 2026-10-10T20:45:50-07:00
+work_repo_commit: f11c9e4
+exit_code: 0
+--- output ---
+final URL: https://websiteprodcoresa.blob.core.windows.net/sitefinity/docs/default-source/governance/governance-lsc-website/rules_policies/rulebooks/2026-rulebook.pdf
+HTTP 200
+%PDF-
+-rw-------. 1 u0_a307 u0_a307 13000783 Oct 10 20:45 /data/data/com.termux/files/home/.dq_transcribe/tmp/rulebook_worktree/rulebook/usa-swimming-rulebook-2026_downloaded-2026-10-10.pdf
+4c95410b2f3f7ac39913a1d9bf752be9a623f6152e3ecc2baba9695f6e8ca5c1  /data/data/com.termux/files/home/.dq_transcribe/tmp/rulebook_worktree/rulebook/usa-swimming-rulebook-2026_downloaded-2026-10-10.pdf
+remote: 
+remote: Create a pull request for 'rulebook-import' on GitHub by visiting:        
+remote:      https://github.com/mizraith/dq_transcribe/pull/new/rulebook-import        
+remote: 
+pushed rulebook-import
