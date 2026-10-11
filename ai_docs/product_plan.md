@@ -208,7 +208,7 @@ list. Then score the detector each time it or its model changes:
 - **USA Swimming technical rules:** they are also updated and need refreshing. The
   2026 rulebook is stored in `rulebook/`, with dated file names and a README that
   records the source, date and checksum.
-- **Meet Manager files:** in the future, to look up swimmer and club from event/heat/lane.
+- **Meet Manager (Hy-Tek) file:** loaded per meet, and reloadable mid-meet, to look up swimmer and club from event/heat/lane.
 
 **Proposed:**
 - Store DQ code tables as versioned data files, one per season, imported from the
@@ -320,7 +320,7 @@ Windows and Mac.
 | 3 | Rule-based DQ detector, scored against the labeled Friday data | Phases 1 and 2 |
 | 4 | DQ record, state machine and touch review UI | Phase 2; can start in parallel with phase 3 |
 | 5 | Publication (print and local page first), protest workflow and timers | Phase 4 |
-| 6 | Meet Manager lookup, SMS, semi-private page, Windows port | Sample files and decisions |
+| 6 | Meet Manager file loading and auto-fill, SMS, semi-private page, WSL/Mac/ChromeOS installs | Sample files and decisions |
 
 **Meet Manager file (stated):** swimmer name and club will come from the meet's
 Hy-Tek Meet Manager file, auto-filled from event/heat/lane. The owner will get the
