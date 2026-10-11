@@ -63,3 +63,4 @@ Facts and decisions to carry across sessions. Update this file as things change;
 - 2026-10-10: Republish restarts the 30-min protest window on re-notify; one admin on one tablet (no logins for now); Overturned can be reopened by a further protest; officials roster typed per meet.
 - 2026-10-10: A DQ can have several infractions; admin enters protests and rulings; trash emptied only by admin after the meet; protest-cycle limit undecided (setting, default 2).
 - 2026-10-10: Radio audio comes by cable from the radio (not built-in mic), one channel, wording varies a lot. Admin can publish without referee acceptance. Added clipping ("TOO LOUD") indicator to capture page for cable level setting.
+- 2026-10-10: Protest clock = 30 min from the race (rulebook 102.22.4), not notification. LLM: measure sizes first. Unclear calls: owner flagged that linking call fragments to DQs needs a real workflow design (no choice yet). First output: list by event/heat/lane.
