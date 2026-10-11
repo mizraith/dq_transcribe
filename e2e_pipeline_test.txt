@@ -1,0 +1,40 @@
+task: e2e_pipeline_test
+started: 2026-10-10T19:50:49-07:00
+finished: 2026-10-10T19:51:08-07:00
+work_repo_commit: 719028f
+exit_code: 0
+--- output ---
+upload A: {'clip_id': 3, 'saved_as': '2026-10-10/clip_20261010_195053_678511.wav', 'size_bytes': 352044}
+upload B: {'clip_id': 4, 'saved_as': '2026-10-10/clip_20261010_195053_701147.wav', 'size_bytes': 752044}
+clip 1 group=1 status=done duration=11.0 transcribe_seconds=4.295500000000175 err=None
+   [0.0-11.0] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+clip 2 group=1 status=done duration=23.5 transcribe_seconds=8.518709539001065 err=None
+   [0.0-11.2] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+   [12.5-23.5] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+clip 3 group=1 status=done duration=11.0 transcribe_seconds=4.224362154000119 err=None
+   [0.0-11.0] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+clip 4 group=1 status=done duration=23.5 transcribe_seconds=8.491546769999331 err=None
+   [0.0-11.2] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+   [12.5-23.5] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+--- transcript.txt ---
+[19:50:31] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+[19:50:44] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+[19:50:57] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+[19:50:53] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+[19:51:06] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+[19:51:19] And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.
+
+--- server log (tail) ---
+2026-10-10 19:50:53,693 Queued clip 3 (2026-10-10/clip_20261010_195053_678511.wav, 352044 bytes)
+2026-10-10 19:50:53,694 127.0.0.1 - "POST /api/clips HTTP/1.1" 200 -
+2026-10-10 19:50:53,752 Queued clip 4 (2026-10-10/clip_20261010_195053_701147.wav, 752044 bytes)
+2026-10-10 19:50:53,758 127.0.0.1 - "POST /api/clips HTTP/1.1" 200 -
+2026-10-10 19:50:53,784 127.0.0.1 - "GET /api/clips HTTP/1.1" 200 -
+2026-10-10 19:50:56,795 127.0.0.1 - "GET /api/clips HTTP/1.1" 200 -
+2026-10-10 19:50:57,951 Clip 3 done: 1 turn(s) in 4.2 s
+2026-10-10 19:50:59,812 127.0.0.1 - "GET /api/clips HTTP/1.1" 200 -
+2026-10-10 19:51:02,824 127.0.0.1 - "GET /api/clips HTTP/1.1" 200 -
+2026-10-10 19:51:05,836 127.0.0.1 - "GET /api/clips HTTP/1.1" 200 -
+2026-10-10 19:51:06,482 Clip 4 done: 2 turn(s) in 8.5 s
+2026-10-10 19:51:08,847 127.0.0.1 - "GET /api/clips HTTP/1.1" 200 -
+2026-10-10 19:51:08,857 127.0.0.1 - "GET /api/transcript.txt HTTP/1.1" 200 -
