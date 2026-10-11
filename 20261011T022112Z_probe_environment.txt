@@ -1,0 +1,43 @@
+task: 20261011T022112Z_probe_environment
+started: 2026-10-10T19:21:17-07:00
+finished: 2026-10-10T19:21:21-07:00
+work_repo_commit: 8f14030
+exit_code: 0
+--- output ---
+== system ==
+Linux 5.15.197-android13-8-00005-g2d8ad9139b89-ab15063902 aarch64
+cpu cores: 8
+               total        used        free      shared  buff/cache   available
+Mem:           7.6Gi       4.3Gi       205Mi        48Mi       3.1Gi       3.3Gi
+Swap:          4.2Gi       1.2Gi       2.9Gi
+
+== storage (home) ==
+Filesystem       Size Used Avail Use% Mounted on
+/dev/block/dm-68 226G  19G  207G   9% /data/misc/profiles/ref/com.termux
+
+== tools ==
+python   Python 3.13.13
+python3  Python 3.13.13
+pip      pip 26.1.2 from /data/data/com.termux/files/usr/lib/python3.13/site-packages/pip (python 3.13)
+git      git version 2.54.0
+gh       gh version 2.95.0
+ffmpeg   ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers
+clang    clang version 21.1.8
+cmake    cmake version 4.3.4
+make     GNU Make 4.4.1
+node     MISSING
+
+== repo ==
+8f14030 device task: 20261011T022112Z_probe_environment
+54fb728 Add device relay so the assistant can run tasks on the tablet
+426b6c4 Add browser microphone test slice
+recordings: 0 file(s)
+
+== package import check ==
+dq_transcribe 0.1.0 imports OK
+
+== unit tests ==
+----------------------------------------------------------------------
+Ran 6 tests in 2.065s
+
+OK
