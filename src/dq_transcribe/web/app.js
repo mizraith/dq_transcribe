@@ -24,6 +24,7 @@ const meterBar = document.getElementById("meter-bar");
 const meterThreshold = document.getElementById("meter-threshold");
 const levelText = document.getElementById("level-text");
 const statusText = document.getElementById("status");
+const lastAudioText = document.getElementById("last-audio-text");
 const queueText = document.getElementById("queue-text");
 const clipsContainer = document.getElementById("clips");
 const startInput = document.getElementById("start-dbfs");
@@ -205,6 +206,7 @@ let mediaStream = null;
 let workletNode = null;
 let wakeLock = null;
 let lastChunkAtMs = 0;
+let lastAudioAtMs = null; // when sound above the start level was last heard
 let watchdogTimer = null;
 
 let prerollChunks = [];
@@ -224,6 +226,9 @@ function onChunk(samples) {
   const chunkSeconds = samples.length / audioContext.sampleRate;
   const level = toDbfs(rmsOf(samples));
   showLevel(level);
+  if (level >= settings.startDbfs) {
+    lastAudioAtMs = lastChunkAtMs;
+  }
   if (clipChunks === null) {
     handleWaitingChunk(samples, level, chunkSeconds);
   } else {
@@ -310,11 +315,22 @@ function finishClip(chunkSeconds) {
   setStatus("Captured a " + durationSeconds.toFixed(1) + " second clip.");
 }
 
+/** Show when sound was last heard, so a long silence can be told apart from a dead microphone. */
+function showLastAudio() {
+  if (lastAudioAtMs === null) {
+    lastAudioText.textContent = "Last audio received: none yet";
+    return;
+  }
+  const agoSeconds = Math.round((Date.now() - lastAudioAtMs) / MILLISECONDS_PER_SECOND);
+  lastAudioText.textContent = "Last audio received: " + formatTime(new Date(lastAudioAtMs)) + " (" + agoSeconds + " s ago)";
+}
+
 /**
  * Check periodically that audio is still flowing; resume a suspended audio
  * context and warn if the microphone stopped delivering sound.
  */
 function checkCaptureHealth() {
+  showLastAudio();
   if (!capturing || audioContext === null) {
     return;
   }
@@ -326,7 +342,7 @@ function checkCaptureHealth() {
   if (trackEnded) {
     setStatus("WARNING: the microphone was disconnected. Tap Stop, then Start capturing again.");
   } else if (stalledSeconds >= CONFIG.stallSeconds) {
-    setStatus("WARNING: no audio for " + Math.round(stalledSeconds) + " s. Keep this tab open and the screen on.");
+    setStatus("WARNING: the audio pipeline stalled for " + Math.round(stalledSeconds) + " s (not just silence). Keep this tab open and the screen on.");
   }
 }
 

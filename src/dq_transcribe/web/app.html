@@ -34,7 +34,7 @@
     #meter { position: relative; height: 0.9rem; background: #e6e8ec; border-radius: 0.45rem; margin-top: 0.9rem; overflow: hidden; }
     #meter-bar { height: 100%; width: 0; background: #2563eb; transition: width 0.06s linear; }
     #meter-threshold { position: absolute; top: 0; bottom: 0; width: 3px; background: #111; }
-    #level-text, #status, #queue-text { margin: 0.4rem 0 0; font-size: 0.9rem; min-height: 1.2rem; }
+    #level-text, #last-audio-text, #status, #queue-text { margin: 0.4rem 0 0; font-size: 0.9rem; min-height: 1.2rem; }
 
     details { margin-top: 0.75rem; font-size: 0.95rem; }
     details label { display: block; margin: 0.5rem 0 0.15rem; }
@@ -71,6 +71,7 @@
     <button id="capture-button" type="button">Start capturing</button>
     <div id="meter"><div id="meter-bar"></div><div id="meter-threshold"></div></div>
     <p id="level-text"></p>
+    <p id="last-audio-text">Last audio received: none yet</p>
     <p id="status"></p>
     <p id="queue-text"></p>
 
