@@ -1,0 +1,13 @@
+task: 20261011T022506Z_start_whisper_build
+started: 2026-10-10T19:25:16-07:00
+finished: 2026-10-10T19:25:21-07:00
+work_repo_commit: 3db0f9a
+exit_code: 0
+--- output ---
+build started in the background
+--- log so far ---
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /data/data/com.termux/files/usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
