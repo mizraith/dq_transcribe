@@ -22,6 +22,7 @@ foreground with the screen on (the page requests a screen wake lock).
 - Clips are saved as WAV files in one folder per day: `~/.dq_transcribe/recordings/YYYY-MM-DD/`.
 - Everything else (clips, turns, transcripts, loudness data, edits) is in the SQLite file `~/.dq_transcribe/notes.db`.
 - Clips less than 5 seconds apart are grouped as one conversation (`CONVERSATION_GAP_SECONDS`).
+- The page shows "Last audio received: HH:MM:SS" so you can tell a quiet radio from a dead microphone.
 - Uploads are never dropped when the server is unreachable; they retry until sent.
 - The page `/mic-test` is the original microphone check.
 

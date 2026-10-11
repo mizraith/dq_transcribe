@@ -43,7 +43,7 @@ Facts and decisions to carry across sessions. Update this file as things change;
 - Clips are stored under `recordings/YYYY-MM-DD/` (owner request: group by day). `audio_filename` in the DB is the path relative to `recordings/`.
 - Conversation groups are computed on the fly from clip times (gap < 5 s => same group), so retuning needs no reprocessing.
 - Raw tuning data is kept: levels, pauses, analysis params, capture info, whisper JSON.
-- Stability measures for long sessions: unlimited upload retry (only 4xx drops a clip), audio-context resume, mic-disconnect and no-audio warnings, wake-lock re-acquire.
+- Stability measures for long sessions: unlimited upload retry (only 4xx drops a clip), audio-context resume, mic-disconnect and pipeline-stall warnings, wake-lock re-acquire. Long silences are expected (owner), so silence never warns; instead the page shows "Last audio received: HH:MM:SS (N s ago)" so a watcher can tell silence from a dead mic.
 
 ## Status log
 
@@ -51,3 +51,4 @@ Facts and decisions to carry across sessions. Update this file as things change;
 - 2026-10-10: Device relay (agent + run_on_device) built and passed a local simulated end-to-end test. Waiting for the owner to start the agent on the tablet.
 - 2026-10-10: Agent started on the tablet. Mic test passed, whisper.cpp built, first transcription verified. Next: wire recording, conversion, transcription and SQLite storage into the app.
 - 2026-10-10: Capture app built, 23 unit tests pass, deployed and verified on the tablet with JFK samples (2-turn clip split correctly; ~0.4x real time with `base`). Owner plans a 2-3 hour recording session on Friday 2026-10-16 to gather real FRS audio. Test data was cleared afterward.
+- 2026-10-10: Added the "last audio received" status line. Owner will run a test in the next few days (before the Friday 2026-10-16 long session).
