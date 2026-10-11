@@ -212,9 +212,9 @@ stateDiagram-v2
   **republished**.
 - If the mistake shows the call itself was confused, the DQ is usually declined
   instead.
-- **Republishing:** a corrected, republished DQ is notified again. The owner said
-  earlier that this restarts the 30-minute window, but the clock now runs from the
-  race, so how a republish affects it is an open question (see section 11).
+- **Republishing:** a corrected, republished DQ is notified again, but the
+  **deadline does not move**. It stays 30 minutes from the race (decided
+  2026-10-10, per the rulebook). Officials correct issues quickly.
 - **Overturned can be reopened:** a further protest can bring back an Overturned
   DQ, within the protest-cycle limit.
 - **The admin enters protests and rulings:** a coach's protest and the referee's
@@ -235,8 +235,15 @@ stateDiagram-v2
 **Rules:**
 - Record the time of every state change. The **race time** matters most, because
   it starts the coach's protest window.
-- A protest is only allowed while the protest window is open and the
+- A protest is normally accepted only while the protest window is open and the
   protest-cycle limit (2 or 3) has not been reached.
+- **The window can be overridden (stated):** the referee, or the admin with the
+  referee's permission, can accept a protest after the limit when there are
+  extenuating circumstances (for example, the protest came in while the admin was
+  busy). This is rare, but the app must never make it impossible.
+  - **Proposed:** a late protest is allowed through an "Accept late protest"
+    action. It needs a short reason and who authorized it, and is shown as
+    "late (override)" in the history.
 - **Proposed:** the protest window length (default 30 minutes), the cycle limit,
   and whether publishing counts as notifying are settings, not hard-coded values.
 - **Proposed:** the UI shows a countdown of the time left in the protest window.
@@ -523,8 +530,7 @@ window needs a way to **browse for and load a new file** at any time.
 ## 11. Open questions
 
 1. **Protest-cycle limit:** the rulebook sets none (see 6.1), so it is local practice. A setting, default 2.
-2. **Republish vs. the race clock:** with the 30 minutes running from the race, does a corrected and republished DQ get a fresh 30 minutes from the new notification, or keep the original deadline?
-3. **Linking call fragments:** what does a quick, touch-friendly way to attach a radio exchange to a DQ look like? To design once the Friday audio shows how calls really arrive.
+2. **Linking call fragments:** what does a quick, touch-friendly way to attach a radio exchange to a DQ look like? To design once the Friday audio shows how calls really arrive.
 
 ### Answered
 
@@ -558,8 +564,8 @@ window needs a way to **browse for and load a new file** at any time.
   plus "SMS Push", "HTML Publish" and "None Required".
 - **Corrections** (2026-10-10): rare. Usually a swimmer-name fix, which is corrected and
   republished. A confused call is declined instead.
-- **Republish** (2026-10-10): a correction is republished and notified again, which starts a fresh
-  30-minute protest window.
+- **Republish** (2026-10-10): a correction is republished and notified again. The deadline stays
+  30 minutes from the race (this replaces an earlier answer that it restarts).
 - **Users** (2026-10-10): one admin on one tablet. No logins for now.
 - **Overturned** (2026-10-10): can be reopened by a further protest, within the cycle limit.
 - **Officials roster** (2026-10-10): typed by the admin for each meet.
@@ -575,3 +581,5 @@ window needs a way to **browse for and load a new file** at any time.
 - **Local LLM budget** (2026-10-10): measure first. Benchmark a few model sizes on the Friday
   audio before choosing.
 - **First published output** (2026-10-10): a list of DQs by event/heat/lane, for posting.
+- **Late protests** (2026-10-10): the referee, or the admin with permission, can accept a protest
+  after the 30 minutes for extenuating circumstances. This is rare, but must always be possible.
