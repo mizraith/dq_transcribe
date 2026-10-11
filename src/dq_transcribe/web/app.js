@@ -30,6 +30,9 @@ const clipsContainer = document.getElementById("clips");
 const startInput = document.getElementById("start-dbfs");
 const endInput = document.getElementById("end-dbfs");
 const hangInput = document.getElementById("hang-seconds");
+const startOutput = document.getElementById("start-dbfs-value");
+const endOutput = document.getElementById("end-dbfs-value");
+const hangOutput = document.getElementById("hang-seconds-value");
 
 const CAPTURE_STATE_LABELS = {
   idle: "Not capturing",
@@ -62,10 +65,29 @@ function loadSettings() {
   } catch (error) {
     // Storage unavailable or corrupted: keep the defaults.
   }
+  for (const input of [startInput, endInput]) {
+    configureSlider(input, CONFIG.levelSlider);
+  }
+  configureSlider(hangInput, CONFIG.hangSlider);
   startInput.value = settings.startDbfs;
   endInput.value = settings.endDbfs;
   hangInput.value = settings.hangSeconds;
+  showSettingValues();
   positionThresholdMarker();
+}
+
+/** Apply minimum, maximum and step limits to a range slider. */
+function configureSlider(input, limits) {
+  input.min = limits.min;
+  input.max = limits.max;
+  input.step = limits.step;
+}
+
+/** Show the current value next to each slider. */
+function showSettingValues() {
+  startOutput.textContent = startInput.value + " dBFS";
+  endOutput.textContent = endInput.value + " dBFS";
+  hangOutput.textContent = hangInput.value + " s";
 }
 
 /** Read the form fields into the settings object and remember them. */
@@ -81,6 +103,7 @@ function saveSettings() {
       settings[key] = value;
     }
   }
+  showSettingValues();
   try {
     localStorage.setItem(CONFIG.settingsStorageKey, JSON.stringify(settings));
   } catch (error) {
@@ -688,7 +711,7 @@ async function refreshClips() {
 
 // --- Start up ---------------------------------------------------------------
 
-[startInput, endInput, hangInput].forEach((input) => input.addEventListener("change", saveSettings));
+[startInput, endInput, hangInput].forEach((input) => input.addEventListener("input", saveSettings));
 loadSettings();
 setCaptureState("idle");
 refreshClips();

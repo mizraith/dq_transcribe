@@ -38,7 +38,8 @@
 
     details { margin-top: 0.75rem; font-size: 0.95rem; }
     details label { display: block; margin: 0.5rem 0 0.15rem; }
-    details input { font-size: 1rem; width: 6rem; padding: 0.3rem; }
+    details input[type="range"] { width: 100%; height: 2.4rem; margin: 0; }
+    details output { font-weight: 700; }
     .hint { color: #555b66; font-size: 0.85rem; margin: 0.25rem 0 0; }
     .links { margin: 0.9rem 0; font-size: 0.95rem; }
 
@@ -77,12 +78,12 @@
 
     <details>
       <summary>Capture settings</summary>
-      <label for="start-dbfs">Start recording above (dBFS)</label>
-      <input id="start-dbfs" type="number" step="1">
-      <label for="end-dbfs">Count as quiet below (dBFS)</label>
-      <input id="end-dbfs" type="number" step="1">
-      <label for="hang-seconds">End the clip after this many quiet seconds</label>
-      <input id="hang-seconds" type="number" step="0.5" min="1">
+      <label for="start-dbfs">Start recording above: <output id="start-dbfs-value"></output></label>
+      <input id="start-dbfs" type="range">
+      <label for="end-dbfs">Count as quiet below: <output id="end-dbfs-value"></output></label>
+      <input id="end-dbfs" type="range">
+      <label for="hang-seconds">End the clip after quiet for: <output id="hang-seconds-value"></output></label>
+      <input id="hang-seconds" type="range">
       <p class="hint">The black line on the meter marks the start level. Watch the meter while the radio is quiet and while it is talking, then set the start level between the two.</p>
     </details>
   </section>
