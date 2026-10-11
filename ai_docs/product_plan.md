@@ -441,6 +441,25 @@ The owner listed these possible outputs:
   means hosting a web site where coaches sign up, then pushing SMS to the coaches
   who signed up. Not part of the first versions.
 
+**Meet Manager entry (stated):** once calls are final and the **event is
+closed**, the app shows or prints a **summary for that event**. The computer
+operator then types the DQs into Hy-Tek Meet Manager by hand. **The app never
+touches the Meet Manager database.** That summary must be clean for rapid entry.
+**Proposed:** one line per DQ in event, heat, lane order, with exactly the fields
+Meet Manager asks for (swimmer or relay, DQ code, description, official) and big,
+clear type. An "entered in Meet Manager" checkbox per line helps the operator
+keep their place.
+
+**Who sees what (stated):**
+- **What is shown:** the posted list shows **full swimmer name and club**. That is
+  standard at all swim meets (the same information is public through USA
+  Swimming times search, SwimTopia and Meet Mobile), and it is the only
+  identifying information the app publishes.
+- **Who gets access:** DQ publication may still sit behind a **thin wall** so that
+  **only coaches** can see it during the meet. The site is taken down when the
+  meet ends.
+- **Who is notified:** **only coaches**, never parents.
+
 **Workflow:** publishing a DQ leads to coach notification (sometimes it *is* the
 notification). The 30-minute protest window runs from the race. A
 coach protest moves the DQ to Under Investigation. The referee then rules Upheld
@@ -450,8 +469,19 @@ allowed.
 **Proposed:** start with the printout and the local page, because they work
 offline. Add SMS and the semi-private page later.
 
-**Privacy (proposed):** many swimmers are minors. Published pages should show only
-what is needed, and anything off the device needs access control.
+**Archive (stated):** keep the data at least **1 year** for traceability, with a
+copy saved somewhere for the **meet host** to keep. **Proposed:** a "Close meet
+and archive" action writes one zip file containing:
+- summary reports (PDF or HTML): DQs by event, and the protest history;
+- a database export (JSON or CSV);
+- every audio clip and transcript;
+- the Meet Manager file versions used;
+- a README with the meet details and the date the archive was made.
+
+The zip can be saved to a USB drive or downloaded.
+
+**Times (stated):** the 12-hour clock (US standard) on all screens and
+printouts. The capture page and transcript download already use it.
 
 ## 9a. Install and packaging
 
@@ -609,3 +639,12 @@ touch-friendly call-linking workflow and the DQ data model.
 - **Protest levels** (2026-10-10): limit 2 for now. First protest to the Deck Referee, second to
   the Meet Referee. Big meets may have review committees.
 - **SMS** (2026-10-10): later. Likely a hosted sign-up site plus SMS push. A much bigger addition.
+- **Meet Manager entry** (2026-10-10): after an event is closed, a clean per-event summary is shown
+  or printed for the operator to type into Meet Manager. The app never touches the Meet Manager
+  database.
+- **Publication privacy** (2026-10-10): full name and club, which is standard. Publication sits
+  behind a thin wall for coaches only during the meet and comes down afterward. Only coaches are
+  notified.
+- **Archive** (2026-10-10): keep at least 1 year, as a zip with summary reports and source files
+  for the meet host.
+- **Time format** (2026-10-10): 12-hour.

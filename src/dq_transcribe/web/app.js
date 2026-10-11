@@ -596,7 +596,7 @@ function makeElement(tagName, className, text) {
 
 /** Format a Date as a local clock time with seconds. */
 function formatTime(date) {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: CONFIG.hour12 });
 }
 
 /** When a clip began (falls back to its upload time). */

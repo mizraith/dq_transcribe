@@ -130,7 +130,9 @@ CONTENT_DISPOSITION_HEADER = "Content-Disposition"
 CAPTURE_INFO_HEADER = "X-Capture-Info"
 TRANSCRIPT_DOWNLOAD_FILENAME = "transcript.txt"
 EXPORT_DOWNLOAD_FILENAME = "dq_transcribe_export.json"
-TRANSCRIPT_TIME_FORMAT = "%H:%M:%S"
+# Owner preference: 12-hour clock (US standard) on all screens and printouts.
+USE_12_HOUR_CLOCK = True
+TRANSCRIPT_TIME_FORMAT = "%I:%M:%S %p"
 
 # JSON keys shared by the server and the web pages.
 RESPONSE_KEY_SAVED_AS = "saved_as"
