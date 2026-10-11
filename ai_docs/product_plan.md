@@ -127,6 +127,7 @@ becomes "relay name" and the leg is required to publish.
 | State history | yes | Every state change with its time (and, **proposed**, who made it) |
 | Declined by / reason | when declined | Role and name of whoever declined it, and why (**proposed**) |
 | Notified at | when notified | Starts the protest window (see 4.2) |
+| Notified by | when notified | Drop-down (stated): a person's role and name (Chief Judge, Meet Referee, Deck Referee, Admin) or "SMS Push", "HTML Publish" or "None Required" |
 | Protest cycle count | yes | Number of protests so far |
 
 **Proposed additional fields:**
@@ -170,9 +171,27 @@ stateDiagram-v2
     UnderInvestigation --> Overturned
     Upheld --> Protested: another protest, if cycles remain
     Upheld --> [*]
-    Overturned --> [*]
-    Declined --> [*]
+    Overturned --> [*]: kept for the paper trail
+    Declined --> Trash: marked for deletion
+    Trash --> Declined: recovered
+    Trash --> [*]: a person confirms permanent deletion
+    Published --> Published: corrected and republished
 ```
+
+**Deleting, the trash bin and corrections (stated):**
+- A declined DQ is **marked for deletion**, but a person must confirm. Declined
+  and deleted calls go into a **trash bin**, where they can be recovered or
+  permanently deleted later.
+- A **published DQ that is overturned is never deleted**, because the paper trail
+  matters.
+- Corrections after publishing are rare, but they happen. The most common is a
+  wrong swimmer name, because entries change. The DQ is corrected and
+  **republished**.
+- If the mistake shows the call itself was confused, the DQ is usually declined
+  instead.
+- **Notification** is recorded with a "Notified by" drop-down, since several
+  people can notify (Chief Judge, Meet Referee, Deck Referee, Admin). The
+  drop-down also offers "SMS Push", "HTML Publish" and "None Required".
 
 **Rules:**
 - Record the time of every state change. The **Notified** time matters most,
@@ -291,6 +310,11 @@ The owner wants a touch-friendly way to view, manage, edit, approve and decline 
   - A play icon for the audio. Per-turn play is **proposed**.
   - Values the detector pulled out are highlighted in the text, so the admin can
     confirm them at a glance.
+- **Trash bin:** a view of declined and deleted calls, each with Recover and
+  Delete permanently (with a confirmation step). Published DQs never go to the
+  trash.
+- **Correct and republish:** editing a published DQ records what changed and why,
+  then republishes it. The earlier published version stays in the history.
 - **Actions:** Approve, Decline (with who and why), Merge duplicates, Split, and
   Add DQ by hand for calls the radio missed.
 - **Edit history:** every edit is kept, and the original detected values remain
@@ -406,19 +430,16 @@ window needs a way to **browse for and load a new file** at any time.
 
 ## 11. Open questions
 
-1. **Declined records:** is a declined DQ kept, hidden by default, or deleted?
-   (**Proposed:** kept, with who declined it and why, for the audit trail.)
-2. **Validation order:** in practice, can an admin validate or publish a DQ the referee has not
+1. **Validation order:** in practice, can an admin validate or publish a DQ the referee has not
    accepted?
-3. **Who is the admin:** one person per meet? Do we need logins, or is a single trusted tablet
+2. **Who is the admin:** one person per meet? Do we need logins, or is a single trusted tablet
    enough for now?
-4. **Recording notification and protests:** who marks a coach as notified, and who records that a
-   protest was filed (admin, referee, coach)?
-5. **Overturned:** is it final, or can it be protested again (for example by another team)?
-6. **Corrections after publication:** what happens if a published DQ has a typo (wrong lane)? Is it
-   corrected in place with an audit entry, or republished?
-7. **Local LLM size:** how much tablet time and storage can a local model use? This decides
+3. **Overturned:** is it final, or can it be protested again (for example by another team)?
+4. **Local LLM size:** how much tablet time and storage can a local model use? This decides
    whether an LLM backend is practical or the rule-based matcher carries the load.
+5. **Republish and the protest window:** when a published DQ is corrected and republished (for example a fixed swimmer name), does the 30-minute protest window restart from the new notification?
+6. **Who records a protest:** who enters that a coach protested, and who records the referee's Upheld or Overturned ruling? Is it the same "by" drop-down idea?
+7. **Permanent deletion:** who may empty the trash? Is it only the admin, and only after the meet?
 
 ### Answered
 
@@ -445,3 +466,10 @@ window needs a way to **browse for and load a new file** at any time.
   (Event 2b).
 - **Relays** (2026-10-10): record the leg (1st to 4th) and the relay name as club-letter
   (PASA-A) in place of a swimmer name.
+- **Declined and deleted DQs** (2026-10-10): a declined DQ is marked for deletion, and a person
+  confirms. It goes to a trash bin for recovery or permanent deletion later. A published-then-
+  overturned DQ is never deleted (paper trail).
+- **Notification** (2026-10-10): several people can notify. A "Notified by" drop-down holds people
+  plus "SMS Push", "HTML Publish" and "None Required".
+- **Corrections** (2026-10-10): rare. Usually a swimmer-name fix, which is corrected and
+  republished. A confused call is declined instead.
