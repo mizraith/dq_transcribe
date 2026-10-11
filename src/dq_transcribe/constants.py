@@ -167,6 +167,11 @@ CAPTURE_INFO_KEY_STARTED_AT = "startedAt"
 CAPTURE_INFO_KEY_ENDED_AT = "endedAt"
 # The level meter on the page shows this range, in dB relative to full scale.
 METER_FLOOR_DBFS = -80.0
+# A sample at or above this amplitude (fraction of full scale) counts as clipping:
+# the input is too loud (for example the radio volume is too high on a cable).
+CLIPPING_AMPLITUDE = 0.99
+# How long the "too loud" warning stays visible after the last clipped chunk.
+CLIPPING_WARNING_SECONDS = 3.0
 # Raw signal wanted: browser audio "enhancements" would distort radio audio.
 CAPTURE_ECHO_CANCELLATION = False
 CAPTURE_NOISE_SUPPRESSION = False
