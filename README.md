@@ -4,19 +4,28 @@ Local-first audio recording and transcription. Records from the device
 microphone, transcribes on-device, and keeps results in an editable local
 database. Nothing leaves the device.
 
-**Status:** early. A local server and a microphone test page exist; transcription and storage are not built yet.
+**Status:** capture-and-queue app working on the tablet. Open the page, tap
+**Start capturing**, and audio is cut into clips, transcribed turn by turn, grouped
+into call/response conversations, and stored in an editable local database.
 
-## Try the mic test (Termux)
+## Run it (Termux)
 
 ```bash
 bash scripts/termux_setup.sh                 # once
 PYTHONPATH=src python -m dq_transcribe       # start the server
 ```
 
-Then open <http://localhost:8000> in Chrome, tap **Record**, and allow the microphone.
-Recordings are saved under `~/.dq_transcribe/recordings/`.
+Open <http://localhost:8000> in Chrome, tap **Start capturing**, and allow the
+microphone. A blinking red light shows that capture is on. Keep Chrome in the
+foreground with the screen on (the page requests a screen wake lock).
 
-Run the tests with `PYTHONPATH=src python -m unittest discover -s tests`.
+- Clips are saved as WAV files in one folder per day: `~/.dq_transcribe/recordings/YYYY-MM-DD/`.
+- Everything else (clips, turns, transcripts, loudness data, edits) is in the SQLite file `~/.dq_transcribe/notes.db`.
+- Clips less than 5 seconds apart are grouped as one conversation (`CONVERSATION_GAP_SECONDS`).
+- Uploads are never dropped when the server is unreachable; they retry until sent.
+- The page `/mic-test` is the original microphone check.
+
+Run the tests with `PYTHONPATH=src:tests python3 -m unittest discover -s tests`.
 
 ## Device agent (lets an AI assistant run commands on the tablet)
 
