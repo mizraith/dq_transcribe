@@ -1,0 +1,9 @@
+task: 20261013T024908Z_restart_server_trash_and_inputs
+started: 2026-10-12T19:49:33-07:00
+finished: 2026-10-12T19:49:37-07:00
+work_repo_commit: 093b894
+exit_code: 0
+--- output ---
+running 093b894 device task: 20261013T024908Z_restart_server_trash_and_inputs
+{"clips": []}
+2026-10-12 19:49:37,914 127.0.0.1 - "GET /api/clips?view=trash HTTP/1.1" 200 -
