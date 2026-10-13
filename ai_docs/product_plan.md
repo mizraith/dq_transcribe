@@ -130,15 +130,21 @@ always looked up.
 | Swimmer name | **yes** | Auto-filled from the meet's Hy-Tek Meet Manager file using event/heat/lane (future). The admin types it when the lookup has nothing |
 | Swimmer club | **yes** | Same as swimmer name |
 
+**Relay codes (stated, 2026-10-12):** the relay letter codes on the slip (`6A-D`,
+`6F-H`) are not used in practice. Officials track the relay infraction and the
+**swimmer by number** (1–4). The app records the relay infraction type (stroke
+infraction, early take-off, changed order, other) plus the swimmer number, and
+shows the slip's code only for reference.
+
 **Relays (stated):** for a relay DQ, record the **leg** (1st to 4th swimmer) and,
 instead of a swimmer name, the **relay name** written as club + "-" + relay letter
 (for example "PASA-A", "PASA-B"). **Proposed:** a DQ has an "is relay" flag, set
 from the Meet Manager event when known. For relays, the swimmer-name field
 becomes "relay name" and the leg is required to publish.
 | Infractions | **yes, at least one** | **Stated:** a DQ can carry **several infractions**. Each has a short description (required) and a code (optional). Fields below describe one infraction |
-| Phase | wanted | **Stated:** when in the race it happened: **Start, Swim, Turn or Finish** (checkboxes on the slip for butterfly, backstroke and breaststroke) |
+| Phase | wanted | **Stated:** when in the race it happened: **Start, Swim, Turn, Finish**. **More than one can apply** to a single infraction (for example, a breaststroke scissor kick at the start before the head breaks the surface, or during the swim). The phase is a memory aid; the infraction stays the same. **Proposed:** multi-select toggle buttons, available on every infraction (the slip prints boxes only for butterfly, backstroke and breaststroke) |
 | Infraction detail | when the slip line has one | Turn number (No touch at turn), stroke (IM stroke infraction 5A), relay swimmer, swimmer and stroke (changed order), or free text ("Other") |
-| Slip revision | **yes** | The DQ slip revision the code comes from (for example `2024-01`). Codes change meaning between revisions |
+| Slip revision | **yes** | The DQ slip revision the code comes from (for example `2024-01`). Codes change meaning between revisions. **Stated:** the codes in use can vary by meet, but meets normally use the latest slip. **Proposed:** each meet has a "DQ slip revision" setting, defaulting to the newest table in `reference/dq_codes/` |
 | DQ code | no, but wanted | From the DQ slip. Some DQs have no code, and codes change between seasons |
 | Description | **yes** | Short description. More universal than the code |
 | Official | **yes** | Name of the person who made the call |
@@ -622,7 +628,7 @@ touch-friendly call-linking workflow and the DQ data model.
 ## 10. Needed from the owner
 
 - [x] Current DQ slips: rev. 1/24 and rev. 7/19 (2026-10-12)
-- [ ] Confirm the relay code mapping (6A-D, 6F-H) against Meet Manager's DQ code list
+- [x] Relay codes: not used in practice; swimmer tracked by number (2026-10-12)
 - [x] USA Swimming technical rules: 2026 rulebook stored in `rulebook/` (2026-10-10)
 - [ ] Friday ground truth: event/heat/lane of every DQ (promised), with timing where possible
 - [ ] Typical radio wording: varies a lot (stated). The Friday audio will show real examples
@@ -704,3 +710,8 @@ touch-friendly call-linking workflow and the DQ data model.
   single-DQ edit are needed.
 - **Coach access** (2026-10-10): a single meet password for now, with the page served from the
   tablet on the local network and a QR code for coaches. Password rotation comes later.
+- **Slip revision per meet** (2026-10-12): codes can vary by meet. Usually the latest slip is used.
+- **Relay codes** (2026-10-12): the letter codes aren't used. Track the infraction and the swimmer by
+  number (1–4).
+- **Phases** (2026-10-12): one infraction can have several phases (Start/Swim/Turn/Finish). The
+  phase is a memory aid, and the infraction stays the same.
