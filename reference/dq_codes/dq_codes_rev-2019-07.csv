@@ -1,0 +1,56 @@
+code,section,group,description,detail_field,slip_has_phase_boxes
+1A,Butterfly,Kick,Alternating,,yes
+1B,Butterfly,Kick,Breast,,yes
+1C,Butterfly,Kick,Scissors,,yes
+1E,Butterfly,Arms,Non-simultaneous,,yes
+1F,Butterfly,Arms,Underwater recovery,,yes
+1J,Butterfly,Touch,One hand,,yes
+1H,Butterfly,Touch,Not separated,,yes
+1L,Butterfly,Touch,Non-simultaneous,,yes
+1K,Butterfly,Touch,No touch,,yes
+1M,Butterfly,,Not toward the breast off wall,,yes
+1N,Butterfly,,Head did not break surface by 15m,,yes
+1R,Butterfly,,Re-submerged,,yes
+1T,Butterfly,,Other,free_text,yes
+2I,Backstroke,,No touch at turn,turn_number,yes
+2S,Backstroke,Past vertical at turn,Delay initiating arm pull,,yes
+2T,Backstroke,Past vertical at turn,Delay initiating turn,,yes
+2U,Backstroke,Past vertical at turn,Multiple strokes,,yes
+2P,Backstroke,,Toes over lip of gutter after the start,,yes
+2N,Backstroke,,Head did not break surface by 15m,,yes
+2R,Backstroke,,Re-submerged,,yes
+2K,Backstroke,,Not on back off wall,,yes
+2L,Backstroke,,Shoulders past vertical towards the breast,,yes
+2T,Backstroke,,Other,free_text,yes
+3A,Breaststroke,Kick,Alternating,,yes
+3C,Breaststroke,Kick,Butterfly,,yes
+3D,Breaststroke,Kick,Scissors,,yes
+3E,Breaststroke,Arms,Past hipline,,yes
+3F,Breaststroke,Arms,Non-simultaneous,,yes
+3G,Breaststroke,Arms,Two strokes under,,yes
+3H,Breaststroke,Arms,Not in same horizontal plane,,yes
+3I,Breaststroke,Arms,Elbows recovered over water,,yes
+3J,Breaststroke,Touch,One hand,,yes
+3N,Breaststroke,Touch,Not separated,,yes
+3L,Breaststroke,Touch,Non-simultaneous,,yes
+3K,Breaststroke,Touch,No touch,,yes
+3M,Breaststroke,,Not toward the breast off wall,,yes
+3Q,Breaststroke,Cycle,Kick before pull,,yes
+3P,Breaststroke,Cycle,Head not up,,yes
+3S,Breaststroke,Cycle,Double pulls/kicks,,yes
+3T,Breaststroke,,Other,free_text,yes
+4K,Freestyle,,No touch at turn,turn_number,no
+4N,Freestyle,,Head did not break surface by 15m,,no
+4C,Freestyle,,Re-submerged,,no
+,Individual Medley,,Stroke infraction(s),stroke_number,no
+5P,Individual Medley,,Out of sequence,,no
+,Individual Medley,,Fourth distance swum in style of previous stroke,,no
+61-64,Relays,,Stroke infraction,swimmer_number,no
+66-68,Relays,,Early take-off,swimmer_number,no
+6P,Relays,,Changed order,swimmer_and_stroke,no
+6T,Relays,,Other,free_text,no
+7O,Miscellaneous,,False start,,no
+7P,Miscellaneous,,Declared false start,,no
+7Q,Miscellaneous,,Did not finish,,no
+7R,Miscellaneous,,Delay of meet,,no
+7S-Z,Miscellaneous,,Other,free_text,no

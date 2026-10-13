@@ -136,11 +136,14 @@ instead of a swimmer name, the **relay name** written as club + "-" + relay lett
 from the Meet Manager event when known. For relays, the swimmer-name field
 becomes "relay name" and the leg is required to publish.
 | Infractions | **yes, at least one** | **Stated:** a DQ can carry **several infractions**. Each has a short description (required) and a code (optional). Fields below describe one infraction |
+| Phase | wanted | **Stated:** when in the race it happened: **Start, Swim, Turn or Finish** (checkboxes on the slip for butterfly, backstroke and breaststroke) |
+| Infraction detail | when the slip line has one | Turn number (No touch at turn), stroke (IM stroke infraction 5A), relay swimmer, swimmer and stroke (changed order), or free text ("Other") |
+| Slip revision | **yes** | The DQ slip revision the code comes from (for example `2024-01`). Codes change meaning between revisions |
 | DQ code | no, but wanted | From the DQ slip. Some DQs have no code, and codes change between seasons |
 | Description | **yes** | Short description. More universal than the code |
 | Official | **yes** | Name of the person who made the call |
 | Official role | **yes** | Stated: one of **Judge, Chief Judge, Referee, RTO** (relay take-off) or **Starter**. Stroke and turn judges are not told apart, since one person usually does both |
-| Chief Judge | no | |
+| Chief Judge | no | Initials on the current slip |
 | Referee | **yes** | Name of the person who accepts the call (usually the deck referee, over the radio) |
 | State | yes | See 4.2 |
 | State history | yes | Every state change with its time (and, **proposed**, who made it) |
@@ -333,7 +336,9 @@ list. Then score the detector each time it or its model changes:
 
 ## 6. Reference data and versioning
 
-- **DQ slips:** the owner will supply them. They include DQ codes and are updated almost
+- **DQ slips (in hand, 2026-10-12):** photos of rev. 1/24 (current) and rev. 7/19 are in
+  `reference/dq_slips/`, and every line is transcribed into versioned code tables in
+  `reference/dq_codes/` (see `reference/README.md`). The slips include DQ codes and are updated almost
   every year, and codes can change.
 - **USA Swimming technical rules:** they are also updated and need refreshing. The
   2026 rulebook is stored in `rulebook/`, with dated file names and a README that
@@ -602,7 +607,7 @@ window needs a way to **browse for and load a new file** at any time.
 ## 9b. Next steps
 
 **Owner (reminders requested 2026-10-10):**
-1. **Send a photo of a current DQ slip** (codes and descriptions).
+1. ~~Send a photo of a current DQ slip~~ (done 2026-10-12).
 2. **Do the dry run with the radio cable**: set the radio volume using the
    "TOO LOUD" indicator, reset the start and quiet sliders, and confirm that Chrome
    uses the USB-C audio adapter as its mic.
@@ -616,7 +621,8 @@ touch-friendly call-linking workflow and the DQ data model.
 
 ## 10. Needed from the owner
 
-- [ ] Current DQ slips (photo or PDF), including codes and descriptions
+- [x] Current DQ slips: rev. 1/24 and rev. 7/19 (2026-10-12)
+- [ ] Confirm the relay code mapping (6A-D, 6F-H) against Meet Manager's DQ code list
 - [x] USA Swimming technical rules: 2026 rulebook stored in `rulebook/` (2026-10-10)
 - [ ] Friday ground truth: event/heat/lane of every DQ (promised), with timing where possible
 - [ ] Typical radio wording: varies a lot (stated). The Friday audio will show real examples
