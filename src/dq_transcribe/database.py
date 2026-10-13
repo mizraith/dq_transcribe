@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS clips (
     analysis_params_json TEXT,
     whisper_model TEXT,
     transcribe_seconds REAL,
-    processed_at TEXT
+    processed_at TEXT,
+    trashed_at TEXT
 )
 """
 
@@ -61,11 +62,11 @@ CREATE TABLE IF NOT EXISTS utterances (
 _CREATE_UTTERANCES_INDEX = "CREATE INDEX IF NOT EXISTS utterances_clip ON utterances(clip_id, position)"
 
 # Columns added after the first release; `initialize` adds them to older databases.
-_ADDED_CLIP_COLUMNS = {"started_at": "TEXT", "ended_at": "TEXT"}
+_ADDED_CLIP_COLUMNS = {"started_at": "TEXT", "ended_at": "TEXT", "trashed_at": "TEXT"}
 
 _CLIP_SUMMARY_COLUMNS = (
     "id, created_at, started_at, ended_at, audio_filename, status, error_message, duration_seconds, "
-    "peak_dbfs, rms_dbfs, whisper_model, transcribe_seconds, processed_at"
+    "peak_dbfs, rms_dbfs, whisper_model, transcribe_seconds, processed_at, trashed_at"
 )
 _CLIP_JSON_COLUMNS = ("capture_info_json", "levels_json", "pauses_json", "analysis_params_json")
 _UTTERANCE_SUMMARY_COLUMNS = "id, clip_id, position, start_seconds, end_seconds, speaker, text, original_text, edited_at"
@@ -190,7 +191,7 @@ class Database:
         """
         with self._transaction() as connection:
             row = connection.execute(
-                "SELECT id, audio_filename FROM clips WHERE status = ? ORDER BY id LIMIT 1",
+                "SELECT id, audio_filename FROM clips WHERE status = ? AND trashed_at IS NULL ORDER BY id LIMIT 1",
                 (constants.CLIP_STATUS_QUEUED,),
             ).fetchone()
             if row is None:
@@ -306,6 +307,60 @@ class Database:
             )
             return True
 
+    def trash_clip(self, clip_id: int) -> bool:
+        """Move a clip to the trash bin. Its audio and transcript are kept.
+
+        A trashed clip is hidden from the clip list and transcript, and is not
+        transcribed if it was still waiting in the queue.
+
+        Args:
+            clip_id: Clip to trash.
+
+        Returns:
+            True if the clip existed and was not already in the trash.
+        """
+        with self._transaction() as connection:
+            cursor = connection.execute(
+                "UPDATE clips SET trashed_at = ? WHERE id = ? AND trashed_at IS NULL", (utc_now_iso(), clip_id)
+            )
+            return cursor.rowcount > 0
+
+    def restore_clip(self, clip_id: int) -> bool:
+        """Take a clip back out of the trash bin.
+
+        Args:
+            clip_id: Clip to restore.
+
+        Returns:
+            True if the clip was in the trash.
+        """
+        with self._transaction() as connection:
+            cursor = connection.execute(
+                "UPDATE clips SET trashed_at = NULL WHERE id = ? AND trashed_at IS NOT NULL", (clip_id,)
+            )
+            return cursor.rowcount > 0
+
+    def delete_trashed_clip(self, clip_id: int) -> str | None:
+        """Permanently delete a clip that is in the trash, with its utterances.
+
+        The caller deletes the audio file.
+
+        Args:
+            clip_id: Clip to delete.
+
+        Returns:
+            The deleted clip's audio file name, or None if it does not exist or is not in the trash.
+        """
+        with self._transaction() as connection:
+            row = connection.execute(
+                "SELECT audio_filename FROM clips WHERE id = ? AND trashed_at IS NOT NULL", (clip_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            connection.execute("DELETE FROM utterances WHERE clip_id = ?", (clip_id,))
+            connection.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
+            return str(row["audio_filename"])
+
     def update_utterance_text(self, utterance_id: int, text: str) -> bool:
         """Save an edit to an utterance's text. The original text is kept.
 
@@ -336,19 +391,23 @@ class Database:
             row = connection.execute("SELECT audio_filename FROM clips WHERE id = ?", (clip_id,)).fetchone()
         return None if row is None else str(row["audio_filename"])
 
-    def list_clips(self, limit: int | None = None, newest_first: bool = True) -> list[dict[str, Any]]:
+    def list_clips(
+        self, limit: int | None = None, newest_first: bool = True, trashed: bool = False
+    ) -> list[dict[str, Any]]:
         """List clips with their utterances (without the bulky measurement data).
 
         Args:
             limit: Maximum number of clips, or None for all.
             newest_first: Sort newest first (True) or oldest first (False).
+            trashed: List the clips in the trash bin instead of the active ones.
 
         Returns:
             Clip dictionaries, each with an ``utterances`` list and a ``group_id``
             (clips that follow each other closely share a group).
         """
         order = "DESC" if newest_first else "ASC"
-        query = f"SELECT {_CLIP_SUMMARY_COLUMNS} FROM clips ORDER BY id {order}"
+        trash_filter = "trashed_at IS NOT NULL" if trashed else "trashed_at IS NULL"
+        query = f"SELECT {_CLIP_SUMMARY_COLUMNS} FROM clips WHERE {trash_filter} ORDER BY id {order}"
         parameters: tuple[Any, ...] = ()
         if limit is not None:
             query += " LIMIT ?"

@@ -102,6 +102,14 @@ ROUTE_UPLOAD_RECORDING = "/api/recordings"  # legacy mic test
 ROUTE_CLIPS = "/api/clips"
 CLIP_AUDIO_SUFFIX = "/audio"
 CLIP_REPROCESS_SUFFIX = "/reprocess"
+# Trash bin for clips: trash and restore are reversible; delete is permanent and
+# only allowed for clips already in the trash.
+CLIP_TRASH_SUFFIX = "/trash"
+CLIP_RESTORE_SUFFIX = "/restore"
+CLIP_DELETE_SUFFIX = "/delete"
+# Query string for the clip list: ?view=trash lists trashed clips instead.
+QUERY_KEY_VIEW = "view"
+VIEW_TRASH = "trash"
 ROUTE_UTTERANCES = "/api/utterances"
 ROUTE_EXPORT = "/api/export"
 ROUTE_TRANSCRIPT_TEXT = "/api/transcript.txt"
@@ -179,6 +187,8 @@ CAPTURE_ECHO_CANCELLATION = False
 CAPTURE_NOISE_SUPPRESSION = False
 CAPTURE_AUTO_GAIN_CONTROL = False
 CAPTURE_SETTINGS_STORAGE_KEY = "dq_transcribe_capture_settings"
+# Browser storage key for the chosen audio input (microphone, headset jack, USB adapter).
+AUDIO_INPUT_STORAGE_KEY = "dq_transcribe_audio_input"
 UPLOAD_RETRY_SECONDS = 3
 
 # If no audio chunk arrives for this long while capturing, the page warns and tries to recover.

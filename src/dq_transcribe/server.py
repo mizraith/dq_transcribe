@@ -22,7 +22,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from dq_transcribe import constants
 from dq_transcribe.database import Database
@@ -39,6 +39,15 @@ _CLIP_AUDIO_PATTERN = re.compile(
 )
 _CLIP_REPROCESS_PATTERN = re.compile(
     rf"^{re.escape(constants.ROUTE_CLIPS)}/(\d+){re.escape(constants.CLIP_REPROCESS_SUFFIX)}$"
+)
+_CLIP_TRASH_PATTERN = re.compile(
+    rf"^{re.escape(constants.ROUTE_CLIPS)}/(\d+){re.escape(constants.CLIP_TRASH_SUFFIX)}$"
+)
+_CLIP_RESTORE_PATTERN = re.compile(
+    rf"^{re.escape(constants.ROUTE_CLIPS)}/(\d+){re.escape(constants.CLIP_RESTORE_SUFFIX)}$"
+)
+_CLIP_DELETE_PATTERN = re.compile(
+    rf"^{re.escape(constants.ROUTE_CLIPS)}/(\d+){re.escape(constants.CLIP_DELETE_SUFFIX)}$"
 )
 _UTTERANCE_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_UTTERANCES)}/(\d+)$")
 
@@ -92,6 +101,12 @@ def build_web_config() -> dict[str, Any]:
         "textKey": constants.REQUEST_KEY_TEXT,
         "audioSuffix": constants.CLIP_AUDIO_SUFFIX,
         "reprocessSuffix": constants.CLIP_REPROCESS_SUFFIX,
+        "trashSuffix": constants.CLIP_TRASH_SUFFIX,
+        "restoreSuffix": constants.CLIP_RESTORE_SUFFIX,
+        "deleteSuffix": constants.CLIP_DELETE_SUFFIX,
+        "viewQueryKey": constants.QUERY_KEY_VIEW,
+        "viewTrash": constants.VIEW_TRASH,
+        "audioInputStorageKey": constants.AUDIO_INPUT_STORAGE_KEY,
         "utterancesRoute": constants.ROUTE_UTTERANCES,
         "workletRoute": constants.ROUTE_CAPTURE_WORKLET,
         "processorName": constants.CAPTURE_PROCESSOR_NAME,
@@ -216,7 +231,8 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 (name required by BaseHTTPRequestHandler)
         """Serve pages, scripts, clip data, audio, and downloads."""
-        path = urlsplit(self.path).path
+        url = urlsplit(self.path)
+        path = url.path
         database = self.server.database
 
         if path == constants.ROUTE_HOME:
@@ -230,7 +246,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.CAPTURE_WORKLET_FILENAME)
             )
         elif path == constants.ROUTE_CLIPS:
-            clips = database.list_clips(limit=constants.CLIP_LIST_LIMIT)
+            views = parse_qs(url.query).get(constants.QUERY_KEY_VIEW, [])
+            clips = database.list_clips(limit=constants.CLIP_LIST_LIMIT, trashed=constants.VIEW_TRASH in views)
             self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_CLIPS: clips})
         elif path == constants.ROUTE_EXPORT:
             body = json.dumps(database.export_all(), indent=2).encode("utf-8")
@@ -262,6 +279,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_clip_upload()
         elif (match := _CLIP_REPROCESS_PATTERN.match(path)) is not None:
             self._handle_reprocess(int(match.group(1)))
+        elif (match := _CLIP_TRASH_PATTERN.match(path)) is not None:
+            self._handle_trash(int(match.group(1)))
+        elif (match := _CLIP_RESTORE_PATTERN.match(path)) is not None:
+            self._handle_restore(int(match.group(1)))
+        elif (match := _CLIP_DELETE_PATTERN.match(path)) is not None:
+            self._handle_permanent_delete(int(match.group(1)))
         elif (match := _UTTERANCE_PATTERN.match(path)) is not None:
             self._handle_utterance_edit(int(match.group(1)))
         else:
@@ -327,6 +350,32 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         if self.server.worker is not None:
             self.server.worker.wake()
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _handle_trash(self, clip_id: int) -> None:
+        """Move a clip to the trash bin."""
+        if not self.server.database.trash_clip(clip_id):
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such clip, or it is already in the trash")
+            return
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _handle_restore(self, clip_id: int) -> None:
+        """Take a clip back out of the trash bin."""
+        if not self.server.database.restore_clip(clip_id):
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such clip in the trash")
+            return
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _handle_permanent_delete(self, clip_id: int) -> None:
+        """Permanently delete a trashed clip and its audio file."""
+        filename = self.server.database.delete_trashed_clip(clip_id)
+        if filename is None:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "Only clips in the trash can be deleted")
+            return
+        audio_path = self._resolve_audio_path(filename)
+        if audio_path is not None:
+            audio_path.unlink(missing_ok=True)
+        LOGGER.info("Permanently deleted clip %d (%s)", clip_id, filename)
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
 
     def _handle_utterance_edit(self, utterance_id: int) -> None:
@@ -412,12 +461,17 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _send_clip_audio(self, clip_id: int) -> None:
         """Send a clip's WAV file."""
         filename = self.server.database.get_clip_audio_filename(clip_id)
-        base_directory = self.server.recordings_directory.resolve()
-        audio_path = None if filename is None else (base_directory / filename).resolve()
-        if audio_path is None or not audio_path.is_relative_to(base_directory) or not audio_path.is_file():
+        audio_path = None if filename is None else self._resolve_audio_path(filename)
+        if audio_path is None or not audio_path.is_file():
             self._send_json_error(HTTPStatus.NOT_FOUND, "No such clip")
             return
         self._send_bytes(HTTPStatus.OK, constants.WAV_UPLOAD_MEDIA_TYPE, audio_path.read_bytes())
+
+    def _resolve_audio_path(self, filename: str) -> Path | None:
+        """Turn a stored audio file name into a path, refusing anything outside the recordings folder."""
+        base_directory = self.server.recordings_directory.resolve()
+        audio_path = (base_directory / filename).resolve()
+        return audio_path if audio_path.is_relative_to(base_directory) else None
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         """Route request logging through the logging module instead of stderr."""

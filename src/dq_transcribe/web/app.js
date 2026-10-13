@@ -27,6 +27,10 @@ const statusText = document.getElementById("status");
 const lastAudioText = document.getElementById("last-audio-text");
 const queueText = document.getElementById("queue-text");
 const clipsContainer = document.getElementById("clips");
+const audioInputSelect = document.getElementById("audio-input");
+const audioInputText = document.getElementById("audio-input-text");
+const trashViewButton = document.getElementById("trash-view-button");
+const viewTitle = document.getElementById("view-title");
 const startInput = document.getElementById("start-dbfs");
 const endInput = document.getElementById("end-dbfs");
 const hangInput = document.getElementById("hang-seconds");
@@ -39,6 +43,8 @@ const CAPTURE_STATE_LABELS = {
   listening: "REC · listening",
   receiving: "REC · receiving audio",
 };
+const DEFAULT_INPUT_ID = "default";
+const DELETE_CONFIRM_SECONDS = 3;
 const START_BUTTON_TEXT = "Start capturing";
 const STOP_BUTTON_TEXT = "Stop capturing";
 const BYTES_PER_SAMPLE = 2;
@@ -355,6 +361,8 @@ function finishClip(chunkSeconds) {
   info.sourceSampleRate = sourceRate;
   info.peakDbfs = Math.round(peakDbfs * 10) / 10;
   info.clipped = wasClipped;
+  const inputTrack = mediaStream && mediaStream.getAudioTracks()[0];
+  info.inputLabel = inputTrack ? inputTrack.label : "";
   info.idleLevelDbfs = idleLevelDbfs === null ? null : Math.round(idleLevelDbfs * 10) / 10;
   info.startDbfs = settings.startDbfs;
   info.endDbfs = settings.endDbfs;
@@ -450,13 +458,9 @@ async function teardownAudio() {
 async function startCapturing() {
   captureButton.disabled = true;
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: CONFIG.echoCancellation,
-        noiseSuppression: CONFIG.noiseSuppression,
-        autoGainControl: CONFIG.autoGainControl,
-      },
-    });
+    mediaStream = await openAudioInput(resolveChoice(loadAudioInputChoice(), await listAudioInputs()));
+    showInputInUse();
+    populateAudioInputs(); // device names become available once the mic is allowed
     audioContext = new AudioContext();
     await audioContext.audioWorklet.addModule(CONFIG.workletRoute);
     await audioContext.resume();
@@ -517,6 +521,116 @@ document.addEventListener("visibilitychange", () => {
     acquireWakeLock();
   }
 });
+
+// --- Audio input choice -----------------------------------------------------
+
+/**
+ * The saved audio input as {id, label}, or the default input. The label is kept
+ * because browsers may give a device a new id later (after a reload or replug).
+ */
+function loadAudioInputChoice() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CONFIG.audioInputStorageKey) || "null");
+    if (saved && typeof saved.id === "string") {
+      return { id: saved.id, label: typeof saved.label === "string" ? saved.label : "" };
+    }
+  } catch (error) {
+    // Storage unavailable or an older format: use the default input.
+  }
+  return { id: DEFAULT_INPUT_ID, label: "" };
+}
+
+/** Remember the chosen audio input. */
+function saveAudioInputChoice(id, label) {
+  try {
+    localStorage.setItem(CONFIG.audioInputStorageKey, JSON.stringify({ id: id, label: label }));
+  } catch (error) {
+    // Storage unavailable: the choice applies until the page is closed.
+  }
+}
+
+/** List the audio inputs the browser can see (not counting the "default" alias). */
+async function listAudioInputs() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter((device) => device.kind === "audioinput" && device.deviceId !== DEFAULT_INPUT_ID);
+  } catch (error) {
+    return [];
+  }
+}
+
+/** Find the current device id for a saved choice: by id first, then by name. */
+function resolveChoice(choice, inputs) {
+  if (choice.id === DEFAULT_INPUT_ID) {
+    return DEFAULT_INPUT_ID;
+  }
+  const byId = inputs.find((device) => device.deviceId === choice.id);
+  if (byId) {
+    return byId.deviceId;
+  }
+  const byLabel = choice.label && inputs.find((device) => device.label === choice.label);
+  return byLabel ? byLabel.deviceId : choice.id;
+}
+
+/** Build the getUserMedia audio settings for a device id. */
+function audioConstraints(deviceId) {
+  const constraints = {
+    echoCancellation: CONFIG.echoCancellation,
+    noiseSuppression: CONFIG.noiseSuppression,
+    autoGainControl: CONFIG.autoGainControl,
+  };
+  if (deviceId && deviceId !== DEFAULT_INPUT_ID) {
+    constraints.deviceId = { exact: deviceId };
+  }
+  return { audio: constraints };
+}
+
+/** Open the chosen input; if it is gone (unplugged), fall back to the default input. */
+async function openAudioInput(deviceId) {
+  try {
+    return await navigator.mediaDevices.getUserMedia(audioConstraints(deviceId));
+  } catch (error) {
+    const inputMissing = error.name === "OverconstrainedError" || error.name === "NotFoundError";
+    if (deviceId === DEFAULT_INPUT_ID || !inputMissing) {
+      throw error;
+    }
+    setStatus("The chosen audio input was not found; using the default input instead.");
+    return navigator.mediaDevices.getUserMedia(audioConstraints(DEFAULT_INPUT_ID));
+  }
+}
+
+/** Show which input the browser actually opened. */
+function showInputInUse() {
+  const track = mediaStream && mediaStream.getAudioTracks()[0];
+  audioInputText.textContent = track ? "Recording from: " + (track.label || "default input") : "";
+}
+
+/** Fill the audio input list with the inputs the browser can see. */
+async function populateAudioInputs() {
+  const inputs = await listAudioInputs();
+  const chosen = resolveChoice(loadAudioInputChoice(), inputs);
+  const options = [new Option("Default input (let Android choose)", DEFAULT_INPUT_ID)];
+  inputs.forEach((device, index) => {
+    options.push(new Option(device.label || "Audio input " + (index + 1), device.deviceId));
+  });
+  audioInputSelect.replaceChildren(...options);
+  const chosenStillPresent = options.some((option) => option.value === chosen);
+  audioInputSelect.value = chosenStillPresent ? chosen : DEFAULT_INPUT_ID;
+  if (inputs.length > 0 && inputs.every((device) => !device.label)) {
+    audioInputText.textContent = "Tap Start capturing once to allow the microphone; then input names appear here.";
+  }
+}
+
+/** Switch inputs; if capturing, restart capture on the new input. */
+async function onAudioInputChange() {
+  const selected = audioInputSelect.options[audioInputSelect.selectedIndex];
+  const label = audioInputSelect.value === DEFAULT_INPUT_ID ? "" : selected.text;
+  saveAudioInputChoice(audioInputSelect.value, label);
+  if (capturing) {
+    await stopCapturing();
+    await startCapturing();
+  }
+}
 
 // --- Uploading --------------------------------------------------------------
 
@@ -646,6 +760,57 @@ async function reprocessClip(clip) {
   refreshClips();
 }
 
+/** Create a button with a click handler. */
+function makeButton(className, text, onClick) {
+  const button = makeElement("button", className, text);
+  button.type = "button";
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+/** "Delete forever" button that needs a second tap within a few seconds. */
+function makeDeleteForeverButton(clip) {
+  const idleText = "Delete forever";
+  const button = makeButton("", idleText, () => {
+    if (button.dataset.armed === "yes") {
+      clipAction(clip, CONFIG.deleteSuffix, "Deleted clip #" + clip.id + " permanently.");
+      return;
+    }
+    button.dataset.armed = "yes";
+    button.textContent = "Tap again to delete";
+    button.classList.add("danger");
+    setTimeout(() => {
+      button.dataset.armed = "";
+      button.textContent = idleText;
+      button.classList.remove("danger");
+    }, DELETE_CONFIRM_SECONDS * MILLISECONDS_PER_SECOND);
+  });
+  return button;
+}
+
+/** Run a clip action (trash, restore, delete) and refresh the list. */
+async function clipAction(clip, suffix, doneMessage) {
+  try {
+    const response = await fetch(CONFIG.clipsRoute + "/" + clip.id + suffix, { method: "POST" });
+    if (!response.ok) {
+      throw new Error("server answered " + response.status);
+    }
+    setStatus(doneMessage);
+  } catch (error) {
+    setStatus("Could not update clip #" + clip.id + ": " + error.message);
+  }
+  refreshClips();
+}
+
+/** Switch between the transcript and the trash bin. */
+function toggleTrashView() {
+  showingTrash = !showingTrash;
+  trashViewButton.textContent = showingTrash ? "Back to transcript" : "\u{1F5D1} Trash";
+  viewTitle.textContent = showingTrash ? "Trash" : "Transcript";
+  clipsContainer.replaceChildren();
+  refreshClips();
+}
+
 /** Build the row for one clip: details, audio player, and editable lines. */
 function buildClipRow(clip) {
   const row = makeElement("div", "clip");
@@ -663,11 +828,18 @@ function buildClipRow(clip) {
   audio.src = CONFIG.clipsRoute + "/" + clip.id + CONFIG.audioSuffix;
   meta.append(audio);
 
-  if (clip.status === "done" || clip.status === "failed") {
-    const button = makeElement("button", "", "Reprocess");
-    button.type = "button";
-    button.addEventListener("click", () => reprocessClip(clip));
-    meta.append(button);
+  if (showingTrash) {
+    meta.append(makeButton("", "Restore", () => clipAction(clip, CONFIG.restoreSuffix, "Restored clip #" + clip.id + ".")));
+    meta.append(makeDeleteForeverButton(clip));
+  } else {
+    if (clip.status === "done" || clip.status === "failed") {
+      meta.append(makeButton("", "Reprocess", () => reprocessClip(clip)));
+    }
+    const trashButton = makeButton("trash", "\u{1F5D1}", () =>
+      clipAction(clip, CONFIG.trashSuffix, "Moved clip #" + clip.id + " to the trash."));
+    trashButton.title = "Move to trash";
+    trashButton.setAttribute("aria-label", "Move clip " + clip.id + " to trash");
+    meta.append(trashButton);
   }
   row.append(meta);
 
@@ -720,15 +892,19 @@ function renderClips(clips) {
     return buildGroupCard(groupClips);
   });
   if (cards.length === 0) {
-    cards.push(makeElement("p", "note", "Nothing captured yet. Tap Start capturing."));
+    const emptyText = showingTrash ? "The trash is empty." : "Nothing captured yet. Tap Start capturing.";
+    cards.push(makeElement("p", "note", emptyText));
   }
   clipsContainer.replaceChildren(...cards);
 }
 
+let showingTrash = false;
+
 /** Fetch the latest clips and redraw. */
 async function refreshClips() {
   try {
-    const response = await fetch(CONFIG.clipsRoute);
+    const url = showingTrash ? CONFIG.clipsRoute + "?" + CONFIG.viewQueryKey + "=" + CONFIG.viewTrash : CONFIG.clipsRoute;
+    const response = await fetch(url);
     const data = await response.json();
     renderClips(data[CONFIG.clipsKey]);
   } catch (error) {
@@ -739,7 +915,13 @@ async function refreshClips() {
 // --- Start up ---------------------------------------------------------------
 
 [startInput, endInput, hangInput].forEach((input) => input.addEventListener("input", saveSettings));
+trashViewButton.addEventListener("click", toggleTrashView);
+audioInputSelect.addEventListener("change", onAudioInputChange);
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener("devicechange", populateAudioInputs);
+}
 loadSettings();
+populateAudioInputs();
 setCaptureState("idle");
 refreshClips();
 setInterval(refreshClips, CONFIG.pollSeconds * MILLISECONDS_PER_SECOND);

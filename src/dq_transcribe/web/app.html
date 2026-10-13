@@ -58,6 +58,13 @@
     .clip button { font-size: 0.85rem; padding: 0.2rem 0.6rem; }
     .utterance-text { display: block; width: 100%; box-sizing: border-box; font: inherit; margin-top: 0.4rem; padding: 0.4rem 0.5rem; border: 1px solid var(--line); border-radius: 0.4rem; resize: vertical; }
     .utterance-text.saved { border-color: var(--go); }
+    #audio-input-row { display: block; font-size: 0.95rem; margin-bottom: 0.6rem; }
+    #audio-input { display: block; width: 100%; font-size: 1.05rem; padding: 0.55rem; margin-top: 0.25rem; border-radius: 0.4rem; }
+    #view-bar { display: flex; align-items: center; justify-content: space-between; margin: 0.5rem 0 0.6rem; }
+    #view-bar h2 { font-size: 1.1rem; margin: 0; }
+    #view-bar button { font-size: 1rem; padding: 0.45rem 0.9rem; }
+    .clip-meta button.trash { font-size: 1.15rem; padding: 0.15rem 0.6rem; margin-left: auto; }
+    .clip-meta button.danger { color: #fff; background: var(--rec); border: 0; border-radius: 0.3rem; }
     .note { font-size: 0.9rem; color: #555b66; margin: 0.4rem 0 0; }
     .error { color: #b91c1c; }
   </style>
@@ -70,6 +77,10 @@
       <span id="rec-dot"></span>
       <span id="rec-label">Not capturing</span>
     </div>
+    <label id="audio-input-row" for="audio-input">Audio input
+      <select id="audio-input"></select>
+    </label>
+    <p id="audio-input-text" class="hint"></p>
     <button id="capture-button" type="button">Start capturing</button>
     <div id="meter"><div id="meter-bar"></div><div id="meter-threshold"></div></div>
     <p id="level-text"></p>
@@ -95,6 +106,10 @@
     <a href="${mic_test_route}">Mic test</a>
   </p>
 
+  <div id="view-bar">
+    <h2 id="view-title">Transcript</h2>
+    <button id="trash-view-button" type="button">&#128465; Trash</button>
+  </div>
   <main id="clips"></main>
 
   <script src="${script_route}"></script>

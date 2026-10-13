@@ -61,6 +61,28 @@ class ProcessClipTests(unittest.TestCase):
         self.assertTrue(self.database.requeue_clip(clip["id"]))
         self.assertEqual(self.database.list_clips()[0]["status"], constants.CLIP_STATUS_QUEUED)
 
+    def test_trash_restore_and_permanent_delete(self) -> None:
+        write_wav(self.recordings / CLIP_NAME, TWO_TURN_PATTERN)
+        clip = self._queue_and_claim()
+        process_clip(self.database, FakeTranscriber(), clip, self.recordings, self.scratch)
+        self.assertIsNone(self.database.delete_trashed_clip(clip["id"]), "must be in the trash first")
+        self.assertTrue(self.database.trash_clip(clip["id"]))
+        self.assertFalse(self.database.trash_clip(clip["id"]), "already in the trash")
+        self.assertEqual(self.database.list_clips(), [])
+        self.assertEqual([c["id"] for c in self.database.list_clips(trashed=True)], [clip["id"]])
+        self.assertTrue(self.database.restore_clip(clip["id"]))
+        self.assertEqual(len(self.database.list_clips()), 1)
+        self.database.trash_clip(clip["id"])
+        self.assertEqual(self.database.delete_trashed_clip(clip["id"]), CLIP_NAME)
+        self.assertEqual(self.database.list_clips(trashed=True), [])
+        self.assertEqual(self.database.export_all()["clips"], [])
+
+    def test_trashed_queued_clip_is_not_transcribed(self) -> None:
+        self.database.add_clip(CLIP_NAME, None)
+        clip_id = self.database.list_clips()[0]["id"]
+        self.database.trash_clip(clip_id)
+        self.assertIsNone(self.database.claim_next_queued_clip())
+
     def test_interrupted_clip_is_requeued(self) -> None:
         self._queue_and_claim()
         self.assertEqual(self.database.requeue_interrupted_clips(), 1)
