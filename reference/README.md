@@ -3,7 +3,9 @@
 Versioned reference data that DQ detection and the review screens are built on.
 DQ slips are revised every year or two and **codes get reused with different
 meanings**, so every file carries its revision in its name and old revisions are
-kept. **Always store a DQ's code together with the slip revision it came from.**
+kept. **Always store a DQ's code together with the slip revision it came from.** The
+revision in use can vary by meet, but meets normally use the latest one, which is
+the app's default.
 
 ## DQ slips (`dq_slips/`)
 
@@ -41,8 +43,12 @@ disagree, the photo wins; please report the mistake.
 ## Things the slips show that the app must capture
 
 - **When in the race it happened:** the butterfly, backstroke and breaststroke
-  sections have **START / SWIM / TURN / FINISH** boxes. A DQ should record that
-  phase. The other sections have no boxes.
+  sections have **START / SWIM / TURN / FINISH** boxes.
+  - **More than one phase can apply** to one infraction. For example, a
+    breaststroke scissor kick can happen at the start, before the head breaks the
+    surface, or during the swim.
+  - The phase helps remember when it happened; the infraction is the same either
+    way. The app lets any combination be ticked.
 - **Extra details on some lines:**
   - turn number for "No touch at turn" (backstroke 2A, freestyle 4A);
   - which stroke for an IM stroke infraction (5A);
@@ -67,12 +73,13 @@ disagree, the photo wins; please report the mistake.
 2. **Duplicate code on the 7/19 slip:** `2T` is printed for both "Delay initiating
    turn" and "Other". The table keeps both as printed. Rev. 1/24 fixed this
    (`2C` and `2T`).
-3. **Relay code ranges (an assumption to confirm):**
+3. **Relay code ranges are not used in practice:**
    - The 1/24 slip prints `6A-D` for stroke infractions and `6F-H` for early
      take-offs, and the 7/19 slip printed `61-64` and `66-68`.
-   - The guess is one code per swimmer: stroke infraction swimmer 1–4 = `6A`–`6D`,
-     and early take-off by swimmer 2–4 = `6F`–`6H`. Swimmer 1 cannot leave early.
-   - Confirm against Meet Manager's DQ code list.
+   - In practice, officials track the infraction and the **swimmer by number**
+     (1–4), not the letter codes (owner, 2026-10-12).
+   - The app stores the relay infraction type plus the swimmer number. The ranges
+     stay in the table only as printed.
 4. **Removed in 1/24:** breaststroke "Two strokes under" (3G) and "Not in same
    horizontal plane" (3H).
 5. **Added in 1/24:** the IM stroke-infraction code `5A`, an "Article 105" line
