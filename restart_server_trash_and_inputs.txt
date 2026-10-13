@@ -1,0 +1,9 @@
+task: restart_server_trash_and_inputs
+started: 2026-10-12T19:49:11-07:00
+finished: 2026-10-12T19:49:15-07:00
+work_repo_commit: 112f913
+exit_code: 0
+--- output ---
+running 112f913 Add clip trash bin and audio input picker
+{"clips": []}
+2026-10-12 19:49:15,210 127.0.0.1 - "GET /api/clips?view=trash HTTP/1.1" 200 -
