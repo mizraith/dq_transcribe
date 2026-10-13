@@ -37,6 +37,8 @@ foreground with the screen on (the page requests a screen wake lock).
 - Clips less than 5 seconds apart are grouped as one conversation (`CONVERSATION_GAP_SECONDS`).
 - The page shows "Last audio received: HH:MM:SS" so you can tell a quiet radio from a dead microphone.
 - Uploads are never dropped when the server is unreachable; they retry until sent.
+- **Audio input:** pick the microphone, headset jack or USB audio adapter from the list above the Start button. The choice is remembered.
+- **Trash:** each clip has a trash icon. The Trash view can restore a clip or delete it for good (tap twice).
 - The page `/mic-test` is the original microphone check.
 
 Run the tests with `PYTHONPATH=src:tests python3 -m unittest discover -s tests`.

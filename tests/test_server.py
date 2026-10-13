@@ -148,6 +148,26 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(reprocess.status, 200)
         self._wait_until_done(1)
 
+    def test_trash_restore_and_delete_clip(self) -> None:
+        result = self._upload_clip()
+        clip_id = result[constants.RESPONSE_KEY_CLIP_ID]
+        audio_file = self.recordings / result[constants.RESPONSE_KEY_SAVED_AS]
+        self._wait_until_done(1)
+        base = f"{constants.ROUTE_CLIPS}/{clip_id}"
+        trash_list = f"{constants.ROUTE_CLIPS}?{constants.QUERY_KEY_VIEW}={constants.VIEW_TRASH}"
+
+        self.assertEqual(self._request("POST", base + constants.CLIP_DELETE_SUFFIX, b"x").status, 404)
+        self.assertEqual(self._request("POST", base + constants.CLIP_TRASH_SUFFIX, b"x").status, 200)
+        listed = json.loads(self._request("GET", constants.ROUTE_CLIPS).read())[constants.RESPONSE_KEY_CLIPS]
+        trashed = json.loads(self._request("GET", trash_list).read())[constants.RESPONSE_KEY_CLIPS]
+        self.assertEqual((listed, [c["id"] for c in trashed]), ([], [clip_id]))
+
+        self.assertEqual(self._request("POST", base + constants.CLIP_RESTORE_SUFFIX, b"x").status, 200)
+        self.assertEqual(self._request("POST", base + constants.CLIP_TRASH_SUFFIX, b"x").status, 200)
+        self.assertEqual(self._request("POST", base + constants.CLIP_DELETE_SUFFIX, b"x").status, 200)
+        self.assertFalse(audio_file.exists())
+        self.assertEqual(self._request("GET", base + constants.CLIP_AUDIO_SUFFIX).status, 404)
+
     def test_non_wav_upload_is_rejected(self) -> None:
         response = self._request("POST", constants.ROUTE_CLIPS, b"abc",
                                  {constants.CONTENT_TYPE_HEADER: "audio/webm"})
