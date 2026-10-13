@@ -1,0 +1,57 @@
+section,group,description_2024,code_2019_07,code_2024_01,change
+Butterfly,Kick,Alternating,1A,1A,same
+Butterfly,Kick,Breast,1B,1B,same
+Butterfly,Kick,Scissors,1C,1C,same
+Butterfly,Arms,Non-simultaneous,1E,1E,same
+Butterfly,Arms,Underwater recovery,1F,1F,same
+Butterfly,Touch,One hand,1J,1J,same
+Butterfly,Touch,Not separated,1H,1K,code changed
+Butterfly,Touch,Non-simultaneous,1L,1L,same
+Butterfly,Touch,No touch,1K,1M,code changed
+Butterfly,,Not toward the breast off wall,1M,1N,code changed
+Butterfly,,Head did not break surface by 15m,1N,1P,code changed
+Butterfly,,Re-submerged,1R,1R,same
+Butterfly,,Other,1T,1T,same
+Backstroke,,No touch at turn,2I,2A,code changed
+Backstroke,Past vertical at turn,Delay initiating arm pull,2S,2B,code changed
+Backstroke,Past vertical at turn,Delay initiating turn,2T,2C,code changed
+Backstroke,Past vertical at turn,Multiple strokes,2U,2D,code changed
+Backstroke,,Toes over lip of gutter after the start,2P,2E,code changed
+Backstroke,,Head did not break surface by 15m,2N,2F,code changed
+Backstroke,,Re-submerged,2R,2G,code changed
+Backstroke,,Not on back off wall,2K,2H,code changed
+Backstroke,,Shoulders past vertical towards the breast,2L,2L,same
+Backstroke,,Other,2T,2T,same
+Breaststroke,Kick,Alternating,3A,3A,same
+Breaststroke,Kick,Butterfly,3C,3B,code changed
+Breaststroke,Kick,Scissors,3D,3C,code changed
+Breaststroke,Arms,Past hipline,3E,3D,code changed
+Breaststroke,Arms,Non-simultaneous,3F,3E,code changed
+Breaststroke,Arms,Two strokes under,3G,,removed
+Breaststroke,Arms,Not in same horizontal plane,3H,,removed
+Breaststroke,Arms,Elbows recovered over water,3I,3H,code changed
+Breaststroke,Touch,One hand,3J,3J,same
+Breaststroke,Touch,Not separated,3N,3K,code changed
+Breaststroke,Touch,Non-simultaneous,3L,3L,same
+Breaststroke,Touch,No touch,3K,3M,code changed
+Breaststroke,,Not toward the breast off wall,3M,3N,code changed
+Breaststroke,Cycle,Kick before pull,3Q,3P,code changed
+Breaststroke,Cycle,Head not up before hands turn inward,3P,3R,reworded; code changed
+Breaststroke,Cycle,Double pulls/kicks,3S,3S,same
+Breaststroke,,Other,3T,3T,same
+Freestyle,,No touch at turn,4K,4A,code changed
+Freestyle,,Head did not break surface by 15m,4N,4B,code changed
+Freestyle,,Re-submerged,4C,4C,same
+Individual Medley,,Stroke infraction(s),,5A,code added
+Individual Medley,,Out of sequence,5P,5B,code changed
+Individual Medley,,Fourth distance swum in style of previous stroke,,,same
+Relays,,Stroke infraction,61-64,6A-D,code changed
+Relays,,Early take-off,66-68,6F-H,code changed
+Relays,,Changed order,6P,6L,code changed
+Relays,,Other,6T,6T,same
+Miscellaneous,,False start,7O,7A,code changed
+Miscellaneous,,Declared false start,7P,7B,code changed
+Miscellaneous,,Did not finish,7Q,7C,code changed
+Miscellaneous,,Delay of meet,7R,7D,code changed
+Miscellaneous,,Other,7S-Z,7T,code changed
+Article 105,,Article 105 (swimmers with a disability),,,added

@@ -21,11 +21,11 @@ You are continuing work on **dq_transcribe**, a local-first audio recording and 
 
 **Running things on the tablet (the relay):** write a shell script, then run `COMMIT_TRAILERS="<trailers>" bash scripts/run_on_device.sh path/to/task.sh [wait_seconds]`. It commits the script to `device_tasks/` on `main`, and the tablet's `scripts/device_agent.sh` (which the owner starts once in Termux and leaves running) pulls it, runs it from the repo root, and publishes the output as a report on the `device-reports` branch. The helper prints the report. Round trips take roughly 15 to 40 seconds. If no report arrives, the agent is probably stopped: ask the owner to type `dq_transcribe` in Termux (shortcut for `scripts/start_dq.sh`, which starts the agent, the server and Chrome). Start with read-only probe scripts. Tasks run unattended with the owner's permissions, so keep them small and non-destructive.
 
-**Remind the owner first (he asked for these reminders):** (1) send a photo of a current DQ slip; (2) do the radio-cable dry run before Friday 2026-10-16 (volume via the TOO LOUD indicator, sliders, USB-C adapter as Chrome's mic). See `ai_docs/product_plan.md` section 9b.
+**Remind the owner first (he asked for these reminders):** do the radio-cable dry run before Friday 2026-10-16 (volume via the TOO LOUD indicator, sliders, USB-C adapter as Chrome's mic). See `ai_docs/product_plan.md` section 9b.
 
 **Next steps (confirm with the owner before building):**
 1. Owner records 2-3 hours of FRS audio (Friday 2026-10-16), with the event/heat/lane of every DQ as ground truth. Afterward: inspect clips, tune thresholds (`SILENCE_DBFS`, `TURN_GAP_SECONDS`, capture levels), and judge transcript quality using the stored raw data.
-2. Import the DQ slip codes and descriptions (from the owner's photo) as versioned reference data.
+2. DQ slip codes are in `reference/dq_codes/` (rev. 1/24 current, rev. 7/19 kept). Use them for the description pick list and the matcher.
 3. Design the DQ data model (meet → day → session; DQ with several infractions; append-only state history) and the touch-friendly call-linking workflow.
 4. Measure whisper speed repeatably (`tiny`, `base`, `small`), and benchmark llama.cpp model sizes on the Friday audio.
 5. Inspect the Hy-Tek Meet Manager file format once the owner provides Friday's file.
