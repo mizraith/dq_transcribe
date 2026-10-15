@@ -1,0 +1,12 @@
+task: 20261015T014605Z_export_clips_25_52
+started: 2026-10-14T18:46:19-07:00
+finished: 2026-10-14T18:46:22-07:00
+work_repo_commit: 348bc76
+exit_code: 0
+--- output ---
+28 clips, 51 utterances, 314466 bytes
+remote: 
+remote: Create a pull request for 'data-export' on GitHub by visiting:        
+remote:      https://github.com/mizraith/dq_transcribe/pull/new/data-export        
+remote: 
+pushed
