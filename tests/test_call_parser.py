@@ -88,6 +88,19 @@ class ParseCallGroupTests(unittest.TestCase):
         calls = parse_call_group(utterances("Event 2, heat 2, lane 4, shoulders past vertical, have to touch."))
         self.assertNotIn("No touch at turn", calls[0].infractions)
 
+    def test_slip_codes_from_stroke_clues(self) -> None:  # clips 29, 42, 51
+        fly = parse_call_group(utterances("Event 1, heat 2, lane 5. Breaststroke kick, underwater recovery and a one hand touch."))[0]
+        self.assertEqual((fly.stroke, fly.codes), ("Butterfly", ["1B", "1F", "1J"]))  # "breaststroke kick" is a fly infraction
+        named = parse_call_group(utterances("Event 21, heat 4, lane 5, scissors kick in the butterfly."))[0]
+        self.assertEqual((named.stroke, named.codes), ("Butterfly", ["1C"]))
+        stroke_free = parse_call_group(utterances("Event 20, heat 1, lane 1, did not finish."))[0]
+        self.assertEqual(stroke_free.codes, ["7C"])
+
+    def test_unknown_stroke_leaves_code_open_with_options(self) -> None:  # clip 26
+        call = parse_call_group(utterances("Event 1, heat 2, lane 3, on the turn, one hand touch."))[0]
+        self.assertEqual((call.stroke, call.codes, call.code_options), (None, [None], [["1J", "3J"]]))
+        self.assertIn("slip code depends on the stroke", call.flags)
+
     def test_acknowledgments(self) -> None:
         for text in ("Accepted.", "Got it.", "Roger that.", "Good one. Acknowledged. Accepted.", "Confirmed"):
             self.assertTrue(is_acknowledgment(text), text)

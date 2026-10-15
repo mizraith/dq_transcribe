@@ -81,6 +81,16 @@ class DqStoreTests(unittest.TestCase):
         with self.assertRaises(DqError):
             self.store.change_state(1, "published-ish")
 
+    def test_event_stroke_learned_from_a_saved_dq(self) -> None:
+        self._add_transcribed_clip(["Event 6, heat 4, lanes 1 and 3, scissors kick.", "Accepted."])
+        self.assertEqual([c["codes"] for c in self.store.candidates(None)], [[None], [None]])
+        first = self.store.candidates(None)[0]
+        self.store.create_dq({"event": "6", "lane": "1", constants.REQUEST_KEY_CANDIDATE_KEY: first["key"],
+                              "infractions": [{"description": "Kick: scissors", "code": "3C", "code_options": ["1C", "3C"]}]}, None)
+        remaining = self.store.candidates(None)
+        self.assertEqual([(c["lane"], c["codes"], c["stroke"]) for c in remaining], [("3", ["3C"], "Breaststroke")])
+        self.assertEqual(self.store.list_dqs(None)[0]["infractions"][0]["code_options"], ["1C", "3C"])
+
     def test_dq_codes_are_available(self) -> None:
         codes = load_dq_codes()
         self.assertIn("2A", [row["code"] for row in codes])

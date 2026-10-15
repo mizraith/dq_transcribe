@@ -28,6 +28,14 @@ from typing import Any
 from dq_transcribe.text_normalization import normalize_spoken_numbers, tokenize
 
 PHRASES_PATH = Path(__file__).parent / "data" / "infraction_phrases.csv"
+CODES_COLUMN = "codes_rev_2024_01"
+ANY_STROKE = "*"
+# Stroke names as said on the radio (one or two words). Bare "fly", "back" and
+# "breast" are not used: they appear inside other phrases ("towards the breast").
+STROKE_WORDS = {
+    ("butterfly",): "Butterfly", ("breaststroke",): "Breaststroke", ("breast", "stroke"): "Breaststroke",
+    ("backstroke",): "Backstroke", ("back", "stroke"): "Backstroke", ("freestyle",): "Freestyle",
+}
 
 # Similarity needed for a fuzzy phrase match (1.0 = exact). Short phrases must
 # match exactly, since a loose match on two words is too often wrong
@@ -53,6 +61,7 @@ FLAG_HEAT_CARRIED = "heat taken from an earlier call"
 FLAG_CORRECTED = "the caller corrected a number"
 FLAG_NO_INFRACTION = "infraction not recognized"
 FLAG_NOT_UNDERSTOOD = "call not understood; listen to the audio"
+FLAG_CODE_NEEDS_STROKE = "slip code depends on the stroke"
 # An utterance this long with nothing recognized is still shown, so no call is lost.
 UNDERSTOOD_MIN_WORDS = 4
 FLAG_FUZZY = "infraction matched loosely"
@@ -60,11 +69,19 @@ FLAG_FUZZY = "infraction matched loosely"
 
 @dataclass(frozen=True)
 class InfractionPhrase:
-    """A spoken phrase that names an infraction."""
+    """A spoken phrase that names an infraction.
+
+    Attributes:
+        words: The phrase's words.
+        description: Short description shown to the admin.
+        stroke: The stroke this infraction belongs to, if only one.
+        codes: DQ slip code by stroke ("*" = any stroke), for the current slip revision.
+    """
 
     words: tuple[str, ...]
     description: str
     stroke: str
+    codes: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -86,7 +103,12 @@ class CandidateCall:
     heat: str | None = None
     lane: str | None = None
     infractions: list[str] = field(default_factory=list)
+    codes: list[str | None] = field(default_factory=list)  # slip code per infraction, if it could be chosen
+    code_options: list[list[str]] = field(default_factory=list)  # possible codes per infraction
+    stroke: str | None = None  # the stroke, if it could be worked out
     strokes: list[str] = field(default_factory=list)
+    stroke_mentions: list[str] = field(default_factory=list)
+    _code_maps: list[dict[str, str]] = field(default_factory=list, repr=False)
     phases: list[str] = field(default_factory=list)
     turn_number: str | None = None
     accepted: bool = False
@@ -98,6 +120,7 @@ class CandidateCall:
         """JSON-friendly form."""
         return {
             "event": self.event, "heat": self.heat, "lane": self.lane, "infractions": self.infractions,
+            "codes": self.codes, "code_options": self.code_options, "stroke": self.stroke,
             "strokes": self.strokes, "phases": self.phases, "turn_number": self.turn_number,
             "accepted": self.accepted, "flags": self.flags, "excerpt": self.excerpt,
             "evidence": [vars(item) for item in self.evidence],
@@ -109,9 +132,22 @@ def load_phrases(path: Path = PHRASES_PATH) -> list[InfractionPhrase]:
     with path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     phrases = [
-        InfractionPhrase(tuple(_words(row["phrase"])), row["description"], row["stroke"] or "") for row in rows
+        InfractionPhrase(
+            tuple(_words(row["phrase"])), row["description"], row["stroke"] or "", _parse_codes(row.get(CODES_COLUMN) or "")
+        )
+        for row in rows
     ]
     return sorted(phrases, key=lambda phrase: -len(phrase.words))
+
+
+def _parse_codes(text: str) -> dict[str, str]:
+    """Read "Butterfly=1J;Breaststroke=3J" into a dictionary."""
+    codes: dict[str, str] = {}
+    for item in text.split(";"):
+        if "=" in item:
+            stroke, code = item.split("=", 1)
+            codes[stroke.strip()] = code.strip()
+    return codes
 
 
 def _words(text: str) -> list[str]:
@@ -130,14 +166,16 @@ def is_acknowledgment(text: str) -> bool:
     return any(tuple(words[i:i + 2]) == phrase for phrase in ACK_KEY_PHRASES for i in range(len(words) - 1))
 
 
-def find_infractions(words: list[str], phrases: list[InfractionPhrase]) -> list[tuple[int, InfractionPhrase, float]]:
+def find_infractions(
+    words: list[str], phrases: list[InfractionPhrase]
+) -> list[tuple[int, InfractionPhrase, float, int]]:
     """Find infraction phrases in a word list (exact or close matches, no overlaps).
 
     Returns:
-        ``(word_index, phrase, similarity)`` for each match, in text order.
+        ``(word_index, phrase, similarity, word_count)`` for each match, in text order.
     """
     taken = [False] * len(words)
-    matches: list[tuple[int, InfractionPhrase, float]] = []
+    matches: list[tuple[int, InfractionPhrase, float, int]] = []
     for phrase in phrases:
         size = len(phrase.words)
         target = " ".join(phrase.words)
@@ -160,7 +198,7 @@ def find_infractions(words: list[str], phrases: list[InfractionPhrase]) -> list[
                 else:
                     continue
                 if ratio >= PHRASE_MATCH_MIN_RATIO:
-                    matches.append((start, phrase, ratio))
+                    matches.append((start, phrase, ratio, window_size))
                     for position in range(start, start + window_size):
                         taken[position] = True
     return sorted(matches, key=lambda match: match[0])
@@ -175,7 +213,8 @@ class _LaneGroup:
     event: str | None
     heat: str | None
     corrected: bool = False
-    infractions: list[tuple[int, InfractionPhrase, float]] = field(default_factory=list)
+    infractions: list[tuple[int, InfractionPhrase, float, int]] = field(default_factory=list)
+    stroke_mentions: list[str] = field(default_factory=list)
 
 
 def _read_numbers(words: list[str], index: int, key: str) -> tuple[list[str], int]:
@@ -263,14 +302,28 @@ def parse_utterance(text: str, phrases: list[InfractionPhrase]) -> tuple[list[_L
                 groups.append(_LaneGroup(index, list(numbers), context[KEY_EVENT], context[KEY_HEAT]))
             correction_pending = False
         index = next_index
-    for match in infraction_matches:
-        position = match[0]
+    def group_for(position: int) -> _LaneGroup:
+        """The lane group that something said at ``position`` belongs to."""
         before = [group for group in groups if group.start <= position]
         target = before[-1] if before else (groups[0] if groups else None)
         if target is None:
             target = _LaneGroup(position, [], context[KEY_EVENT], context[KEY_HEAT])
             groups.append(target)
-        target.infractions.append(match)
+        return target
+
+    for match in infraction_matches:
+        group_for(match[0]).infractions.append(match)
+    # Stroke names said outside infraction phrases ("butterfly kick" names a
+    # breaststroke infraction, so its "butterfly" is not a stroke mention).
+    inside_phrase = {position for start, _, _, length in infraction_matches for position in range(start, start + length)}
+    for position in range(len(words)):
+        for stroke_words, stroke in STROKE_WORDS.items():
+            span = range(position, position + len(stroke_words))
+            if tuple(words[position:position + len(stroke_words)]) == stroke_words and not inside_phrase.intersection(span):
+                if groups:
+                    target = group_for(position)
+                    if stroke not in target.stroke_mentions:
+                        target.stroke_mentions.append(stroke)
     return groups, context, saw_correction
 
 
@@ -334,6 +387,7 @@ def parse_call_group(utterances: list[dict[str, Any]], phrases: list[InfractionP
         for key in (KEY_EVENT, KEY_HEAT):
             group_context[key] = context[key] or group_context[key]
     for call in calls:
+        choose_codes(call)
         _final_flags(call)
     return calls
 
@@ -368,9 +422,13 @@ def _fill_call(
         call.flags.append(FLAG_HEAT_CARRIED)
     if group.corrected:
         call.flags.append(FLAG_CORRECTED)
-    for _, phrase, ratio in group.infractions:
+    for stroke in group.stroke_mentions:
+        if stroke not in call.stroke_mentions:
+            call.stroke_mentions.append(stroke)
+    for _, phrase, ratio, _ in group.infractions:
         if phrase.description not in call.infractions:
             call.infractions.append(phrase.description)
+            call._code_maps.append(phrase.codes)
         if phrase.stroke and phrase.stroke not in call.strokes:
             call.strokes.append(phrase.stroke)
         if ratio < 1.0:
@@ -382,6 +440,46 @@ def _fill_call(
     if all(item.utterance_id != span.utterance_id for item in call.evidence):
         call.evidence.append(span)
         call.excerpt = (call.excerpt + " / " if call.excerpt else "") + text
+
+
+def stroke_clues(call: CandidateCall) -> set[str]:
+    """Strokes the call itself points to: a stroke named in it, or else infractions
+    that exist in only one stroke (underwater recovery is butterfly)."""
+    if len(set(call.stroke_mentions)) == 1:
+        return set(call.stroke_mentions)
+    return {next(iter(codes)) for codes in call._code_maps if len(codes) == 1 and ANY_STROKE not in codes}
+
+
+def choose_codes(call: CandidateCall, event_stroke: str | None = None) -> None:
+    """Work out the stroke and pick a DQ slip code for each infraction where possible.
+
+    Args:
+        call: The detected call (its codes and flags are updated).
+        event_stroke: The stroke of the call's event if known from elsewhere (another
+            call in the same event, a saved DQ, or later the Meet Manager file). Used
+            only when the call itself gives no single stroke.
+    """
+    call.flags = [flag for flag in call.flags if flag != FLAG_CODE_NEEDS_STROKE]
+    clues = stroke_clues(call)
+    if len(clues) == 1:
+        call.stroke = next(iter(clues))
+    else:
+        call.stroke = event_stroke if not clues else None
+    call.codes, call.code_options = [], []
+    for codes in call._code_maps:
+        options = sorted(set(codes.values()))
+        if ANY_STROKE in codes:
+            chosen = codes[ANY_STROKE]
+        elif call.stroke is not None and call.stroke in codes:
+            chosen = codes[call.stroke]
+        elif len(options) == 1:
+            chosen = options[0]
+        else:
+            chosen = None
+        call.codes.append(chosen)
+        call.code_options.append(options)
+    if any(code is None and options for code, options in zip(call.codes, call.code_options)):
+        call.flags.append(FLAG_CODE_NEEDS_STROKE)
 
 
 def _final_flags(call: CandidateCall) -> None:

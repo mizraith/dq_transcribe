@@ -21,6 +21,7 @@ Tables (created by ``DqStore.initialize`` in the app's SQLite file):
 
 from __future__ import annotations
 
+import copy
 import csv
 import json
 import re
@@ -28,7 +29,7 @@ import sqlite3
 from typing import Any
 
 from dq_transcribe import constants
-from dq_transcribe.call_parser import CandidateCall, load_phrases, parse_call_group
+from dq_transcribe.call_parser import CandidateCall, choose_codes, load_phrases, parse_call_group, stroke_clues
 from dq_transcribe.database import Database, utc_now_iso
 
 _CREATE_TABLES = (
@@ -56,7 +57,8 @@ _CREATE_TABLES = (
         code TEXT,
         slip_revision TEXT,
         phases TEXT,
-        detail TEXT
+        detail TEXT,
+        code_options TEXT
     )
     """,
     """
@@ -94,6 +96,8 @@ _EVENT_SORT_PATTERN = re.compile(r"^(\d+)(.*)$")
 # group's turns or their text change (parsing every group on every page refresh
 # was too slow on the tablet). The cache is cleared when it grows past this size.
 _PARSE_CACHE_LIMIT = 2000
+# The first character of a stroke's slip code (rev 2024-01): 1 butterfly, 2 back, 3 breast, 4 free.
+_CODE_PREFIX_TO_STROKE = {"1": "Butterfly", "2": "Backstroke", "3": "Breaststroke", "4": "Freestyle"}
 _UNKNOWN_SORT_VALUE = 10**9  # blanks sort last
 
 
@@ -135,10 +139,13 @@ class DqStore:
         self._parse_cache: dict[tuple, list[CandidateCall]] = {}
 
     def initialize(self) -> None:
-        """Create the DQ tables if they do not exist."""
+        """Create the DQ tables if they do not exist, and add columns added since."""
         with self._database.connection() as connection:
             for statement in _CREATE_TABLES:
                 connection.execute(statement)
+            existing = {row["name"] for row in connection.execute("PRAGMA table_info(dq_infractions)")}
+            if "code_options" not in existing:
+                connection.execute("ALTER TABLE dq_infractions ADD COLUMN code_options TEXT")
 
     # --- Detected calls ------------------------------------------------------
 
@@ -159,7 +166,7 @@ class DqStore:
         groups: dict[int, list[dict[str, Any]]] = {}
         for clip in clips:
             groups.setdefault(clip["group_id"], []).append(clip)
-        results: list[dict[str, Any]] = []
+        parsed: list[tuple[int, CandidateCall]] = []
         for group_id, group_clips in groups.items():
             utterances = [
                 {
@@ -172,11 +179,33 @@ class DqStore:
                 for clip in sorted(group_clips, key=lambda item: item["id"])
                 for utterance in clip["utterances"]
             ]
-            for call in self._parse_cached(utterances):
-                key = candidate_key(call)
-                if key not in used:
-                    results.append({**call.to_dict(), "key": key, "group_id": group_id})
+            parsed.extend((group_id, copy.deepcopy(call)) for call in self._parse_cached(utterances))
+        # Every call in an event has the same stroke: learn each event's stroke from
+        # the calls and saved DQs that reveal it, then use it for the other calls.
+        event_strokes = self._event_strokes(meet_id, [call for _, call in parsed])
+        results: list[dict[str, Any]] = []
+        for group_id, call in parsed:
+            if call.event in event_strokes:
+                choose_codes(call, event_strokes[call.event])
+            key = candidate_key(call)
+            if key not in used:
+                results.append({**call.to_dict(), "key": key, "group_id": group_id})
         return results
+
+    def _event_strokes(self, meet_id: int | None, calls: list[CandidateCall]) -> dict[str, str]:
+        """Each event's stroke where the evidence agrees (events with mixed clues, such as an IM, are left out)."""
+        clues: dict[str, set[str]] = {}
+        for call in calls:
+            if call.event:
+                clues.setdefault(call.event, set()).update(stroke_clues(call))
+        for dq in self.list_dqs(meet_id):
+            if not dq["event"]:
+                continue
+            for infraction in dq["infractions"]:
+                stroke = _CODE_PREFIX_TO_STROKE.get((infraction["code"] or " ")[0])
+                if stroke:
+                    clues.setdefault(dq["event"], set()).add(stroke)
+        return {event: next(iter(strokes)) for event, strokes in clues.items() if len(strokes) == 1}
 
     def _parse_cached(self, utterances: list[dict[str, Any]]) -> list[CandidateCall]:
         """Parse a group's turns, reusing the last result if nothing in the group changed."""
@@ -303,9 +332,13 @@ class DqStore:
             dqs = [dict(row) for row in rows]
             for dq in dqs:
                 dq["infractions"] = [
-                    {**dict(row), "phases": json.loads(row["phases"] or "[]")}
+                    {
+                        **dict(row),
+                        "phases": json.loads(row["phases"] or "[]"),
+                        "code_options": json.loads(row["code_options"] or "[]"),
+                    }
                     for row in connection.execute(
-                        "SELECT description, code, slip_revision, phases, detail FROM dq_infractions "
+                        "SELECT description, code, slip_revision, phases, detail, code_options FROM dq_infractions "
                         "WHERE dq_id = ? ORDER BY position",
                         (dq["id"],),
                     )
@@ -348,8 +381,12 @@ def _text_fields(payload: dict[str, Any]) -> dict[str, str | None]:
     return fields
 
 
-def _infractions(items: Any) -> list[tuple[str, str | None, str | None, str, str | None]]:
-    """Validated infraction rows: (description, code, slip_revision, phases_json, detail)."""
+def _infractions(items: Any) -> list[tuple[str, str | None, str | None, str, str | None, str]]:
+    """Validated infraction rows: (description, code, slip_revision, phases_json, detail, code_options_json).
+
+    ``code_options`` are the slip codes this infraction could be (for example
+    ["1J", "3J"] for a one hand touch); the code picker lists them first.
+    """
     if not isinstance(items, list):
         raise DqError("infractions must be a list")
     rows = []
@@ -360,6 +397,9 @@ def _infractions(items: Any) -> list[tuple[str, str | None, str | None, str, str
         if not isinstance(phases, list) or any(phase not in constants.RACE_PHASES for phase in phases):
             raise DqError(f"phases must be some of {', '.join(constants.RACE_PHASES)}")
         code = item.get("code") or None
+        options = item.get("code_options") or []
+        if not isinstance(options, list) or not all(isinstance(option, str) for option in options):
+            raise DqError("code_options must be a list of codes")
         rows.append(
             (
                 item["description"].strip()[: constants.MAX_DQ_FIELD_CHARS],
@@ -367,6 +407,7 @@ def _infractions(items: Any) -> list[tuple[str, str | None, str | None, str, str
                 str(item.get("slip_revision") or constants.CURRENT_SLIP_REVISION) if code else None,
                 json.dumps(phases),
                 (str(item["detail"])[: constants.MAX_DQ_FIELD_CHARS] if item.get("detail") else None),
+                json.dumps(options[:20]),
             )
         )
     return rows
@@ -401,7 +442,7 @@ def _replace_infractions(connection: sqlite3.Connection, dq_id: int, rows: list[
     """Replace a DQ's infractions (inside the caller's transaction)."""
     connection.execute("DELETE FROM dq_infractions WHERE dq_id = ?", (dq_id,))
     connection.executemany(
-        "INSERT INTO dq_infractions (dq_id, position, description, code, slip_revision, phases, detail) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO dq_infractions (dq_id, position, description, code, slip_revision, phases, detail, code_options) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [(dq_id, position, *row) for position, row in enumerate(rows)],
     )

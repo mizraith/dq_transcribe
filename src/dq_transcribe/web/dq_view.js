@@ -96,7 +96,11 @@ function buildCandidateSection(groupId) {
     const row = makeElement("div", "candidate");
     const summary = makeElement("div", "candidate-summary");
     summary.append(makeElement("strong", "", eventHeatLane(candidate)));
-    summary.append(makeElement("span", "", " " + (candidate.infractions.join("; ") || "infraction?")));
+    summary.append(makeElement("span", "", " " + (candidate.infractions.map((description, index) =>
+      description + codeHint(candidate.codes[index], candidate.code_options[index])).join("; ") || "infraction?")));
+    if (candidate.stroke) {
+      summary.append(makeElement("span", "muted", " · " + candidate.stroke));
+    }
     if (candidate.phases.length) {
       summary.append(makeElement("span", "muted", " · " + candidate.phases.join(", ")));
     }
@@ -119,11 +123,24 @@ function buildCandidateSection(groupId) {
   return section;
 }
 
+/** " (3C)" when the code is known, " (1J or 3J?)" when it depends on the stroke. */
+function codeHint(code, options) {
+  if (code) {
+    return " (" + code + ")";
+  }
+  return options && options.length ? " (" + options.join(" or ") + "?)" : "";
+}
+
 /** Turn a detected call into a DQ (one tap). */
 async function createDqFromCandidate(candidate) {
   const body = {
     event: candidate.event, heat: candidate.heat, lane: candidate.lane, accepted: candidate.accepted,
-    infractions: candidate.infractions.map((description) => ({ description: description, phases: candidate.phases })),
+    infractions: candidate.infractions.map((description, index) => ({
+      description: description,
+      code: candidate.codes[index] || null,
+      code_options: candidate.code_options[index] || [],
+      phases: candidate.phases,
+    })),
     evidence: candidate.evidence,
   };
   body[CONFIG.candidateKeyKey] = candidate.key;
@@ -223,6 +240,13 @@ function buildDqCard(dq) {
   if (dq.swimmer || dq.club) {
     summary.append(makeElement("span", "muted", " · " + [dq.swimmer, dq.club].filter(Boolean).join(", ")));
   }
+  // Chevron at the right: points right when closed, down when open.
+  const expanded = expandedDqId === dq.id;
+  const chevron = makeElement("span", "dq-chevron" + (expanded ? " open" : ""), "\u203A");
+  chevron.setAttribute("aria-hidden", "true");
+  summary.append(chevron);
+  summary.setAttribute("aria-expanded", expanded ? "true" : "false");
+  summary.title = expanded ? "Tap to close" : "Tap to review and edit";
   summary.addEventListener("click", () => {
     expandedDqId = expandedDqId === dq.id ? null : dq.id;
     forceRefresh();
@@ -278,11 +302,40 @@ function buildField(dq, name) {
   return wrapper;
 }
 
-/** The picker of DQ slip codes, grouped by stroke section. */
-function buildCodePicker(selectedCode) {
+/** Option label for a slip row, e.g. "3J · Breaststroke · Touch: One hand". */
+function codeLabel(row, withSection) {
+  return (row.code ? row.code + " · " : "") + (withSection ? row.section + " · " : "") + (row.group ? row.group + ": " : "") + row.description;
+}
+
+/**
+ * The slip codes an infraction could be: the ones saved with it (from the call
+ * detector), or else slip rows whose words all appear in its description.
+ */
+function likelyCodes(infraction) {
+  if (infraction.code_options && infraction.code_options.length) {
+    return infraction.code_options;
+  }
+  const words = (infraction.description || "").toLowerCase();
+  if (!words) {
+    return [];
+  }
+  return dqCodes
+    .filter((row) => row.code && row.description.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).every((word) => words.includes(word)))
+    .map((row) => row.code);
+}
+
+/** The picker of DQ slip codes: the most likely codes first, then all codes by stroke. */
+function buildCodePicker(selectedCode, likely) {
   const select = document.createElement("select");
   select.className = "code-picker";
   select.append(new Option("Pick from DQ slip (rev. " + CONFIG.slipRevision + ")…", ""));
+  const likelyRows = dqCodes.filter((row) => likely.includes(row.code));
+  if (likelyRows.length) {
+    const top = document.createElement("optgroup");
+    top.label = "Most likely";
+    likelyRows.forEach((row) => top.append(new Option(codeLabel(row, true), row.code)));
+    select.append(top);
+  }
   const sections = new Map();
   for (const row of dqCodes) {
     if (!sections.has(row.section)) {
@@ -291,8 +344,7 @@ function buildCodePicker(selectedCode) {
       sections.set(row.section, group);
       select.append(group);
     }
-    const label = (row.code ? row.code + " · " : "") + (row.group ? row.group + ": " : "") + row.description;
-    sections.get(row.section).append(new Option(label, row.code || row.description));
+    sections.get(row.section).append(new Option(codeLabel(row, false), row.code || row.description));
   }
   select.value = selectedCode || "";
   return select;
@@ -306,7 +358,9 @@ function buildInfractionEditor(infraction, onRemove) {
   description.className = "infraction-description";
   description.value = infraction.description || "";
   description.placeholder = "Short description (required)";
-  const picker = buildCodePicker(infraction.code);
+  const likely = likelyCodes(infraction);
+  box.dataset.codeOptions = JSON.stringify(likely);
+  const picker = buildCodePicker(infraction.code, likely);
   picker.addEventListener("change", () => {
     const row = dqCodes.find((item) => (item.code || item.description) === picker.value);
     if (row) {
@@ -339,6 +393,7 @@ function readInfractions(container) {
       })(),
       phases: Array.from(box.querySelectorAll(".phase.on")).map((toggle) => toggle.dataset.phase),
       detail: box.querySelector(".infraction-detail").value.trim(),
+      code_options: JSON.parse(box.dataset.codeOptions || "[]"),
     }))
     .filter((item) => item.description);
 }

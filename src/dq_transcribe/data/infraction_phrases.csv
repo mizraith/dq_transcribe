@@ -1,55 +1,55 @@
-phrase,description,stroke
-one hand touch,One hand touch,
-one handed touch,One hand touch,
-non simultaneous touch,Touch: non-simultaneous,
-hands not separated,Touch: not separated,
-hands were overlapping,Touch: not separated,
-hands overlapping,Touch: not separated,
-no touch at turn,No touch at turn,
-no touch,No touch at turn,
-didn't touch,No touch at turn,
-did not touch,No touch at turn,
-alternating kick,Kick: alternating,
-scissors kick,Kick: scissors,
-scissor kick,Kick: scissors,
-butterfly kick,Kick: butterfly,Breaststroke
-breaststroke kick,Kick: breast,Butterfly
-breast kick,Kick: breast,Butterfly
-underwater recovery,Arms: underwater recovery,Butterfly
-non simultaneous arms,Arms: non-simultaneous,
-arms past hipline,Arms: past hipline,Breaststroke
-arms past hip line,Arms: past hipline,Breaststroke
-past hipline,Arms: past hipline,Breaststroke
-past hip line,Arms: past hipline,Breaststroke
-elbows recovered over water,Arms: elbows recovered over water,Breaststroke
-recovered over the water,Arms: elbows recovered over water,Breaststroke
-double pull,Cycle: double pulls/kicks,Breaststroke
-double kick,Cycle: double pulls/kicks,Breaststroke
-kick before pull,Cycle: kick before pull,Breaststroke
-head not up,Cycle: head not up before hands turn inward,Breaststroke
-shoulders past vertical,Shoulders past vertical towards the breast,Backstroke
-past vertical at turn,Past vertical at turn,Backstroke
-past vertical towards the breast,Shoulders past vertical towards the breast,Backstroke
-not on back off wall,Not on back off wall,Backstroke
-not on their back,Not on back off wall,Backstroke
-on their stomach,Not on back off wall,Backstroke
-delay initiating turn,Past vertical at turn: delay initiating turn,Backstroke
-delayed initiating turn,Past vertical at turn: delay initiating turn,Backstroke
-delay initiating arm pull,Past vertical at turn: delay initiating arm pull,Backstroke
-delayed initiating their arm pull,Past vertical at turn: delay initiating arm pull,Backstroke
-multiple strokes,Past vertical at turn: multiple strokes,Backstroke
-toes over lip of gutter,Toes over lip of gutter after the start,Backstroke
-not toward the breast off wall,Not toward the breast off wall,
-head did not break surface,Head did not break surface by 15m,
-re-submerged,Re-submerged,
-resubmerged,Re-submerged,
-did not finish,Did not finish,
-got out,Did not finish,
-false start,False start,
-declared false start,Declared false start,
-delay of meet,Delay of meet,
-early take off,Relay: early take-off,
-early takeoff,Relay: early take-off,
-changed order,Relay: changed order,
-out of sequence,IM: out of sequence,Individual Medley
-lochte rule,IM: freestyle leg swum on the back (Lochte rule),Individual Medley
+phrase,description,stroke,codes_rev_2024_01
+one hand touch,One hand touch,,Butterfly=1J;Breaststroke=3J
+one handed touch,One hand touch,,Butterfly=1J;Breaststroke=3J
+non simultaneous touch,Touch: non-simultaneous,,Butterfly=1L;Breaststroke=3L
+hands not separated,Touch: not separated,,Butterfly=1K;Breaststroke=3K
+hands were overlapping,Touch: not separated,,Butterfly=1K;Breaststroke=3K
+hands overlapping,Touch: not separated,,Butterfly=1K;Breaststroke=3K
+no touch at turn,No touch at turn,,Butterfly=1M;Backstroke=2A;Breaststroke=3M;Freestyle=4A
+no touch,No touch at turn,,Butterfly=1M;Backstroke=2A;Breaststroke=3M;Freestyle=4A
+didn't touch,No touch at turn,,Butterfly=1M;Backstroke=2A;Breaststroke=3M;Freestyle=4A
+did not touch,No touch at turn,,Butterfly=1M;Backstroke=2A;Breaststroke=3M;Freestyle=4A
+alternating kick,Kick: alternating,,Butterfly=1A;Breaststroke=3A
+scissors kick,Kick: scissors,,Butterfly=1C;Breaststroke=3C
+scissor kick,Kick: scissors,,Butterfly=1C;Breaststroke=3C
+butterfly kick,Kick: butterfly,Breaststroke,Breaststroke=3B
+breaststroke kick,Kick: breast,Butterfly,Butterfly=1B
+breast kick,Kick: breast,Butterfly,Butterfly=1B
+underwater recovery,Arms: underwater recovery,Butterfly,Butterfly=1F
+non simultaneous arms,Arms: non-simultaneous,,Butterfly=1E;Breaststroke=3E
+arms past hipline,Arms: past hipline,Breaststroke,Breaststroke=3D
+arms past hip line,Arms: past hipline,Breaststroke,Breaststroke=3D
+past hipline,Arms: past hipline,Breaststroke,Breaststroke=3D
+past hip line,Arms: past hipline,Breaststroke,Breaststroke=3D
+elbows recovered over water,Arms: elbows recovered over water,Breaststroke,Breaststroke=3H
+recovered over the water,Arms: elbows recovered over water,Breaststroke,Breaststroke=3H
+double pull,Cycle: double pulls/kicks,Breaststroke,Breaststroke=3S
+double kick,Cycle: double pulls/kicks,Breaststroke,Breaststroke=3S
+kick before pull,Cycle: kick before pull,Breaststroke,Breaststroke=3P
+head not up,Cycle: head not up before hands turn inward,Breaststroke,Breaststroke=3R
+shoulders past vertical,Shoulders past vertical towards the breast,Backstroke,Backstroke=2L
+past vertical at turn,Past vertical at turn,Backstroke,
+past vertical towards the breast,Shoulders past vertical towards the breast,Backstroke,Backstroke=2L
+not on back off wall,Not on back off wall,Backstroke,Backstroke=2H
+not on their back,Not on back off wall,Backstroke,Backstroke=2H
+on their stomach,Not on back off wall,Backstroke,Backstroke=2H
+delay initiating turn,Past vertical at turn: delay initiating turn,Backstroke,Backstroke=2C
+delayed initiating turn,Past vertical at turn: delay initiating turn,Backstroke,Backstroke=2C
+delay initiating arm pull,Past vertical at turn: delay initiating arm pull,Backstroke,Backstroke=2B
+delayed initiating their arm pull,Past vertical at turn: delay initiating arm pull,Backstroke,Backstroke=2B
+multiple strokes,Past vertical at turn: multiple strokes,Backstroke,Backstroke=2D
+toes over lip of gutter,Toes over lip of gutter after the start,Backstroke,Backstroke=2E
+not toward the breast off wall,Not toward the breast off wall,,Butterfly=1N;Breaststroke=3N
+head did not break surface,Head did not break surface by 15m,,Butterfly=1P;Backstroke=2F;Freestyle=4B
+re-submerged,Re-submerged,,Butterfly=1R;Backstroke=2G;Freestyle=4C
+resubmerged,Re-submerged,,Butterfly=1R;Backstroke=2G;Freestyle=4C
+did not finish,Did not finish,,*=7C
+got out,Did not finish,,*=7C
+false start,False start,,*=7A
+declared false start,Declared false start,,*=7B
+delay of meet,Delay of meet,,*=7D
+early take off,Relay: early take-off,,
+early takeoff,Relay: early take-off,,
+changed order,Relay: changed order,,*=6L
+out of sequence,IM: out of sequence,Individual Medley,*=5B
+lochte rule,IM: freestyle leg swum on the back (Lochte rule),Individual Medley,
