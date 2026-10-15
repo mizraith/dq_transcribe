@@ -1,0 +1,76 @@
+task: whisper_flags_and_recent_text
+started: 2026-10-14T17:48:29-07:00
+finished: 2026-10-14T17:48:30-07:00
+work_repo_commit: 7d574c8
+exit_code: 0
+--- output ---
+  -bo N,     --best-of N            [5      ] number of best candidates to keep
+  -bs N,     --beam-size N          [5      ] beam size for beam search
+  -et N,     --entropy-thold N      [2.40   ] entropy threshold for decoder fail
+  -lpt N,    --logprob-thold N      [-1.00  ] log probability threshold for decoder fail
+  -nth N,    --no-speech-thold N    [0.60   ] no speech threshold
+  -tp,       --temperature N        [0.00   ] The sampling temperature, between 0 and 1
+  -tpi,      --temperature-inc N    [0.20   ] The increment of temperature, between 0 and 1
+  -nf,       --no-fallback          [false  ] do not use temperature fallback while decoding
+             --prompt PROMPT        [       ] initial prompt (max n_text_ctx/2 tokens)
+             --carry-initial-prompt [false  ] always prepend initial prompt
+  -sns,      --suppress-nst         [false  ] suppress non-speech tokens
+  --suppress-regex REGEX            [       ] regular expression matching tokens to suppress
+Voice Activity Detection (VAD) options:
+             --vad                           [false  ] enable Voice Activity Detection (VAD)
+  -vm FNAME, --vad-model FNAME               [       ] VAD model path
+  -vt N,     --vad-threshold N               [0.50   ] VAD threshold for speech recognition
+  -vspd N,   --vad-min-speech-duration-ms  N [250    ] VAD min speech duration (0.0-1.0)
+  -vsd N,    --vad-min-silence-duration-ms N [100    ] VAD min silence duration (to split segments)
+  -vmsd N,   --vad-max-speech-duration-s   N [FLT_MAX] VAD max speech duration (auto-split longer)
+  -vp N,     --vad-speech-pad-ms           N [30     ] VAD speech padding (extend segments)
+  -vo N,     --vad-samples-overlap         N [0.10   ] VAD samples overlap (seconds between segments)
+--- whisper.cpp version ---
+d1be6fd Tue Oct 6 16:10:35 2026 +0200 whisper : bump version to 1.9.5 (#4102)
+README.md
+convert-h5-to-coreml.py
+convert-h5-to-ggml.py
+convert-parakeet-to-ggml.py
+convert-pt-to-ggml.py
+convert-silero-vad-to-ggml.py
+convert-whisper-to-coreml.py
+convert-whisper-to-openvino.py
+download-coreml-model.sh
+download-ggml-model.cmd
+download-ggml-model.sh
+download-vad-model.cmd
+download-vad-model.sh
+download-vitisai-model.cmd
+download-vitisai-model.ps1
+download-vitisai-model.sh
+for-tests-ggml-base.bin
+for-tests-ggml-base.en.bin
+for-tests-ggml-large.bin
+for-tests-ggml-medium.bin
+for-tests-ggml-medium.en.bin
+for-tests-ggml-parakeet-tdt-bad-nfft0.bin
+for-tests-ggml-parakeet-tdt.bin
+for-tests-ggml-small.bin
+for-tests-ggml-small.en.bin
+for-tests-ggml-tiny.bin
+for-tests-ggml-tiny.en.bin
+for-tests-silero-v6.2.0-ggml.bin
+generate-coreml-interface.sh
+generate-coreml-model.sh
+generate-parakeet-test-model.py
+ggml-base.bin
+ggml_to_pt.py
+requirements-coreml.txt
+requirements-openvino.txt
+requirements-parakeet.txt
+--- recent utterances ---
+(6, '2026-10-15T00:42:07.102+00:00', 18.3, 0, 0, 0.0, 13.6, 'Q, events 16, 8, 4, 8, 3, butterfly kick in the breaststroke. Do you put a light kick from the breaststroke off the wall so that fits the turn?')
+(6, '2026-10-15T00:42:07.102+00:00', 18.3, 0, 1, 16.0, 18.3, 'Acknowledged.')
+(5, '2026-10-15T00:41:58.054+00:00', 2.0, 0, 0, 0.0, 2.0, '*Sounds of a man in the background*')
+(4, '2026-10-15T00:41:41.114+00:00', 14.4, 0, 0, 0.0, 2.1, '[Gunshot]')
+(4, '2026-10-15T00:41:41.114+00:00', 14.4, 0, 1, 3.4, 5.2, 'The thing is to work it.')
+(4, '2026-10-15T00:41:41.114+00:00', 14.4, 0, 2, 6.8, 14.4, 'Thank you, Event 4, 8-5-9-6, one hand touch.')
+(3, '2026-10-13T02:54:23.143+00:00', 8.3, 1, 0, 0.0, 8.3, '[Music]')
+(2, '2026-10-13T02:41:17.232+00:00', 77.4, 1, 0, 0.0, 77.4, '[Music] [Music] [Music]')
+(1, '2026-10-13T02:40:31.182+00:00', 22.9, 1, 0, 0.0, 22.9, 'Test, test, test, test. Testing, testing, boom. Boom, boom, boom, test.')
+clip count: 6
