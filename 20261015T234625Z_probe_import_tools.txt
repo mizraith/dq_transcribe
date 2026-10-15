@@ -1,0 +1,14 @@
+task: 20261015T234625Z_probe_import_tools
+started: 2026-10-15T16:46:35-07:00
+finished: 2026-10-15T16:46:35-07:00
+work_repo_commit: f111f57
+exit_code: 0
+--- output ---
+pdftotext    missing
+mdb-export   missing
+mdb-tables   missing
+unzip        /data/data/com.termux/files/usr/bin/unzip
+ModuleNotFoundError: No module named 'pypdf'
+poppler:  Installed: (none)  Candidate: 26.02.0 
+mdbtools:  Installed: (none)  Candidate: 1.0.1-1 
+Python 3.13.13
