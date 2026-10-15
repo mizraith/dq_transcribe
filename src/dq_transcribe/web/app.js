@@ -55,14 +55,25 @@ const CAPTURE_STATE_LABELS = {
 };
 const DEFAULT_INPUT_ID = "default";
 const CONFIRM_TIMEOUT_SECONDS = 8;
-// Labels for the second (refine) pass; values match the server's status names.
-const REFINE_LABELS = {
-  queued: "draft · refining soon",
-  processing: "draft · refining…",
-  done: "refined",
-  failed: "draft (refine failed)",
-  skipped: "no speech",
+// One badge per clip. "rough" = fast draft text, still waiting for the accurate
+// pass; "done" = final text. Keys are server status names.
+const CLIP_BADGES = {
+  queued: { label: "waiting", style: "queued" },
+  processing: { label: "transcribing", style: "processing" },
+  rough: { label: "rough", style: "rough" },
+  done: { label: "done", style: "done" },
+  failed: { label: "failed", style: "failed" },
 };
+const ROUGH_REFINE_STATUSES = ["queued", "processing", "failed"];
+
+/** The badge for a clip, combining the draft and refine passes. */
+function clipBadge(clip) {
+  if (clip.status !== "done") {
+    return CLIP_BADGES[clip.status] || { label: clip.status, style: "" };
+  }
+  const rough = ROUGH_REFINE_STATUSES.includes(clip.refine_status);
+  return rough ? CLIP_BADGES.rough : CLIP_BADGES.done;
+}
 const LEVEL_CHECK_ON_TEXT = "Stop level check";
 const LEVEL_CHECK_OFF_TEXT = "Check levels (no recording)";
 const START_BUTTON_TEXT = "Start capturing";
@@ -1075,11 +1086,12 @@ function buildClipRow(clip) {
   if (clip.duration_seconds) {
     meta.append(makeElement("span", "", clip.duration_seconds.toFixed(1) + " s"));
   }
-  const statusLabels = { queued: "waiting", processing: "transcribing", done: "done", failed: "failed" };
-  meta.append(makeElement("span", "badge " + clip.status, statusLabels[clip.status] || clip.status));
-  if (clip.status === "done" && clip.refine_status) {
-    meta.append(makeElement("span", "badge refine-" + clip.refine_status, REFINE_LABELS[clip.refine_status] || clip.refine_status));
+  const badge = clipBadge(clip);
+  const badgeElement = makeElement("span", "badge " + badge.style, badge.label);
+  if (clip.refine_status === "failed") {
+    badgeElement.title = "The accurate pass failed; showing the rough text.";
   }
+  meta.append(badgeElement);
 
   const audio = document.createElement("audio");
   audio.controls = true;

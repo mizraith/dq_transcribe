@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -153,6 +153,14 @@ class Database:
             path: Database file; its folder is created by ``initialize``.
         """
         self._path = path
+
+    def connection(self) -> AbstractContextManager[sqlite3.Connection]:
+        """Public form of ``_connection`` for other stores sharing this database file."""
+        return self._connection()
+
+    def transaction(self) -> AbstractContextManager[sqlite3.Connection]:
+        """Public form of ``_transaction`` for other stores sharing this database file."""
+        return self._transaction()
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:

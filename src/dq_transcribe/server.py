@@ -26,6 +26,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from dq_transcribe import constants
 from dq_transcribe.database import Database
+from dq_transcribe.dq_store import DqError, DqStore, load_dq_codes
 from dq_transcribe.grouping import normalize_timestamp
 from dq_transcribe.transcript import format_transcript_text
 from dq_transcribe.worker import TranscriptionWorker
@@ -55,6 +56,8 @@ _MEET_ACTIVATE_PATTERN = re.compile(
 )
 _MEET_ASSIGN_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_ASSIGN_SUFFIX)}$")
 _NON_FILENAME_CHARACTERS = re.compile(r"[^a-z0-9]+")
+_DQ_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_DQS)}/(\d+)$")
+_DQ_STATE_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_DQS)}/(\d+){re.escape(constants.DQ_STATE_SUFFIX)}$")
 
 
 def meet_folder_name(meet: dict[str, Any]) -> str:
@@ -130,6 +133,21 @@ def build_web_config() -> dict[str, Any]:
         "deleteSuffix": constants.CLIP_DELETE_SUFFIX,
         "viewQueryKey": constants.QUERY_KEY_VIEW,
         "viewTrash": constants.VIEW_TRASH,
+        "dqsRoute": constants.ROUTE_DQS,
+        "dqsKey": constants.RESPONSE_KEY_DQS,
+        "dqStateSuffix": constants.DQ_STATE_SUFFIX,
+        "candidatesRoute": constants.ROUTE_CANDIDATES,
+        "candidatesKey": constants.RESPONSE_KEY_CANDIDATES,
+        "dismissRoute": constants.ROUTE_DISMISS_CANDIDATE,
+        "codesRoute": constants.ROUTE_DQ_CODES,
+        "codesKey": constants.RESPONSE_KEY_CODES,
+        "candidateKeyKey": constants.REQUEST_KEY_CANDIDATE_KEY,
+        "stateKey": constants.REQUEST_KEY_STATE,
+        "dqStates": {"called": constants.DQ_STATE_CALLED, "accepted": constants.DQ_STATE_ACCEPTED, "declined": constants.DQ_STATE_DECLINED},
+        "racePhases": list(constants.RACE_PHASES),
+        "officialRoles": list(constants.OFFICIAL_ROLES),
+        "slipRevision": constants.CURRENT_SLIP_REVISION,
+        "evidenceRoleCall": constants.EVIDENCE_ROLE_CALL,
         "meetsRoute": constants.ROUTE_MEETS,
         "meetsKey": constants.RESPONSE_KEY_MEETS,
         "activeMeetKey": constants.RESPONSE_KEY_ACTIVE_MEET_ID,
@@ -249,6 +267,8 @@ class DqTranscribeServer(ThreadingHTTPServer):
         self.recordings_directory = recordings_directory
         self.recordings_directory.mkdir(parents=True, exist_ok=True)
         self.database = database
+        self.dq_store = DqStore(database)
+        self.dq_store.initialize()
         self.worker = worker
         super().__init__(server_address, RequestHandler)
 
@@ -285,6 +305,14 @@ class RequestHandler(BaseHTTPRequestHandler):
                 meet_id=database.get_active_meet_id(),
             )
             self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_CLIPS: clips})
+        elif path == constants.ROUTE_DQS:
+            dqs = self.server.dq_store.list_dqs(database.get_active_meet_id())
+            self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_DQS: dqs})
+        elif path == constants.ROUTE_CANDIDATES:
+            candidates = self.server.dq_store.candidates(database.get_active_meet_id())
+            self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_CANDIDATES: candidates})
+        elif path == constants.ROUTE_DQ_CODES:
+            self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_CODES: load_dq_codes()})
         elif path == constants.ROUTE_MEETS:
             self._send_json(
                 HTTPStatus.OK,
@@ -325,6 +353,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_reprocess(int(match.group(1)))
         elif path == constants.ROUTE_MEETS:
             self._handle_create_meet()
+        elif path == constants.ROUTE_DQS:
+            self._handle_create_dq()
+        elif path == constants.ROUTE_DISMISS_CANDIDATE:
+            self._handle_dismiss_candidate()
+        elif (match := _DQ_STATE_PATTERN.match(path)) is not None:
+            self._handle_dq_state(int(match.group(1)))
+        elif (match := _DQ_PATTERN.match(path)) is not None:
+            self._handle_update_dq(int(match.group(1)))
         elif (match := _MEET_ACTIVATE_PATTERN.match(path)) is not None:
             self._handle_activate_meet(int(match.group(1)))
         elif (match := _MEET_ASSIGN_PATTERN.match(path)) is not None:
@@ -463,6 +499,67 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         count = self.server.database.assign_clips_to_meet(target, clip_ids)
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_COUNT: count})
+
+    def _handle_create_dq(self) -> None:
+        """Create a DQ (from a detected call or by hand) in the active meet."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        try:
+            dq_id = self.server.dq_store.create_dq(payload, self.server.database.get_active_meet_id())
+        except DqError as error:
+            self._send_json_error(HTTPStatus.BAD_REQUEST, str(error))
+            return
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_DQ_ID: dq_id})
+
+    def _handle_update_dq(self, dq_id: int) -> None:
+        """Change a DQ's fields or infractions."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        try:
+            found = self.server.dq_store.update_dq(dq_id, payload)
+        except DqError as error:
+            self._send_json_error(HTTPStatus.BAD_REQUEST, str(error))
+            return
+        if not found:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such DQ")
+            return
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _handle_dq_state(self, dq_id: int) -> None:
+        """Move a DQ to a new state (recorded in its history)."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        by_name = payload.get(constants.REQUEST_KEY_BY)
+        note = payload.get(constants.REQUEST_KEY_NOTE)
+        try:
+            found = self.server.dq_store.change_state(
+                dq_id,
+                str(payload.get(constants.REQUEST_KEY_STATE)),
+                by_name if isinstance(by_name, str) else None,
+                note if isinstance(note, str) else None,
+            )
+        except DqError as error:
+            self._send_json_error(HTTPStatus.BAD_REQUEST, str(error))
+            return
+        if not found:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such DQ")
+            return
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _handle_dismiss_candidate(self) -> None:
+        """Hide a detected call."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        key = payload.get(constants.REQUEST_KEY_CANDIDATE_KEY)
+        if not isinstance(key, str) or not key:
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "Expected a candidate_key")
+            return
+        self.server.dq_store.dismiss_candidate(key, self.server.database.get_active_meet_id())
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
 
     def _handle_trash(self, clip_id: int) -> None:
         """Move a clip to the trash bin."""

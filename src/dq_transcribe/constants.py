@@ -166,6 +166,41 @@ RESPONSE_KEY_COUNT = "count"
 MAX_MEET_NAME_CHARS = 100
 MEET_START_DATE_FORMAT = "%Y-%m-%d"
 SETTING_ACTIVE_MEET_ID = "active_meet_id"
+# --- DQs -----------------------------------------------------------------------
+DQ_STATE_CALLED = "called"
+DQ_STATE_ACCEPTED = "accepted"
+DQ_STATE_DECLINED = "declined"
+DQ_STATES = (DQ_STATE_CALLED, DQ_STATE_ACCEPTED, DQ_STATE_DECLINED)
+DQ_SOURCE_AUTO = "auto"  # created from a detected call
+DQ_SOURCE_MANUAL = "manual"
+EVIDENCE_ROLE_CALL = "call"
+EVIDENCE_ROLE_ACKNOWLEDGMENT = "acknowledgment"
+EVIDENCE_ROLES = (EVIDENCE_ROLE_CALL, EVIDENCE_ROLE_ACKNOWLEDGMENT)
+RACE_PHASES = ("Start", "Swim", "Turn", "Finish")
+# Editable DQ fields (text) and their maximum length.
+DQ_TEXT_FIELDS = ("event", "heat", "lane", "relay_leg", "swimmer", "club", "official", "official_role", "chief_judge", "referee", "notes")
+MAX_DQ_FIELD_CHARS = 200
+OFFICIAL_ROLES = ("Judge", "Chief Judge", "Referee", "RTO", "Starter")
+ROUTE_DQS = "/api/dqs"  # GET list (active meet), POST create
+DQ_STATE_SUFFIX = "/state"  # POST /api/dqs/<id>/state {"state", "by", "note"}
+ROUTE_CANDIDATES = "/api/candidates"  # GET detected calls for the active meet
+ROUTE_DISMISS_CANDIDATE = "/api/candidates/dismiss"  # POST {"candidate_key"}
+ROUTE_DQ_CODES = "/api/dq-codes"  # GET the current slip's codes for the picker
+RESPONSE_KEY_DQS = "dqs"
+RESPONSE_KEY_DQ_ID = "dq_id"
+RESPONSE_KEY_CANDIDATES = "candidates"
+RESPONSE_KEY_CODES = "codes"
+REQUEST_KEY_CANDIDATE_KEY = "candidate_key"
+REQUEST_KEY_STATE = "state"
+REQUEST_KEY_BY = "by"
+REQUEST_KEY_NOTE = "note"
+REQUEST_KEY_INFRACTIONS = "infractions"
+REQUEST_KEY_EVIDENCE = "evidence"
+# DQ slip code tables (versioned CSV files; see reference/README.md).
+REFERENCE_DIRECTORY = Path(__file__).resolve().parents[2] / "reference"
+DQ_CODES_FILENAME_FORMAT = "dq_codes_rev-{revision}.csv"
+CURRENT_SLIP_REVISION = "2024-01"
+
 # Recordings of a meet go in recordings/<start date>_<name>/<day>/ (name made file-safe).
 MEET_FOLDER_FORMAT = "{start_date}_{slug}"
 ROUTE_EXPORT = "/api/export"
