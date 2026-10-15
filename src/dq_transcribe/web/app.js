@@ -19,6 +19,7 @@ const CONFIG = ${config};
 
 const capturePanel = document.getElementById("capture-panel");
 const captureButton = document.getElementById("capture-button");
+const levelCheckButton = document.getElementById("level-check-button");
 const recLabel = document.getElementById("rec-label");
 const meterBar = document.getElementById("meter-bar");
 const meterThreshold = document.getElementById("meter-threshold");
@@ -40,11 +41,14 @@ const hangOutput = document.getElementById("hang-seconds-value");
 
 const CAPTURE_STATE_LABELS = {
   idle: "Not capturing",
+  monitoring: "Level check · not recording",
   listening: "REC · listening",
   receiving: "REC · receiving audio",
 };
 const DEFAULT_INPUT_ID = "default";
-const DELETE_CONFIRM_SECONDS = 3;
+const CONFIRM_TIMEOUT_SECONDS = 8;
+const LEVEL_CHECK_ON_TEXT = "Stop level check";
+const LEVEL_CHECK_OFF_TEXT = "Check levels (no recording)";
 const START_BUTTON_TEXT = "Start capturing";
 const STOP_BUTTON_TEXT = "Stop capturing";
 const BYTES_PER_SAMPLE = 2;
@@ -125,7 +129,7 @@ function setStatus(message) {
   statusText.textContent = message;
 }
 
-/** Switch the REC indicator and button between idle, listening and receiving. */
+/** Switch the REC indicator between idle, monitoring, listening and receiving. */
 function setCaptureState(state) {
   capturePanel.dataset.state = state;
   recLabel.textContent = CAPTURE_STATE_LABELS[state];
@@ -246,8 +250,9 @@ function encodeWav(samples, sampleRate) {
 
 // --- Capture ----------------------------------------------------------------
 
-let capturing = false;
-let audioContext = null;
+let capturing = false; // cutting and uploading clips
+let monitoring = false; // level check: the meter runs, nothing is recorded
+let audioContext = null; // non-null while the microphone is open (monitoring or capturing)
 let mediaStream = null;
 let workletNode = null;
 let wakeLock = null;
@@ -267,7 +272,7 @@ let idleLevelDbfs = null; // slow running average of the level while nothing is 
 
 /** Handle one chunk of microphone audio from the worklet. */
 function onChunk(samples) {
-  if (!capturing) {
+  if (audioContext === null) {
     return;
   }
   lastChunkAtMs = Date.now();
@@ -275,6 +280,9 @@ function onChunk(samples) {
   const level = toDbfs(rmsOf(samples));
   const clipped = isClipped(samples);
   showLevel(level, clipped);
+  if (!capturing) {
+    return; // level check only: show the meter, record nothing
+  }
   if (level >= settings.startDbfs) {
     lastAudioAtMs = lastChunkAtMs;
   }
@@ -316,7 +324,7 @@ function beginClip(chunkSeconds) {
   clipWasClipped = false;
   loudChunkCount = 0;
   clipStartedAtMs = Date.now() - clipChunks.length * chunkSeconds * MILLISECONDS_PER_SECOND;
-  setCaptureState("receiving");
+  refreshControls();
   setStatus("Receiving audio...");
 }
 
@@ -346,7 +354,7 @@ function finishClip(chunkSeconds) {
   clipChunks = null;
   clipSilentSeconds = 0;
   loudChunkCount = 0;
-  setCaptureState(capturing ? "listening" : "idle");
+  refreshControls();
 
   const durationSeconds = (chunks.length * CONFIG.chunkSize) / sourceRate;
   if (durationSeconds < CONFIG.minClipSeconds) {
@@ -389,7 +397,7 @@ function showLastAudio() {
  */
 function checkCaptureHealth() {
   showLastAudio();
-  if (!capturing || audioContext === null) {
+  if (audioContext === null) {
     return;
   }
   if (audioContext.state !== "running") {
@@ -398,7 +406,7 @@ function checkCaptureHealth() {
   const trackEnded = mediaStream !== null && mediaStream.getAudioTracks().every((track) => track.readyState === "ended");
   const stalledSeconds = (Date.now() - lastChunkAtMs) / MILLISECONDS_PER_SECOND;
   if (trackEnded) {
-    setStatus("WARNING: the microphone was disconnected. Tap Stop, then Start capturing again.");
+    setStatus("WARNING: the audio input was disconnected. Choose the input again, or tap Stop and Start.");
   } else if (stalledSeconds >= CONFIG.stallSeconds) {
     setStatus("WARNING: the audio pipeline stalled for " + Math.round(stalledSeconds) + " s (not just silence). Keep this tab open and the screen on.");
   }
@@ -432,8 +440,8 @@ async function releaseWakeLock() {
   wakeLock = null;
 }
 
-/** Stop the microphone and close the audio graph. */
-async function teardownAudio() {
+/** Stop the microphone and close the audio graph (used by both level check and capture). */
+async function closeAudio() {
   if (watchdogTimer !== null) {
     clearInterval(watchdogTimer);
     watchdogTimer = null;
@@ -448,46 +456,92 @@ async function teardownAudio() {
     mediaStream = null;
   }
   if (audioContext !== null) {
-    await audioContext.close();
+    const closingContext = audioContext;
     audioContext = null;
+    await closingContext.close();
   }
-  await releaseWakeLock();
+  meterBar.style.width = "0";
+  levelText.textContent = "";
+  audioInputText.textContent = "";
+}
+
+/** Open the chosen audio input and start the audio graph, if not already open. */
+async function openAudio() {
+  if (audioContext !== null) {
+    return;
+  }
+  mediaStream = await openAudioInput(resolveChoice(loadAudioInputChoice(), await listAudioInputs()));
+  showInputInUse();
+  populateAudioInputs(); // device names become available once the mic is allowed
+  const context = new AudioContext();
+  await context.audioWorklet.addModule(CONFIG.workletRoute);
+  await context.resume();
+  const source = context.createMediaStreamSource(mediaStream);
+  workletNode = new AudioWorkletNode(context, CONFIG.processorName);
+  workletNode.port.onmessage = (event) => onChunk(event.data);
+  source.connect(workletNode);
+  workletNode.connect(context.destination); // the worklet outputs silence
+  audioContext = context;
+  lastChunkAtMs = Date.now();
+  watchdogTimer = setInterval(checkCaptureHealth, CONFIG.watchdogIntervalSeconds * MILLISECONDS_PER_SECOND);
+}
+
+/** Show the right state on the REC light and buttons. */
+function refreshControls() {
+  if (capturing) {
+    setCaptureState(clipChunks === null ? "listening" : "receiving");
+  } else {
+    setCaptureState(monitoring ? "monitoring" : "idle");
+  }
+  captureButton.textContent = capturing ? STOP_BUTTON_TEXT : START_BUTTON_TEXT;
+  captureButton.classList.toggle("active", capturing);
+  levelCheckButton.textContent = monitoring ? LEVEL_CHECK_ON_TEXT : LEVEL_CHECK_OFF_TEXT;
+  levelCheckButton.classList.toggle("active", monitoring);
+  levelCheckButton.disabled = capturing; // while capturing, the meter is always live
+}
+
+/** Turn the level check (live meter, no recording) on or off. */
+async function toggleLevelCheck() {
+  levelCheckButton.disabled = true;
+  try {
+    if (monitoring) {
+      monitoring = false;
+      if (!capturing) {
+        await closeAudio();
+      }
+      setStatus("");
+    } else {
+      await openAudio();
+      monitoring = true;
+      setStatus("Level check on. Nothing is being recorded.");
+    }
+  } catch (error) {
+    monitoring = false;
+    await closeAudio();
+    setStatus("Could not open the audio input: " + error.message);
+  }
+  refreshControls();
 }
 
 /** Begin listening to the microphone. */
 async function startCapturing() {
   captureButton.disabled = true;
   try {
-    mediaStream = await openAudioInput(resolveChoice(loadAudioInputChoice(), await listAudioInputs()));
-    showInputInUse();
-    populateAudioInputs(); // device names become available once the mic is allowed
-    audioContext = new AudioContext();
-    await audioContext.audioWorklet.addModule(CONFIG.workletRoute);
-    await audioContext.resume();
-    const source = audioContext.createMediaStreamSource(mediaStream);
-    workletNode = new AudioWorkletNode(audioContext, CONFIG.processorName);
-    workletNode.port.onmessage = (event) => onChunk(event.data);
-    source.connect(workletNode);
-    workletNode.connect(audioContext.destination); // the worklet outputs silence
-
+    await openAudio(); // reuses the open input if the level check is on
     prerollChunks = [];
     clipChunks = null;
     loudChunkCount = 0;
     capturing = true;
-    lastChunkAtMs = Date.now();
-    watchdogTimer = setInterval(checkCaptureHealth, CONFIG.watchdogIntervalSeconds * MILLISECONDS_PER_SECOND);
     await acquireWakeLock();
-    captureButton.textContent = STOP_BUTTON_TEXT;
-    captureButton.classList.add("active");
-    setCaptureState("listening");
     setStatus("Capturing. Waiting for audio...");
   } catch (error) {
     capturing = false;
-    await teardownAudio();
-    setCaptureState("idle");
+    monitoring = false;
+    await closeAudio();
     setStatus("Could not start capturing: " + error.message);
   } finally {
     captureButton.disabled = false;
+    refreshControls();
   }
 }
 
@@ -498,16 +552,16 @@ async function stopCapturing() {
     finishClip(CONFIG.chunkSize / audioContext.sampleRate);
   }
   capturing = false;
-  await teardownAudio();
-  captureButton.textContent = START_BUTTON_TEXT;
-  captureButton.classList.remove("active");
-  setCaptureState("idle");
-  meterBar.style.width = "0";
-  levelText.textContent = "";
-  setStatus("Stopped.");
+  await releaseWakeLock();
+  if (!monitoring) {
+    await closeAudio();
+  }
+  setStatus(monitoring ? "Stopped recording. Level check still on." : "Stopped.");
   captureButton.disabled = false;
+  refreshControls();
 }
 
+levelCheckButton.addEventListener("click", toggleLevelCheck);
 captureButton.addEventListener("click", () => {
   if (capturing) {
     stopCapturing();
@@ -617,7 +671,7 @@ async function populateAudioInputs() {
   const chosenStillPresent = options.some((option) => option.value === chosen);
   audioInputSelect.value = chosenStillPresent ? chosen : DEFAULT_INPUT_ID;
   if (inputs.length > 0 && inputs.every((device) => !device.label)) {
-    audioInputText.textContent = "Tap Start capturing once to allow the microphone; then input names appear here.";
+    audioInputText.textContent = "Tap Check levels once to allow the microphone; then input names appear here.";
   }
 }
 
@@ -626,10 +680,25 @@ async function onAudioInputChange() {
   const selected = audioInputSelect.options[audioInputSelect.selectedIndex];
   const label = audioInputSelect.value === DEFAULT_INPUT_ID ? "" : selected.text;
   saveAudioInputChoice(audioInputSelect.value, label);
-  if (capturing) {
+  if (audioContext === null) {
+    return;
+  }
+  // Reopen the input that is running (level check and/or capture) on the new device.
+  const wasCapturing = capturing;
+  if (wasCapturing) {
     await stopCapturing();
+  }
+  await closeAudio();
+  try {
+    await openAudio();
+  } catch (error) {
+    monitoring = false;
+    setStatus("Could not open the audio input: " + error.message);
+  }
+  if (wasCapturing) {
     await startCapturing();
   }
+  refreshControls();
 }
 
 // --- Uploading --------------------------------------------------------------
@@ -768,24 +837,55 @@ function makeButton(className, text, onClick) {
   return button;
 }
 
-/** "Delete forever" button that needs a second tap within a few seconds. */
-function makeDeleteForeverButton(clip) {
-  const idleText = "Delete forever";
-  const button = makeButton("", idleText, () => {
-    if (button.dataset.armed === "yes") {
-      clipAction(clip, CONFIG.deleteSuffix, "Deleted clip #" + clip.id + " permanently.");
-      return;
-    }
-    button.dataset.armed = "yes";
-    button.textContent = "Tap again to delete";
-    button.classList.add("danger");
-    setTimeout(() => {
-      button.dataset.armed = "";
-      button.textContent = idleText;
-      button.classList.remove("danger");
-    }, DELETE_CONFIRM_SECONDS * MILLISECONDS_PER_SECOND);
-  });
-  return button;
+// A trash or delete waiting for confirmation: {clipId, kind}. Only one at a time.
+let pendingConfirm = null;
+let pendingConfirmTimer = null;
+
+const CONFIRM_KINDS = {
+  trash: {
+    question: (clip) => "Move clip #" + clip.id + " to the trash?",
+    confirmText: "Move to trash",
+    suffix: () => CONFIG.trashSuffix,
+    done: (clip) => "Moved clip #" + clip.id + " to the trash. Restore it from Trash.",
+  },
+  delete: {
+    question: (clip) => "Delete clip #" + clip.id + " forever? This cannot be undone.",
+    confirmText: "Delete forever",
+    suffix: () => CONFIG.deleteSuffix,
+    done: (clip) => "Deleted clip #" + clip.id + " permanently.",
+  },
+};
+
+/** Ask for confirmation of a trash or delete (shown in the clip's row). */
+function askToConfirm(clip, kind) {
+  clearTimeout(pendingConfirmTimer);
+  pendingConfirm = { clipId: clip.id, kind: kind };
+  pendingConfirmTimer = setTimeout(cancelConfirm, CONFIRM_TIMEOUT_SECONDS * MILLISECONDS_PER_SECOND);
+  redrawLastClips();
+}
+
+/** Drop the pending confirmation without doing anything. */
+function cancelConfirm() {
+  clearTimeout(pendingConfirmTimer);
+  pendingConfirm = null;
+  redrawLastClips();
+}
+
+/** The confirmation bar for a clip, or null if none is pending for it. */
+function buildConfirmBar(clip) {
+  if (pendingConfirm === null || pendingConfirm.clipId !== clip.id) {
+    return null;
+  }
+  const kind = CONFIRM_KINDS[pendingConfirm.kind];
+  const bar = makeElement("div", "confirm-bar");
+  bar.append(makeElement("span", "", kind.question(clip)));
+  bar.append(makeButton("", "Cancel", cancelConfirm));
+  bar.append(makeButton("danger", kind.confirmText, () => {
+    clearTimeout(pendingConfirmTimer);
+    pendingConfirm = null;
+    clipAction(clip, kind.suffix(), kind.done(clip));
+  }));
+  return bar;
 }
 
 /** Run a clip action (trash, restore, delete) and refresh the list. */
@@ -808,6 +908,8 @@ function toggleTrashView() {
   trashViewButton.textContent = showingTrash ? "Back to transcript" : "\u{1F5D1} Trash";
   viewTitle.textContent = showingTrash ? "Trash" : "Transcript";
   clipsContainer.replaceChildren();
+  lastClipsSignature = "";
+  pendingConfirm = null;
   refreshClips();
 }
 
@@ -830,18 +932,21 @@ function buildClipRow(clip) {
 
   if (showingTrash) {
     meta.append(makeButton("", "Restore", () => clipAction(clip, CONFIG.restoreSuffix, "Restored clip #" + clip.id + ".")));
-    meta.append(makeDeleteForeverButton(clip));
+    meta.append(makeButton("trash", "Delete forever", () => askToConfirm(clip, "delete")));
   } else {
     if (clip.status === "done" || clip.status === "failed") {
       meta.append(makeButton("", "Reprocess", () => reprocessClip(clip)));
     }
-    const trashButton = makeButton("trash", "\u{1F5D1}", () =>
-      clipAction(clip, CONFIG.trashSuffix, "Moved clip #" + clip.id + " to the trash."));
+    const trashButton = makeButton("trash", "\u{1F5D1}", () => askToConfirm(clip, "trash"));
     trashButton.title = "Move to trash";
     trashButton.setAttribute("aria-label", "Move clip " + clip.id + " to trash");
     meta.append(trashButton);
   }
   row.append(meta);
+  const confirmBar = buildConfirmBar(clip);
+  if (confirmBar !== null) {
+    row.append(confirmBar);
+  }
 
   if (clip.status === "failed") {
     row.append(makeElement("p", "note error", clip.error_message || "Transcription failed."));
@@ -854,6 +959,7 @@ function buildClipRow(clip) {
   for (const utterance of clip.utterances) {
     const textarea = makeElement("textarea", "utterance-text");
     textarea.value = utterance.text;
+    textarea.placeholder = "(no speech)";
     textarea.rows = Math.max(1, Math.ceil(utterance.text.length / 55));
     textarea.addEventListener("change", () => saveUtterance(utterance, textarea));
     row.append(textarea);
@@ -877,8 +983,13 @@ function buildGroupCard(groupClips) {
 function renderClips(clips) {
   const active = document.activeElement;
   if (active && active.classList && active.classList.contains("utterance-text")) {
-    return; // do not disturb a line that is being edited
+    return false; // do not disturb a line that is being edited
   }
+  const playing = Array.from(clipsContainer.querySelectorAll("audio")).some((audio) => !audio.paused);
+  if (playing) {
+    return false; // do not stop a clip that is playing; the next poll redraws
+  }
+  lastClips = clips;
   const groups = new Map();
   for (const clip of clips) {
     if (!groups.has(clip.group_id)) {
@@ -896,17 +1007,32 @@ function renderClips(clips) {
     cards.push(makeElement("p", "note", emptyText));
   }
   clipsContainer.replaceChildren(...cards);
+  return true;
 }
 
 let showingTrash = false;
+let lastClips = []; // the clips last drawn, for redrawing after a local change
+let lastClipsSignature = "";
+
+/** Redraw the last fetched clips (after a local change such as a confirmation). */
+function redrawLastClips() {
+  renderClips(lastClips);
+}
 
 /** Fetch the latest clips and redraw. */
 async function refreshClips() {
   try {
     const url = showingTrash ? CONFIG.clipsRoute + "?" + CONFIG.viewQueryKey + "=" + CONFIG.viewTrash : CONFIG.clipsRoute;
     const response = await fetch(url);
-    const data = await response.json();
-    renderClips(data[CONFIG.clipsKey]);
+    const text = await response.text();
+    if (text === lastClipsSignature) {
+      return; // nothing changed: keep the page (and any playing audio) as it is
+    }
+    const data = JSON.parse(text);
+    const rendered = renderClips(data[CONFIG.clipsKey]);
+    if (rendered) {
+      lastClipsSignature = text;
+    }
   } catch (error) {
     // Server busy or restarting: the next poll tries again.
   }
@@ -922,6 +1048,6 @@ if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
 }
 loadSettings();
 populateAudioInputs();
-setCaptureState("idle");
+refreshControls();
 refreshClips();
 setInterval(refreshClips, CONFIG.pollSeconds * MILLISECONDS_PER_SECOND);
