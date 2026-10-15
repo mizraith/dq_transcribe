@@ -8,6 +8,7 @@ the queue, database, or web code.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -24,7 +25,37 @@ _FLAG_LANGUAGE = "-l"
 _FLAG_NO_TIMESTAMPS = "-nt"
 _FLAG_JSON_OUTPUT = "-oj"
 _FLAG_OUTPUT_PREFIX = "-of"
+_FLAG_PROMPT = "--prompt"
+_FLAG_SUPPRESS_NON_SPEECH = "-sns"
 _OUTPUT_PREFIX_NAME = "result"
+_NON_SPEECH_ANNOTATION = re.compile(constants.NON_SPEECH_ANNOTATION_PATTERN)
+
+
+def clean_transcript_text(text: str) -> str:
+    """Remove sound labels such as "[Music]" or "*static*" and normalize spaces.
+
+    Args:
+        text: Text as printed by whisper.
+
+    Returns:
+        The spoken words only, single-spaced.
+    """
+    return " ".join(_NON_SPEECH_ANNOTATION.sub(" ", text).split())
+
+
+def load_prompt(prompt_path: Path) -> str:
+    """Read the whisper initial prompt, or return an empty string if there is none.
+
+    Args:
+        prompt_path: Text file holding the prompt.
+
+    Returns:
+        The prompt on one line.
+    """
+    try:
+        return " ".join(prompt_path.read_text(encoding="utf-8").split())
+    except OSError:
+        return ""
 
 
 class TranscriberUnavailableError(RuntimeError):
@@ -84,6 +115,8 @@ class WhisperCppTranscriber:
         thread_count: int = constants.WHISPER_THREAD_COUNT,
         language: str = constants.WHISPER_LANGUAGE,
         timeout_seconds: float = constants.WHISPER_TIMEOUT_SECONDS,
+        prompt_path: Path = constants.WHISPER_PROMPT_PATH,
+        suppress_non_speech: bool = constants.WHISPER_SUPPRESS_NON_SPEECH,
     ) -> None:
         """Remember where whisper.cpp and its model live.
 
@@ -94,6 +127,8 @@ class WhisperCppTranscriber:
             thread_count: CPU threads for transcription.
             language: Spoken language code, for example ``"en"``.
             timeout_seconds: Give up on a single file after this long.
+            prompt_path: Text file with domain vocabulary for whisper's initial prompt.
+            suppress_non_speech: Ask whisper not to emit sound labels such as "[Music]".
         """
         self._cli_path = cli_path
         self._model_path = model_path
@@ -101,6 +136,8 @@ class WhisperCppTranscriber:
         self._thread_count = thread_count
         self._language = language
         self._timeout_seconds = timeout_seconds
+        self._prompt = load_prompt(prompt_path)
+        self._suppress_non_speech = suppress_non_speech
         self.model_name = model_path.stem
 
     def transcribe(self, wav_path: Path) -> TranscriptionResult:
@@ -110,7 +147,8 @@ class WhisperCppTranscriber:
             wav_path: File to transcribe.
 
         Returns:
-            The transcript (whitespace normalized) and whisper.cpp's JSON output.
+            The transcript (sound labels removed, whitespace normalized) and
+            whisper.cpp's JSON output (unchanged).
 
         Raises:
             TranscriberUnavailableError: If whisper.cpp or the model is missing.
@@ -138,6 +176,10 @@ class WhisperCppTranscriber:
                 _FLAG_JSON_OUTPUT,
                 _FLAG_OUTPUT_PREFIX, str(output_prefix),
             ]
+            if self._suppress_non_speech:
+                command.append(_FLAG_SUPPRESS_NON_SPEECH)
+            if self._prompt:
+                command.extend([_FLAG_PROMPT, self._prompt])
             try:
                 completed = subprocess.run(
                     command,
@@ -156,4 +198,4 @@ class WhisperCppTranscriber:
             json_path = output_prefix.with_suffix(constants.WHISPER_JSON_SUFFIX)
             raw_output = json_path.read_text(encoding="utf-8") if json_path.exists() else ""
 
-        return TranscriptionResult(text=" ".join(completed.stdout.split()), raw_output=raw_output)
+        return TranscriptionResult(text=clean_transcript_text(completed.stdout), raw_output=raw_output)

@@ -87,6 +87,15 @@ WHISPER_LANGUAGE = "en"
 WHISPER_TIMEOUT_SECONDS = 300
 WHISPER_LIBRARY_PATH_VARIABLE = "LD_LIBRARY_PATH"
 WHISPER_JSON_SUFFIX = ".json"
+# Domain vocabulary passed to whisper as its initial prompt (package data file, so
+# it can be tuned without code changes). It must not contain example numbers:
+# whisper copies them into transcripts (tested 2026-10-14: "Event 12" leaked).
+WHISPER_PROMPT_PATH = Path(__file__).parent / "data" / "whisper_prompt.txt"
+# Suppress non-speech tokens such as "[Music]" or "[Gunshot]".
+WHISPER_SUPPRESS_NON_SPEECH = True
+# Leftover sound labels removed from the displayed text (the raw output keeps them):
+# anything in [brackets], (parentheses) or *asterisks*.
+NON_SPEECH_ANNOTATION_PATTERN = r"\[[^\]]*\]|\([^)]*\)|\*[^*]*\*"
 
 # --- Local web interface ----------------------------------------------------
 SERVER_HOST = "127.0.0.1"
@@ -165,7 +174,7 @@ CAPTURE_LEVEL_SLIDER_STEP_DBFS = 1
 CAPTURE_HANG_SLIDER_MIN_SECONDS = 1.0
 CAPTURE_HANG_SLIDER_MAX_SECONDS = 10.0
 CAPTURE_HANG_SLIDER_STEP_SECONDS = 0.5
-CAPTURE_PREROLL_SECONDS = 0.5
+CAPTURE_PREROLL_SECONDS = 1.0
 CAPTURE_TRAIL_SECONDS = 0.5
 CAPTURE_MIN_CLIP_SECONDS = 0.8
 CAPTURE_MAX_CLIP_SECONDS = 120.0
