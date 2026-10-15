@@ -1,0 +1,17 @@
+task: 20261015T235522Z_install_meet_import
+started: 2026-10-15T16:55:43-07:00
+finished: 2026-10-15T16:55:56-07:00
+work_repo_commit: 1eba677
+exit_code: 0
+--- output ---
+pkg install exit: 0
+pdftotext   /data/data/com.termux/files/usr/bin/pdftotext
+mdb-export  /data/data/com.termux/files/usr/bin/mdb-export
+mdb-tables  /data/data/com.termux/files/usr/bin/mdb-tables
+running 1eba677
+2026-10-15 16:55:54,287 Refine pass on, using ggml-small.en
+2026-10-15 16:55:54,869 whisper-server ready: ggml-base
+2026-10-15 16:55:55,362 whisper-server ready: ggml-small.en
+page status 200
+meet script status 200
+7 DQs {'pending_notification': 1, 'incomplete': 5, 'declined': 1}
