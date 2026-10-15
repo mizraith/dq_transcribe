@@ -1,0 +1,72 @@
+task: whisper_server_options
+started: 2026-10-14T18:13:57-07:00
+finished: 2026-10-14T18:13:57-07:00
+work_repo_commit: 61bd855
+exit_code: 0
+--- output ---
+  -t N,      --threads N                 [4      ] number of threads to use during computation
+  -tr,       --translate                 [false  ] translate from source language to english
+  -nt,       --no-timestamps             [false  ] do not print timestamps
+  -l LANG,   --language LANG             [en     ] spoken language ('auto' for auto-detect)
+  -dl,       --detect-language           [false  ] exit after automatically detecting language
+             --prompt PROMPT             [       ] initial prompt
+             --carry-initial-prompt      [false  ] always prepend initial prompt
+  -m FNAME,  --model FNAME               [models/ggml-base.en.bin] model path
+  -oved D,   --ov-e-device DNAME         [CPU    ] the OpenVINO device used for encode inference
+  --host HOST,                           [127.0.0.1] Hostname/ip-adress for the server
+  --port PORT,                           [8080   ] Port number for the server
+  --public PATH,                         [examples/server/public] Path to the public folder
+  --inference-path PATH,                 [/inference] Inference path for all requests
+  --convert,                             [false  ] Convert audio to WAV, requires ffmpeg on the server
+  -sns,      --suppress-nst              [false  ] suppress non-speech tokens
+  -nlp,      --no-language-probabilities [false  ] exclude language probabilities from verbose_json output
+--- request fields read by the server ---
+req.get_file_value("audio_ctx"
+req.get_file_value("beam_size"
+req.get_file_value("best_of"
+req.get_file_value("carry_initial_prompt"
+req.get_file_value("debug_mode"
+req.get_file_value("detect_language"
+req.get_file_value("diarize"
+req.get_file_value("duration"
+req.get_file_value("entropy_thold"
+req.get_file_value("file"
+req.get_file_value("language"
+req.get_file_value("logprob_thold"
+req.get_file_value("max_context"
+req.get_file_value("max_len"
+req.get_file_value("model"
+req.get_file_value("no_language_probabilities"
+req.get_file_value("no_speech_thold"
+req.get_file_value("no_timestamps"
+req.get_file_value("offset_n"
+req.get_file_value("offset_t"
+req.get_file_value("prompt"
+req.get_file_value("response_format"
+req.get_file_value("split_on_word"
+req.get_file_value("suppress_non_speech"
+req.get_file_value("suppress_nst"
+req.get_file_value("temperature"
+req.get_file_value("temperature_inc"
+req.get_file_value("tinydiarize"
+req.get_file_value("token_timestamps"
+req.get_file_value("translate"
+req.get_file_value("vad"
+req.get_file_value("vad_max_speech_duration_s"
+req.get_file_value("vad_min_silence_duration_ms"
+req.get_file_value("vad_min_speech_duration_ms"
+req.get_file_value("vad_samples_overlap"
+req.get_file_value("vad_speech_pad_ms"
+req.get_file_value("vad_threshold"
+req.get_file_value("word_thold"
+req.has_file("audio_ctx"
+req.has_file("beam_size"
+62:    std::string inference_path = "/inference";
+175:    fprintf(stderr, "  --inference-path PATH,                 [%-7s] Inference path for all requests\n",                         sparams.inference_path.c_str());
+255:        else if (                   arg == "--inference-path")  { sparams.inference_path = argv[++i]; }
+771:        <h2>)" + sparams.request_path + sparams.inference_path + R"(</h2>
+773:    curl 127.0.0.1:)" + std::to_string(sparams.port) + sparams.request_path + sparams.inference_path + R"( \
+--- agent queue check ---
+whisper_prompt_ab_test.sh
+whisper_prompt_ab_test2.sh
+whisper_server_options.sh
