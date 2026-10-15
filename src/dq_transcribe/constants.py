@@ -94,6 +94,9 @@ WHISPER_MODEL_PATH = WHISPER_DIRECTORY / "models" / f"ggml-{DEFAULT_WHISPER_MODE
 WHISPER_THREAD_COUNT = 4  # threads for the fast (draft) pass
 WHISPER_REFINE_MODEL_PATH = WHISPER_DIRECTORY / "models" / f"ggml-{REFINE_WHISPER_MODEL_SIZE}.bin"
 WHISPER_REFINE_THREAD_COUNT = 4  # threads for the refine pass (runs at the same time as the fast pass)
+# The refine pass runs at lower CPU priority (Unix "nice" increment) so the fast
+# draft pass is not slowed down when both run at once. 0 means normal priority.
+WHISPER_REFINE_NICE_INCREMENT = 10
 WHISPER_LANGUAGE = "en"
 WHISPER_TIMEOUT_SECONDS = 300
 WHISPER_LIBRARY_PATH_VARIABLE = "LD_LIBRARY_PATH"
