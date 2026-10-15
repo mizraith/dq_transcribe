@@ -1,0 +1,15 @@
+task: 20261015T010152Z_deploy_two_pass_and_measure
+started: 2026-10-14T18:02:13-07:00
+finished: 2026-10-14T18:02:17-07:00
+work_repo_commit: 14ff83b
+exit_code: 0
+--- output ---
+2026-10-14 18:02:14,799 Refine pass on, using ggml-small.en
+all finished after 0.1 s
+Traceback (most recent call last):
+  File "<stdin>", line 18, in <module>
+KeyError: 4
+2026-10-14 18:02:14,799 Refine pass on, using ggml-small.en
+2026-10-14 18:02:17,752 127.0.0.1 - "POST /api/clips/4/reprocess HTTP/1.1" 200 -
+2026-10-14 18:02:17,770 127.0.0.1 - "POST /api/clips/5/reprocess HTTP/1.1" 200 -
+2026-10-14 18:02:17,794 127.0.0.1 - "POST /api/clips/6/reprocess HTTP/1.1" 200 -
