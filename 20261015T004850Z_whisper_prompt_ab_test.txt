@@ -1,0 +1,17 @@
+task: 20261015T004850Z_whisper_prompt_ab_test
+started: 2026-10-14T17:49:04-07:00
+finished: 2026-10-14T17:49:29-07:00
+work_repo_commit: 8001ff2
+exit_code: 0
+--- output ---
+== clip 4 (2026-10-14/clip_20261014_174158_116223.wav) ==
+-- current settings --
+
+ [Clock ticking]-- prompt + suppress non-speech --
+
+ Event 12, heat 5, lane 6. One hand touch.== clip 6 (2026-10-14/clip_20261014_174228_084285.wav) ==
+-- current settings --
+
+ 2 events, 16, 8, 4, 8, 3, butterfly kick in the breaststroke. Do you put a light kick from the breaststroke off the wall so that fits the turn? Acknowledged.-- prompt + suppress non-speech --
+
+ DQ. Event 16, heat 4, lane 3. Butterfly kick. In the breaststroke, do you put a light kick from the breaststroke off the walls so that that's the turn? Acknowledged.
