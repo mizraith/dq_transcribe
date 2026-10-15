@@ -22,7 +22,6 @@ Tables (created by ``DqStore.initialize`` in the app's SQLite file):
 from __future__ import annotations
 
 import copy
-import csv
 import json
 import re
 import sqlite3
@@ -31,6 +30,7 @@ from typing import Any
 from dq_transcribe import constants
 from dq_transcribe.call_parser import CandidateCall, choose_codes, load_phrases, parse_call_group, stroke_clues
 from dq_transcribe.database import Database, utc_now_iso
+from dq_transcribe.slip_codes import load_dq_codes, rank_codes  # load_dq_codes is re-exported for the server
 
 _CREATE_TABLES = (
     """
@@ -117,16 +117,6 @@ def number_sort_key(value: str | None) -> tuple[int, str]:
         return (_UNKNOWN_SORT_VALUE, "")
     match = _EVENT_SORT_PATTERN.match(value.strip())
     return (int(match.group(1)), match.group(2)) if match else (_UNKNOWN_SORT_VALUE, value)
-
-
-def load_dq_codes(revision: str = constants.CURRENT_SLIP_REVISION) -> list[dict[str, str]]:
-    """The DQ slip's code table for a revision (empty if the file is missing)."""
-    path = constants.REFERENCE_DIRECTORY / "dq_codes" / constants.DQ_CODES_FILENAME_FORMAT.format(revision=revision)
-    try:
-        with path.open(newline="", encoding="utf-8") as handle:
-            return list(csv.DictReader(handle))
-    except OSError:
-        return []
 
 
 class DqStore:
@@ -351,6 +341,14 @@ class DqStore:
                         (dq["id"],),
                     )
                 ]
+                heard = " ".join(
+                    row["text"] or ""
+                    for row in connection.execute(
+                        "SELECT u.text FROM dq_evidence e JOIN utterances u ON u.id = e.utterance_id WHERE e.dq_id = ?",
+                        (dq["id"],),
+                    )
+                )
+                _suggest_codes(dq, heard)
                 dq["history"] = [
                     dict(row)
                     for row in connection.execute(
@@ -379,6 +377,21 @@ def _text_fields(payload: dict[str, Any]) -> dict[str, str | None]:
             raise DqError(f"{name} is too long")
         fields[name] = text or None
     return fields
+
+
+def _suggest_codes(dq: dict[str, Any], heard: str) -> None:
+    """Fill in likely slip codes: per infraction (if none were saved) and for the whole DQ.
+
+    ``suggested_codes`` ranks the slip's lines against what was heard and the
+    infraction descriptions; the editor offers it for an infraction with no
+    options of its own (such as a newly added one).
+    """
+    codes = [infraction["code"] for infraction in dq["infractions"] if infraction["code"]]
+    stroke = _CODE_PREFIX_TO_STROKE.get(codes[0][0]) if codes else None
+    for infraction in dq["infractions"]:
+        if not infraction["code_options"]:
+            infraction["code_options"] = rank_codes(infraction["description"], stroke)
+    dq["suggested_codes"] = rank_codes(" ".join([heard, *(item["description"] for item in dq["infractions"])]), stroke)
 
 
 def _infractions(items: Any) -> list[tuple[str, str | None, str | None, str, str | None, str]]:

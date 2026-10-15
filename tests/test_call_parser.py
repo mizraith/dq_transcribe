@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import unittest
 
-from dq_transcribe.call_parser import FLAG_NOT_UNDERSTOOD, is_acknowledgment, parse_call_group
+from dq_transcribe.call_parser import FLAG_CODE_CHOICE, FLAG_NOT_UNDERSTOOD, is_acknowledgment, parse_call_group
+from dq_transcribe.slip_codes import rank_codes
 from dq_transcribe.text_normalization import normalize_spoken_numbers
 
 
@@ -109,3 +110,30 @@ class ParseCallGroupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SlipCodeSuggestionTests(unittest.TestCase):
+    """Slip codes for infractions the phrase list names only by group, or not at all."""
+
+    def test_group_phrase_offers_every_code_in_the_group(self) -> None:
+        call = parse_call_group(utterances("Possible DQ, event 46, heat 2, lane 4, past vertical at turn."))[0]
+        self.assertEqual(call.stroke, "Backstroke")
+        self.assertIsNone(call.codes[0])
+        self.assertEqual(set(call.code_options[0][:3]), {"2B", "2C", "2D"})
+        self.assertIn(FLAG_CODE_CHOICE, call.flags)
+
+    def test_specific_line_replaces_its_group(self) -> None:
+        call = parse_call_group(utterances("Event 46, heat 2, lane 4, past vertical at turn, delayed initiating turn."))[0]
+        self.assertEqual(call.infractions, ["Past vertical at turn: delay initiating turn"])
+        self.assertEqual(call.codes, ["2C"])
+
+    def test_unrecognized_call_still_gets_suggestions(self) -> None:
+        call = parse_call_group(utterances("Event 9, heat 1, lane 2, the elbows came out over the water on the recovery."))[0]
+        self.assertIn("3H", call.suggested_codes)
+
+    def test_rank_codes(self) -> None:
+        self.assertEqual(rank_codes("past vertical at the turn", "Backstroke")[:3], ["2C", "2B", "2D"])
+        self.assertEqual(rank_codes("one hand touch"), ["1J", "3J"])
+        self.assertEqual(rank_codes("one hand touch", "Breaststroke"), ["3J"])
+        self.assertEqual(rank_codes("he delayed initiating the turn"), ["2C", "2B"])
+        self.assertEqual(rank_codes("event 5, heat 1, lane 3, thank you"), [])

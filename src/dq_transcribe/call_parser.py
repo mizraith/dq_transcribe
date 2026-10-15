@@ -25,11 +25,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from dq_transcribe.slip_codes import rank_codes
 from dq_transcribe.text_normalization import normalize_spoken_numbers, tokenize
 
 PHRASES_PATH = Path(__file__).parent / "data" / "infraction_phrases.csv"
 CODES_COLUMN = "codes_rev_2024_01"
 ANY_STROKE = "*"
+# Several codes for one stroke ("Backstroke=2B|2C|2D": a slip group such as "past vertical at turn").
+CODE_ALTERNATIVES_SEPARATOR = "|"
 # Stroke names as said on the radio (one or two words). Bare "fly", "back" and
 # "breast" are not used: they appear inside other phrases ("towards the breast").
 STROKE_WORDS = {
@@ -62,6 +65,7 @@ FLAG_CORRECTED = "the caller corrected a number"
 FLAG_NO_INFRACTION = "infraction not recognized"
 FLAG_NOT_UNDERSTOOD = "call not understood; listen to the audio"
 FLAG_CODE_NEEDS_STROKE = "slip code depends on the stroke"
+FLAG_CODE_CHOICE = "several slip codes fit; pick one"
 # An utterance this long with nothing recognized is still shown, so no call is lost.
 UNDERSTOOD_MIN_WORDS = 4
 FLAG_FUZZY = "infraction matched loosely"
@@ -75,7 +79,8 @@ class InfractionPhrase:
         words: The phrase's words.
         description: Short description shown to the admin.
         stroke: The stroke this infraction belongs to, if only one.
-        codes: DQ slip code by stroke ("*" = any stroke), for the current slip revision.
+        codes: DQ slip code(s) by stroke ("*" = any stroke), for the current slip
+            revision; several codes are joined with "|".
     """
 
     words: tuple[str, ...]
@@ -104,7 +109,8 @@ class CandidateCall:
     lane: str | None = None
     infractions: list[str] = field(default_factory=list)
     codes: list[str | None] = field(default_factory=list)  # slip code per infraction, if it could be chosen
-    code_options: list[list[str]] = field(default_factory=list)  # possible codes per infraction
+    code_options: list[list[str]] = field(default_factory=list)  # possible codes per infraction, likeliest first
+    suggested_codes: list[str] = field(default_factory=list)  # slip lines matching the whole call's words
     stroke: str | None = None  # the stroke, if it could be worked out
     strokes: list[str] = field(default_factory=list)
     stroke_mentions: list[str] = field(default_factory=list)
@@ -120,7 +126,8 @@ class CandidateCall:
         """JSON-friendly form."""
         return {
             "event": self.event, "heat": self.heat, "lane": self.lane, "infractions": self.infractions,
-            "codes": self.codes, "code_options": self.code_options, "stroke": self.stroke,
+            "codes": self.codes, "code_options": self.code_options, "suggested_codes": self.suggested_codes,
+            "stroke": self.stroke,
             "strokes": self.strokes, "phases": self.phases, "turn_number": self.turn_number,
             "accepted": self.accepted, "flags": self.flags, "excerpt": self.excerpt,
             "evidence": [vars(item) for item in self.evidence],
@@ -387,6 +394,7 @@ def parse_call_group(utterances: list[dict[str, Any]], phrases: list[InfractionP
         for key in (KEY_EVENT, KEY_HEAT):
             group_context[key] = context[key] or group_context[key]
     for call in calls:
+        _drop_general_infractions(call)
         choose_codes(call)
         _final_flags(call)
     return calls
@@ -442,6 +450,20 @@ def _fill_call(
         call.excerpt = (call.excerpt + " / " if call.excerpt else "") + text
 
 
+def _drop_general_infractions(call: CandidateCall) -> None:
+    """Keep only the specific infraction when both were heard.
+
+    "Past vertical at turn, delayed initiating turn" names one infraction: the slip
+    line "Past vertical at turn: delay initiating turn", not that and its group.
+    """
+    keep = [
+        index for index, description in enumerate(call.infractions)
+        if not any(other != description and other.startswith(description) for other in call.infractions)
+    ]
+    call.infractions = [call.infractions[index] for index in keep]
+    call._code_maps = [call._code_maps[index] for index in keep]
+
+
 def stroke_clues(call: CandidateCall) -> set[str]:
     """Strokes the call itself points to: a stroke named in it, or else infractions
     that exist in only one stroke (underwater recovery is butterfly)."""
@@ -459,27 +481,39 @@ def choose_codes(call: CandidateCall, event_stroke: str | None = None) -> None:
             call in the same event, a saved DQ, or later the Meet Manager file). Used
             only when the call itself gives no single stroke.
     """
-    call.flags = [flag for flag in call.flags if flag != FLAG_CODE_NEEDS_STROKE]
+    call.flags = [flag for flag in call.flags if flag not in (FLAG_CODE_NEEDS_STROKE, FLAG_CODE_CHOICE)]
     clues = stroke_clues(call)
     if len(clues) == 1:
         call.stroke = next(iter(clues))
     else:
         call.stroke = event_stroke if not clues else None
     call.codes, call.code_options = [], []
-    for codes in call._code_maps:
-        options = sorted(set(codes.values()))
-        if ANY_STROKE in codes:
-            chosen = codes[ANY_STROKE]
-        elif call.stroke is not None and call.stroke in codes:
-            chosen = codes[call.stroke]
-        elif len(options) == 1:
-            chosen = options[0]
+    needs_stroke = needs_choice = False
+    for description, codes in zip(call.infractions, call._code_maps):
+        by_stroke = {stroke: value.split(CODE_ALTERNATIVES_SEPARATOR) for stroke, value in codes.items()}
+        every_code = list(dict.fromkeys(code for value in by_stroke.values() for code in value))
+        if ANY_STROKE in by_stroke:
+            fitting = by_stroke[ANY_STROKE]
+        elif call.stroke is not None and call.stroke in by_stroke:
+            fitting = by_stroke[call.stroke]
+        elif len(by_stroke) == 1:
+            fitting = next(iter(by_stroke.values()))
         else:
-            chosen = None
+            fitting = every_code
+            needs_stroke = len(every_code) > 1
+        if not fitting:
+            # The phrase list has no code for this: rank the slip's lines by its words.
+            fitting = every_code = rank_codes(description, call.stroke)
+        chosen = fitting[0] if len(fitting) == 1 else None
+        needs_choice = needs_choice or (chosen is None and len(fitting) > 1 and not needs_stroke)
         call.codes.append(chosen)
-        call.code_options.append(options)
-    if any(code is None and options for code, options in zip(call.codes, call.code_options)):
+        # Likeliest first: the codes that fit this call, then the other strokes' codes.
+        call.code_options.append(list(dict.fromkeys(fitting + every_code)))
+    call.suggested_codes = rank_codes(" ".join([call.excerpt, *call.infractions]), call.stroke)
+    if needs_stroke:
         call.flags.append(FLAG_CODE_NEEDS_STROKE)
+    elif needs_choice:
+        call.flags.append(FLAG_CODE_CHOICE)
 
 
 def _final_flags(call: CandidateCall) -> None:

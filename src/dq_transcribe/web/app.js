@@ -159,6 +159,30 @@ function setStatus(message) {
   statusText.textContent = message;
 }
 
+const TOAST_SECONDS = 3;
+let toastTimer = null;
+
+/**
+ * Confirm an action where the user is looking: a short message floating at the
+ * bottom of the screen (also written to the status line).
+ *
+ * Args: message (text), kind ("ok" or "error").
+ */
+function notify(message, kind) {
+  setStatus(message);
+  let toast = document.getElementById("toast");
+  if (!toast) {
+    toast = makeElement("div", "");
+    toast.id = "toast";
+    toast.setAttribute("role", "status");
+    document.body.append(toast);
+  }
+  toast.textContent = message;
+  toast.className = "show " + (kind || "ok");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.className = ""; }, TOAST_SECONDS * 1000);
+}
+
 /** Switch the REC indicator between idle, monitoring, listening and receiving. */
 function setCaptureState(state) {
   capturePanel.dataset.state = state;

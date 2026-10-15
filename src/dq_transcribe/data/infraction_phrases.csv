@@ -28,7 +28,9 @@ double kick,Cycle: double pulls/kicks,Breaststroke,Breaststroke=3S
 kick before pull,Cycle: kick before pull,Breaststroke,Breaststroke=3P
 head not up,Cycle: head not up before hands turn inward,Breaststroke,Breaststroke=3R
 shoulders past vertical,Shoulders past vertical towards the breast,Backstroke,Backstroke=2L
-past vertical at turn,Past vertical at turn,Backstroke,
+past vertical at turn,Past vertical at turn,Backstroke,Backstroke=2B|2C|2D
+past vertical at the turn,Past vertical at turn,Backstroke,Backstroke=2B|2C|2D
+past vertical,Past vertical,Backstroke,Backstroke=2B|2C|2D|2L
 past vertical towards the breast,Shoulders past vertical towards the breast,Backstroke,Backstroke=2L
 not on back off wall,Not on back off wall,Backstroke,Backstroke=2H
 not on their back,Not on back off wall,Backstroke,Backstroke=2H

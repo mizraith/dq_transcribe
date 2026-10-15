@@ -23,6 +23,8 @@ const ROSTER_SUGGESTIONS = {
   referee: ["Deck Referee", "Meet Referee"],
   chief_judge: ["Chief Judge"],
 };
+// How many likely codes to show as one-tap buttons under an infraction.
+const MAX_CODE_CHIPS = 4;
 const DQ_STATE_LABELS = { called: "called", accepted: "accepted", declined: "declined" };
 
 let candidatesByGroup = new Map(); // group id -> detected calls not yet turned into DQs
@@ -31,6 +33,13 @@ let dqCodes = []; // current DQ slip codes, for the infraction picker
 let expandedDqId = null; // the DQ whose edit panel is open
 let dqsSignature = "";
 let dqCount = 0;
+let flashDqId = null; // the DQ just changed, highlighted once when the list is redrawn
+// State buttons in the editor, in order (labels say what tapping does when not current).
+const DQ_STATE_BUTTONS = [
+  { state: "called", label: "Called", current: "Called" },
+  { state: "accepted", label: "Mark accepted", current: "\u2713 Accepted" },
+  { state: "declined", label: "Decline", current: "Declined" },
+];
 const rangePlayer = new Audio(); // plays one evidence range at a time
 
 // --- Shared helpers --------------------------------------------------------------
@@ -138,7 +147,7 @@ async function createDqFromCandidate(candidate) {
     infractions: candidate.infractions.map((description, index) => ({
       description: description,
       code: candidate.codes[index] || null,
-      code_options: candidate.code_options[index] || [],
+      code_options: (candidate.code_options[index] || []).length ? candidate.code_options[index] : candidate.suggested_codes,
       phases: candidate.phases,
     })),
     evidence: candidate.evidence,
@@ -146,7 +155,7 @@ async function createDqFromCandidate(candidate) {
   body[CONFIG.candidateKeyKey] = candidate.key;
   try {
     const reply = await postJson(CONFIG.dqsRoute, body);
-    setStatus("Created DQ #" + reply.dq_id + " (" + eventHeatLane(candidate) + "). Open the DQs view to complete it.");
+    notify("\u2713 Created DQ #" + reply.dq_id + " (" + eventHeatLane(candidate) + "). Open the DQs view to complete it.");
   } catch (error) {
     setStatus("Could not create the DQ: " + error.message);
   }
@@ -159,7 +168,7 @@ async function dismissCandidate(candidate) {
   body[CONFIG.candidateKeyKey] = candidate.key;
   try {
     await postJson(CONFIG.dismissRoute, body);
-    setStatus("Dismissed the detected call " + eventHeatLane(candidate) + ".");
+    notify("Dismissed the detected call " + eventHeatLane(candidate) + ".");
   } catch (error) {
     setStatus("Could not dismiss: " + error.message);
   }
@@ -180,10 +189,13 @@ async function loadDqCodes() {
   }
 }
 
-/** True while the user is typing in the DQ editor (so a refresh must not redraw it). */
+/**
+ * True while the user is typing in the DQ editor (so a refresh must not redraw it).
+ * A tapped button keeps focus but is not typing, so it does not count.
+ */
 function editingDq() {
   const active = document.activeElement;
-  return Boolean(active && active.closest && active.closest(".dq-editor"));
+  return Boolean(active && active.closest && active.closest(".dq-editor") && active.matches("input, select, textarea"));
 }
 
 /** Fetch the DQs and redraw the list (unless nothing changed or the editor is in use). */
@@ -227,7 +239,7 @@ function missingFields(dq) {
 
 /** One DQ in the list: a summary row; tap to open the editor. */
 function buildDqCard(dq) {
-  const card = makeElement("section", "dq-card state-" + dq.state);
+  const card = makeElement("section", "dq-card state-" + dq.state + (flashDqId === dq.id ? " flash" : ""));
   const summary = makeElement("button", "dq-summary");
   summary.type = "button";
   summary.append(makeElement("strong", "dq-ehl", eventHeatLane(dq)));
@@ -311,20 +323,14 @@ function codeLabel(row, withSection) {
 }
 
 /**
- * The slip codes an infraction could be: the ones saved with it (from the call
- * detector), or else slip rows whose words all appear in its description.
+ * The slip codes an infraction could be, likeliest first: the ones the server
+ * found for it, or else those matching everything heard in the DQ's audio.
  */
-function likelyCodes(infraction) {
+function likelyCodes(infraction, dq) {
   if (infraction.code_options && infraction.code_options.length) {
     return infraction.code_options;
   }
-  const words = (infraction.description || "").toLowerCase();
-  if (!words) {
-    return [];
-  }
-  return dqCodes
-    .filter((row) => row.code && row.description.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).every((word) => words.includes(word)))
-    .map((row) => row.code);
+  return (dq && dq.suggested_codes) || [];
 }
 
 /** The picker of DQ slip codes: the most likely codes first, then all codes by stroke. */
@@ -332,7 +338,7 @@ function buildCodePicker(selectedCode, likely) {
   const select = document.createElement("select");
   select.className = "code-picker";
   select.append(new Option("Pick from DQ slip (rev. " + CONFIG.slipRevision + ")…", ""));
-  const likelyRows = dqCodes.filter((row) => likely.includes(row.code));
+  const likelyRows = likely.map((code) => dqCodes.find((row) => row.code === code)).filter(Boolean); // keep the server's order
   if (likelyRows.length) {
     const top = document.createElement("optgroup");
     top.label = "Most likely";
@@ -354,22 +360,40 @@ function buildCodePicker(selectedCode, likely) {
 }
 
 /** One editable infraction: description, slip code, phases and detail. */
-function buildInfractionEditor(infraction, onRemove) {
+function buildInfractionEditor(infraction, dq, onRemove) {
   const box = makeElement("div", "infraction");
   const description = document.createElement("input");
   description.type = "text";
   description.className = "infraction-description";
   description.value = infraction.description || "";
   description.placeholder = "Short description (required)";
-  const likely = likelyCodes(infraction);
+  const likely = likelyCodes(infraction, dq);
   box.dataset.codeOptions = JSON.stringify(likely);
   const picker = buildCodePicker(infraction.code, likely);
+  // The likeliest codes as one-tap buttons (the picker still lists every code).
+  const chips = makeElement("div", "code-chips");
+  const markChosenChip = () => chips.querySelectorAll(".code-chip").forEach((chip) => chip.classList.toggle("on", chip.dataset.code === picker.value));
+  likely
+    .map((code) => dqCodes.find((row) => row.code === code))
+    .filter(Boolean)
+    .slice(0, MAX_CODE_CHIPS)
+    .forEach((row) => {
+      const chip = makeButton("code-chip", "", () => {
+        picker.value = row.code;
+        picker.dispatchEvent(new Event("change"));
+      });
+      chip.append(makeElement("strong", "", row.code), document.createTextNode(" " + (row.group ? row.group + ": " : "") + row.description));
+      chip.dataset.code = row.code;
+      chips.append(chip);
+    });
   picker.addEventListener("change", () => {
     const row = dqCodes.find((item) => (item.code || item.description) === picker.value);
     if (row) {
       description.value = row.section + " - " + (row.group ? row.group + ": " : "") + row.description;
     }
+    markChosenChip();
   });
+  markChosenChip();
   const phases = makeElement("div", "phases");
   for (const phase of CONFIG.racePhases) {
     const toggle = makeButton("phase" + ((infraction.phases || []).includes(phase) ? " on" : ""), phase, () => toggle.classList.toggle("on"));
@@ -381,7 +405,11 @@ function buildInfractionEditor(infraction, onRemove) {
   detail.className = "infraction-detail";
   detail.value = infraction.detail || "";
   detail.placeholder = "Detail (turn #, stroke, relay swimmer…)";
-  box.append(description, picker, phases, detail, makeButton("", "Remove", onRemove));
+  box.append(description, picker);
+  if (chips.childElementCount) {
+    box.append(chips);
+  }
+  box.append(phases, detail, makeButton("", "Remove", onRemove));
   return box;
 }
 
@@ -412,7 +440,7 @@ function buildDqEditor(dq) {
   editor.append(makeElement("div", "dq-subtitle", "Infractions"));
   const infractions = makeElement("div", "infractions");
   const addInfraction = (infraction) => {
-    const box = buildInfractionEditor(infraction, () => box.remove());
+    const box = buildInfractionEditor(infraction, dq, () => box.remove());
     infractions.append(box);
   };
   (dq.infractions.length ? dq.infractions : [{}]).forEach(addInfraction);
@@ -431,16 +459,22 @@ function buildDqEditor(dq) {
 
   const actions = makeElement("div", "dq-actions");
   actions.append(makeButton("primary", "Save", () => saveDq(dq, editor)));
-  if (dq.state !== CONFIG.dqStates.accepted) {
-    actions.append(makeButton("", "Mark accepted", () => changeDqState(dq, CONFIG.dqStates.accepted)));
-  }
-  if (dq.state !== CONFIG.dqStates.called) {
-    actions.append(makeButton("", "Back to called", () => changeDqState(dq, CONFIG.dqStates.called)));
-  }
-  if (dq.state !== CONFIG.dqStates.declined) {
-    actions.append(makeButton("danger", "Decline", () => changeDqState(dq, CONFIG.dqStates.declined)));
-  }
   editor.append(actions);
+
+  // Status: one button per state; the current one is filled in.
+  const status = makeElement("div", "dq-status");
+  status.append(makeElement("span", "dq-status-label", "Status:"));
+  for (const item of DQ_STATE_BUTTONS) {
+    const isCurrent = dq.state === CONFIG.dqStates[item.state];
+    const button = makeButton("state-button " + item.state + (isCurrent ? " current" : ""), isCurrent ? item.current : item.label, () => {
+      if (!isCurrent) {
+        changeDqState(dq, CONFIG.dqStates[item.state], editor);
+      }
+    });
+    button.setAttribute("aria-pressed", isCurrent ? "true" : "false");
+    status.append(button);
+  }
+  editor.append(status);
   const history = dq.history.map((item) => formatTime(new Date(item.at)) + " " + item.to_state + (item.by_name ? " (" + item.by_name + ")" : "")).join(" → ");
   editor.append(makeElement("p", "note", "History: " + history));
   return editor;
@@ -458,32 +492,54 @@ function fillRoleFromRoster(editor) {
   });
 }
 
-/** Save the editor's fields and infractions. */
-async function saveDq(dq, editor) {
+/** The editor's fields and infractions as a request body. */
+function readDqEditor(editor) {
   const body = {};
   editor.querySelectorAll("[data-field]").forEach((input) => {
     body[input.dataset.field] = input.value;
   });
   body.infractions = readInfractions(editor);
-  try {
-    await postJson(CONFIG.dqsRoute + "/" + dq.id, body);
-    setStatus("Saved DQ " + eventHeatLane(body) + ".");
-    document.activeElement.blur();
-  } catch (error) {
-    setStatus("Could not save: " + error.message);
-  }
-  forceRefresh();
+  return body;
 }
 
-/** Change a DQ's state (recorded in its history). */
-async function changeDqState(dq, state) {
+/** Redraw the DQ list now, highlighting the DQ that just changed. */
+function redrawAfterChange(dq) {
+  if (document.activeElement) {
+    document.activeElement.blur();
+  }
+  flashDqId = dq.id;
+  forceRefresh();
+  setTimeout(() => { flashDqId = null; }, 2000);
+}
+
+/** Save the editor's fields and infractions. */
+async function saveDq(dq, editor) {
+  const body = readDqEditor(editor);
+  try {
+    await postJson(CONFIG.dqsRoute + "/" + dq.id, body);
+    notify("\u2713 Saved DQ " + eventHeatLane(body));
+  } catch (error) {
+    notify("Could not save: " + error.message, "error");
+  }
+  redrawAfterChange(dq);
+}
+
+/**
+ * Change a DQ's state (recorded in its history). Edits in the open editor are
+ * saved first, so tapping "Mark accepted" after editing does not lose them.
+ */
+async function changeDqState(dq, state, editor) {
   const body = {};
   body[CONFIG.stateKey] = state;
+  const label = eventHeatLane(dq);
   try {
+    if (editor) {
+      await postJson(CONFIG.dqsRoute + "/" + dq.id, readDqEditor(editor));
+    }
     await postJson(CONFIG.dqsRoute + "/" + dq.id + CONFIG.dqStateSuffix, body);
-    setStatus("DQ " + eventHeatLane(dq) + " is now " + state + ".");
+    notify((state === CONFIG.dqStates.accepted ? "\u2713 " : "") + "DQ " + label + " " + state);
   } catch (error) {
-    setStatus("Could not change the state: " + error.message);
+    notify("Could not change the status: " + error.message, "error");
   }
-  forceRefresh();
+  redrawAfterChange(dq);
 }

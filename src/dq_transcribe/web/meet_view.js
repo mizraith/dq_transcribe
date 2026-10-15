@@ -5,8 +5,8 @@
  * Loaded after app.js and shares its globals (CONFIG, activeMeet, makeElement,
  * makeButton, setStatus, loadMeets, setView, ...).
  *
- * Quick entry for a long roster: type a name, pick a role (the role stays
- * selected for the next name), press Enter or "Add". The table is grouped by
+ * Quick entry for a long roster: type a name and pick a role; the official is
+ * added at once (the role stays selected for the next name). The table is grouped by
  * role in the order of CONFIG.rosterRoles; names stay editable in place.
  *
  * This file is a string.Template served by dq_transcribe.server.render_script,
@@ -109,35 +109,57 @@ function buildRolePicker(selected) {
   return select;
 }
 
-/** The quick-add row: name + role + Add (Enter also adds; the role is kept). */
+/**
+ * The quick-add row: name + role. An official is added as soon as both are
+ * given: picking a role after typing a name adds them, and so does finishing
+ * the name (Enter, or tapping elsewhere) while a role is selected. The role
+ * stays selected for the next name, and the name box is ready for it.
+ */
 function buildQuickAdd() {
   const row = makeElement("div", "quick-add");
   const name = document.createElement("input");
   name.type = "text";
-  name.placeholder = "Official's name";
-  name.enterKeyHint = "done";
+  name.placeholder = "Official's name (added when a role is picked)";
+  name.enterKeyHint = "next";
   const role = buildRolePicker(quickAddRole);
-  role.addEventListener("change", () => { quickAddRole = role.value; });
-  const add = () => {
+  let added = false; // this row is redrawn after each add; never add the same name twice
+  const add = (refocus) => {
     const value = name.value.trim();
-    if (!value) {
+    if (!value || added) {
       return;
     }
+    added = true;
     meetDraft.officials.push({ name: value, role: role.value });
     quickAddRole = role.value;
     meetDraftDirty = true;
     renderMeetView();
-    const next = clipsContainer.querySelector(".quick-add input");
-    if (next) {
-      next.focus(); // ready for the next name
+    setStatus("Added " + value + " (" + role.value + ").");
+    if (refocus) {
+      const next = clipsContainer.querySelector(".quick-add input");
+      if (next) {
+        next.focus(); // ready for the next name
+      }
     }
   };
+  role.addEventListener("change", () => {
+    quickAddRole = role.value;
+    add(true);
+  });
   name.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
-      add();
+      add(true);
     }
   });
-  row.append(name, role, makeButton("primary", "Add", add));
+  // Finishing the name by tapping away also adds it, unless the tap was on the
+  // role picker (then picking the role adds it).
+  name.addEventListener("blur", (event) => {
+    if (event.relatedTarget !== role) {
+      add(false);
+    }
+  });
+  // Picking the role that was already selected fires no "change": add on leaving the picker too.
+  role.addEventListener("blur", () => add(false));
+  row.append(name, role);
   return row;
 }
 
