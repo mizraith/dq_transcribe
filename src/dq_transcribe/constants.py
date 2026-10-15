@@ -115,8 +115,12 @@ WHISPER_TIMEOUT_SECONDS = 300
 WHISPER_LIBRARY_PATH_VARIABLE = "LD_LIBRARY_PATH"
 WHISPER_JSON_SUFFIX = ".json"
 # Domain vocabulary passed to whisper as its initial prompt (package data file, so
-# it can be tuned without code changes). It must not contain example numbers:
-# whisper copies them into transcripts (tested 2026-10-14: "Event 12" leaked).
+# it can be tuned without code changes). History, measured on the tablet:
+# - one example number ("Event 12") leaked into an unclear transcript;
+# - a word-only prompt ("Event, heat, lane.") made whisper DROP the numbers;
+# - several varied example numbers worked best for both models (2026-10-14).
+# Leaked numbers remain possible on unclear audio; the call parser flags and the
+# admin reviews every DQ.
 WHISPER_PROMPT_PATH = Path(__file__).parent / "data" / "whisper_prompt.txt"
 # Suppress non-speech tokens such as "[Music]" or "[Gunshot]".
 WHISPER_SUPPRESS_NON_SPEECH = True
