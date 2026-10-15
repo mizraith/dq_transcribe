@@ -729,6 +729,43 @@ group**. Knowing the stroke narrows things down:
   (a backup `.zip` holding the database, or an exported entries/results file) is
   still to be confirmed.
 
+## 9c. Companion app: officials sign-in (stated 2026-10-14, not started)
+
+**Stated:** the tablet could also be the officials' **sign-in form at the start of
+each session**: officials sign in, the admin **validates their certification**,
+and later **assigns teams using some basic rules**. It is a one-time workflow per
+session and would be cleaner as **its own app**, which outputs a **final officials
+listing that dq_transcribe ingests**.
+
+**Proposed shape:**
+- A separate small app (same stack: stdlib Python server + Chrome on the tablet),
+  with its own page, database and start command, so neither app can break the other.
+- Flow: officials sign in on the tablet (name, role or roles they can work,
+  certification details) → the admin marks each one validated (or not) → the admin
+  builds assignments (teams/positions) with rule help → the admin publishes the
+  **final listing**.
+- **The handoff is a file**, so the two apps stay independent: a small versioned
+  JSON (or CSV) roster, e.g.
+  `{"format": "officials-roster", "version": 1, "meet": {"name", "start_date"},
+  "session": "...", "officials": [{"name", "role", "certification", "team",
+  "validated"}]}`.
+  dq_transcribe gets an **"Import officials"** button on the Meet setup page that
+  reads this file (or fetches it from the sign-in app's local address) into the
+  meet's roster. Re-importing updates the roster without touching saved DQs.
+- Sessions: the sign-in runs per session, so the roster format carries the
+  session; dq_transcribe's meet → days → sessions structure (section 4.0) would
+  then hold a roster per session.
+
+**Open questions (for the owner):**
+1. How is certification validated: checking a card or screen by eye, entering a
+   USA Swimming member ID, an expiry date check, or a downloaded list of certified
+   officials (e.g. from the LSC) to check against?
+2. What are the "basic rules" for teams (for example: pair a trainee with a
+   certified official, spread experienced judges across both ends, no one on the
+   same position all session, balance by count per jurisdiction)?
+3. What does sign-in capture beyond name and role: club, phone/email, training
+   status (trainee/apprentice), sessions they are working?
+
 ## 9b. Next steps
 
 **Owner (reminders requested 2026-10-10):**
@@ -751,7 +788,7 @@ touch-friendly call-linking workflow and the DQ data model.
 - [x] USA Swimming technical rules: 2026 rulebook stored in `rulebook/` (2026-10-10)
 - [ ] Friday ground truth: event/heat/lane of every DQ (promised), with timing where possible
 - [ ] Typical radio wording: varies a lot (stated). The Friday audio will show real examples
-- [ ] Officials and referee names for a meet (roster format)
+- [ ] Officials and referee names for a meet (roster format). Possibly supplied later by the officials sign-in app (section 9c)
 - [x] Protest window: 30 minutes from the race, per rulebook 102.22.4 (decided 2026-10-10)
 - [ ] Hy-Tek Meet Manager file for Friday's meet (owner is getting it)
 
