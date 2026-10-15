@@ -1,0 +1,27 @@
+task: deploy_two_pass_and_measure
+started: 2026-10-14T18:02:20-07:00
+finished: 2026-10-14T18:02:24-07:00
+work_repo_commit: 14ff83b
+exit_code: 0
+--- output ---
+2026-10-14 18:02:21,322 Refine pass on, using ggml-small.en
+Traceback (most recent call last):
+  File "<stdin>", line 6, in <module>
+  File "/data/data/com.termux/files/usr/lib/python3.13/urllib/request.py", line 189, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/usr/lib/python3.13/urllib/request.py", line 495, in open
+    response = meth(req, response)
+  File "/data/data/com.termux/files/usr/lib/python3.13/urllib/request.py", line 604, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "/data/data/com.termux/files/usr/lib/python3.13/urllib/request.py", line 533, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "/data/data/com.termux/files/usr/lib/python3.13/urllib/request.py", line 466, in _call_chain
+    result = func(*args)
+  File "/data/data/com.termux/files/usr/lib/python3.13/urllib/request.py", line 613, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 409: Conflict
+2026-10-14 18:02:21,322 Refine pass on, using ggml-small.en
+2026-10-14 18:02:24,301 127.0.0.1 - "POST /api/clips/4/reprocess HTTP/1.1" 409 -
