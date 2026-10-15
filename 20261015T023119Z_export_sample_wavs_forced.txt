@@ -1,0 +1,12 @@
+task: 20261015T023119Z_export_sample_wavs_forced
+started: 2026-10-14T19:31:30-07:00
+finished: 2026-10-14T19:31:38-07:00
+work_repo_commit: c5a12f1
+exit_code: 0
+--- output ---
+26 {'startedAt': '2026-10-15T01:26:18.139Z', 'endedAt': '2026-10-15T01:26:31.793Z', 'sourceSampleRate': 48000, 'peakDbfs': -2.5, 'clipped': False, 'inputLabel': 'Wired headset', 'idleLevelDbfs': -85.9, 'startDbfs': -40, 'endDbfs': -45, 'hangSeconds': 3, 'prerollSeconds': 1, 'trailSeconds': 0.5}
+29 {'startedAt': '2026-10-15T01:27:21.917Z', 'endedAt': '2026-10-15T01:27:42.653Z', 'sourceSampleRate': 48000, 'peakDbfs': -3, 'clipped': False, 'inputLabel': 'Wired headset', 'idleLevelDbfs': -89.9, 'startDbfs': -40, 'endDbfs': -45, 'hangSeconds': 3, 'prerollSeconds': 1, 'trailSeconds': 0.5}
+38 {'startedAt': '2026-10-15T01:29:41.987Z', 'endedAt': '2026-10-15T01:29:56.665Z', 'sourceSampleRate': 48000, 'peakDbfs': -4.4, 'clipped': False, 'inputLabel': 'Wired headset', 'idleLevelDbfs': -86, 'startDbfs': -40, 'endDbfs': -45, 'hangSeconds': 3, 'prerollSeconds': 1, 'trailSeconds': 0.5}
+50 {'startedAt': '2026-10-15T01:33:51.527Z', 'endedAt': '2026-10-15T01:34:05.565Z', 'sourceSampleRate': 48000, 'peakDbfs': -2.8, 'clipped': False, 'inputLabel': 'Wired headset', 'idleLevelDbfs': -86.5, 'startDbfs': -40, 'endDbfs': -45, 'hangSeconds': 3, 'prerollSeconds': 1, 'trailSeconds': 0.5}
+52 {'startedAt': '2026-10-15T01:34:36.960Z', 'endedAt': '2026-10-15T01:34:48.096Z', 'sourceSampleRate': 48000, 'peakDbfs': -2.9, 'clipped': False, 'inputLabel': 'Wired headset', 'idleLevelDbfs': -86.4, 'startDbfs': -40, 'endDbfs': -45, 'hangSeconds': 3, 'prerollSeconds': 1, 'trailSeconds': 0.5}
+pushed
