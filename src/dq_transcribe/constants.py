@@ -94,6 +94,19 @@ WHISPER_MODEL_PATH = WHISPER_DIRECTORY / "models" / f"ggml-{DEFAULT_WHISPER_MODE
 WHISPER_THREAD_COUNT = 4  # threads for the fast (draft) pass
 WHISPER_REFINE_MODEL_PATH = WHISPER_DIRECTORY / "models" / f"ggml-{REFINE_WHISPER_MODEL_SIZE}.bin"
 WHISPER_REFINE_THREAD_COUNT = 4  # threads for the refine pass (runs at the same time as the fast pass)
+# whisper-server keeps a model loaded between requests. Loading costs about 3 s
+# (base) and 10 s (small.en) on the tablet, so the app runs one server per pass
+# instead of starting whisper-cli for every turn. If whisper-server is missing,
+# the app falls back to whisper-cli.
+WHISPER_SERVER_PATH = WHISPER_LIBRARY_DIRECTORY / "whisper-server"
+WHISPER_SERVER_HOST = "127.0.0.1"
+WHISPER_DRAFT_SERVER_PORT = 8178
+WHISPER_REFINE_SERVER_PORT = 8179
+WHISPER_SERVER_INFERENCE_PATH = "/inference"
+WHISPER_SERVER_RESPONSE_FORMAT = "verbose_json"
+WHISPER_SERVER_STARTUP_TIMEOUT_SECONDS = 120
+WHISPER_SERVER_READY_POLL_SECONDS = 0.5
+WHISPER_SERVER_LOG_FILENAME_FORMAT = "whisper_server_{port}.log"
 # The refine pass runs at lower CPU priority (Unix "nice" increment) so the fast
 # draft pass is not slowed down when both run at once. 0 means normal priority.
 WHISPER_REFINE_NICE_INCREMENT = 10

@@ -26,6 +26,7 @@ SERVER_LOG="$DATA_DIRECTORY/server.log"
 AGENT_LOG="$DATA_DIRECTORY/agent.log"
 APP_URL="http://localhost:8000"
 SERVER_PATTERN="python -m dq_transcribe"
+WHISPER_SERVER_PATTERN="whisper-server"
 AGENT_PATTERN="scripts/device_agent.sh"
 SERVER_STARTUP_TIMEOUT_SECONDS=15
 
@@ -45,6 +46,8 @@ show_status() {
 
 stop_all() {
   pkill -f "$SERVER_PATTERN" 2>/dev/null && say "stopped the app server"
+  sleep 1
+  pkill -f "$WHISPER_SERVER_PATTERN" 2>/dev/null && say "stopped leftover whisper servers"
   pkill -f "$AGENT_PATTERN" 2>/dev/null && say "stopped the device agent"
   command -v termux-wake-unlock >/dev/null && termux-wake-unlock
   show_status
