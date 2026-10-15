@@ -16,6 +16,8 @@ import json
 import logging
 import re
 import string
+import urllib.error
+import urllib.request
 import wave
 from datetime import datetime
 from http import HTTPStatus
@@ -28,6 +30,8 @@ from dq_transcribe import constants
 from dq_transcribe.database import Database
 from dq_transcribe.dq_store import DqError, DqStore, load_dq_codes
 from dq_transcribe.grouping import normalize_timestamp
+from dq_transcribe.meet_files import MeetFileError, read_meet_file
+from dq_transcribe.meet_files.store import MeetProgramStore
 from dq_transcribe.transcript import format_transcript_text
 from dq_transcribe.worker import TranscriptionWorker
 
@@ -55,6 +59,12 @@ _MEET_ACTIVATE_PATTERN = re.compile(
     rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_ACTIVATE_SUFFIX)}$"
 )
 _MEET_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+)$")
+_MEET_FILE_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.ROUTE_MEET_FILE_SUFFIX)}$")
+_MEET_PROGRAM_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.ROUTE_MEET_PROGRAM_SUFFIX)}$")
+_SAFE_FILENAME_CHARACTERS = re.compile(r"[^A-Za-z0-9._-]+")
+_WEB_ADDRESS_SCHEMES = ("http://", "https://")
+_DEFAULT_DOWNLOAD_NAME = "meet_file"
+_MAX_STORED_NAME_CHARS = 80
 _MEET_ASSIGN_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_ASSIGN_SUFFIX)}$")
 _NON_FILENAME_CHARACTERS = re.compile(r"[^a-z0-9]+")
 _DQ_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_DQS)}/(\d+)$")
@@ -159,6 +169,12 @@ def build_web_config() -> dict[str, Any]:
         "meetsKey": constants.RESPONSE_KEY_MEETS,
         "activeMeetKey": constants.RESPONSE_KEY_ACTIVE_MEET_ID,
         "meetActivateSuffix": constants.MEET_ACTIVATE_SUFFIX,
+        "meetFileSuffix": constants.ROUTE_MEET_FILE_SUFFIX,
+        "meetProgramSuffix": constants.ROUTE_MEET_PROGRAM_SUFFIX,
+        "programKey": constants.RESPONSE_KEY_PROGRAM,
+        "urlKey": constants.REQUEST_KEY_URL,
+        "filenameQueryKey": constants.QUERY_KEY_FILENAME,
+        "meetFileFormatLabels": constants.MEET_FILE_FORMAT_LABELS,
         "noMeetId": constants.NO_MEET_ID,
         "officialsKey": constants.REQUEST_KEY_OFFICIALS,
         "rosterRoles": list(constants.MEET_ROSTER_ROLES),
@@ -278,7 +294,10 @@ class DqTranscribeServer(ThreadingHTTPServer):
         self.recordings_directory = recordings_directory
         self.recordings_directory.mkdir(parents=True, exist_ok=True)
         self.database = database
-        self.dq_store = DqStore(database)
+        self.meet_files_directory = recordings_directory.parent / constants.MEET_FILES_DIRECTORY.name
+        self.program_store = MeetProgramStore(database)
+        self.program_store.initialize()
+        self.dq_store = DqStore(database, self.program_store)
         self.dq_store.initialize()
         self.worker = worker
         super().__init__(server_address, RequestHandler)
@@ -336,6 +355,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                     constants.RESPONSE_KEY_ACTIVE_MEET_ID: database.get_active_meet_id(),
                 },
             )
+        elif (match := _MEET_PROGRAM_PATTERN.match(path)) is not None:
+            self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_PROGRAM: self.server.program_store.summary(int(match.group(1)))})
         elif path == constants.ROUTE_EXPORT:
             body = json.dumps(database.export_all(), indent=2).encode("utf-8")
             self._send_bytes(
@@ -382,6 +403,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_activate_meet(int(match.group(1)))
         elif (match := _MEET_ASSIGN_PATTERN.match(path)) is not None:
             self._handle_assign_clips(int(match.group(1)))
+        elif (match := _MEET_FILE_PATTERN.match(path)) is not None:
+            self._handle_meet_file(int(match.group(1)), urlsplit(self.path).query)
         elif (match := _CLIP_TRASH_PATTERN.match(path)) is not None:
             self._handle_trash(int(match.group(1)))
         elif (match := _CLIP_RESTORE_PATTERN.match(path)) is not None:
@@ -534,6 +557,59 @@ class RequestHandler(BaseHTTPRequestHandler):
         meet_id = self.server.database.create_meet(name.strip(), str(start_date))
         LOGGER.info("Created meet %d: %s (%s)", meet_id, name.strip(), start_date)
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id})
+
+    def _handle_meet_file(self, meet_id: int, query: str) -> None:
+        """Load a Meet Manager file for a meet.
+
+        Two ways in: the file itself as the request body (its name in
+        ``?name=``), or a JSON body ``{"url": "https://..."}`` to download it. The
+        file is kept (one copy, in ``meet_files/``) and read; the result becomes
+        the meet's active program. Earlier files are kept as older versions.
+        """
+        meet = self.server.database.get_meet(meet_id)
+        if meet is None:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such meet")
+            return
+        media_type = self.headers.get(constants.CONTENT_TYPE_HEADER, "").split(";")[0].strip().lower()
+        if media_type == constants.JSON_CONTENT_TYPE:
+            payload = self._read_json_object()
+            if payload is None:
+                return
+            url = str(payload.get(constants.REQUEST_KEY_URL) or "").strip()
+            if not url.lower().startswith(_WEB_ADDRESS_SCHEMES):
+                self._send_json_error(HTTPStatus.BAD_REQUEST, "The web address must start with http:// or https://")
+                return
+            try:
+                with urllib.request.urlopen(url, timeout=constants.MEET_FILE_DOWNLOAD_TIMEOUT_SECONDS) as response:
+                    file_bytes = response.read(constants.MAX_MEET_FILE_BYTES + 1)
+            except (urllib.error.URLError, OSError, ValueError) as error:
+                self._send_json_error(HTTPStatus.BAD_GATEWAY, f"Could not download the file: {error}")
+                return
+            original_name = Path(urlsplit(url).path).name or _DEFAULT_DOWNLOAD_NAME
+            source = url
+        else:
+            file_bytes = self._read_request_body()
+            if file_bytes is None:
+                return
+            original_name = parse_qs(query).get(constants.QUERY_KEY_FILENAME, [_DEFAULT_DOWNLOAD_NAME])[0]
+            source = original_name
+        if len(file_bytes) > constants.MAX_MEET_FILE_BYTES:
+            self._send_json_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "The meet file is too large")
+            return
+        folder = self.server.meet_files_directory / meet_folder_name(meet)
+        folder.mkdir(parents=True, exist_ok=True)
+        safe_name = _SAFE_FILENAME_CHARACTERS.sub("_", original_name)[:_MAX_STORED_NAME_CHARS] or _DEFAULT_DOWNLOAD_NAME
+        stored_path = folder / f"{datetime.now().strftime(constants.RECORDING_TIMESTAMP_FORMAT)}_{safe_name}"
+        stored_path.write_bytes(file_bytes)
+        try:
+            program, file_format = read_meet_file(stored_path, original_name)
+        except MeetFileError as error:
+            stored_path.unlink(missing_ok=True)
+            self._send_json_error(HTTPStatus.UNPROCESSABLE_ENTITY, str(error))
+            return
+        self.server.program_store.save(meet_id, program, file_format, source, original_name, str(stored_path))
+        LOGGER.info("Loaded meet file %s for meet %d: %s", original_name, meet_id, program.summary())
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_PROGRAM: self.server.program_store.summary(meet_id)})
 
     def _handle_activate_meet(self, meet_id: int) -> None:
         """Make a meet active (id 0 clears the active meet)."""

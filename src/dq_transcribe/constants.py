@@ -234,6 +234,45 @@ SLIP_SECTION_ABBREVIATIONS = {
     "Individual Medley": "IM", "Relays": "RE", "Miscellaneous": "GEN", "Article 105": "105",
 }
 
+# --- Meet Manager files (heat sheets, entries, the Hy-Tek database) -----------
+# Loaded files are kept here (one copy each, never put in a meet archive: the
+# meet's own computer already keeps them).
+MEET_FILES_DIRECTORY = DATA_DIRECTORY / "meet_files"
+MAX_MEET_FILE_BYTES = 80 * 1024 * 1024
+MEET_FILE_DOWNLOAD_TIMEOUT_SECONDS = 60
+ROUTE_MEET_FILE_SUFFIX = "/file"  # POST /api/meets/<id>/file?name=<filename> (raw body) or {"url": ...}
+ROUTE_MEET_PROGRAM_SUFFIX = "/program"  # GET /api/meets/<id>/program: active file summary and events
+QUERY_KEY_FILENAME = "name"
+REQUEST_KEY_URL = "url"
+RESPONSE_KEY_PROGRAM = "program"
+MEET_FILE_FORMAT_DATABASE = "meet_manager_database"  # Hy-Tek Meet Manager backup (.zip) or database (.mdb)
+MEET_FILE_FORMAT_PDF = "pdf_report"  # a Meet Manager report printed to PDF (heat sheet, entries)
+MEET_FILE_FORMAT_HTML = "html_report"  # a Meet Manager report saved as HTML
+MEET_FILE_FORMAT_TEXT = "text_report"  # the same report as plain text
+MEET_FILE_FORMAT_LABELS = {
+    MEET_FILE_FORMAT_DATABASE: "Meet Manager database",
+    MEET_FILE_FORMAT_PDF: "PDF report",
+    MEET_FILE_FORMAT_HTML: "HTML report",
+    MEET_FILE_FORMAT_TEXT: "Text report",
+}
+# External programs used to read some formats (Termux: pkg install poppler mdbtools).
+PDF_TO_TEXT_COMMAND = "pdftotext"
+MDB_EXPORT_COMMAND = "mdb-export"
+MDB_TABLES_COMMAND = "mdb-tables"
+EXTERNAL_COMMAND_TIMEOUT_SECONDS = 120
+# How a swimmer's name is written on a DQ ("{first} {last}" or "{last}, {first}").
+SWIMMER_NAME_FORMAT = "{first} {last}"
+# Stroke names as used on the DQ slip (sections of the code table).
+STROKE_BUTTERFLY = "Butterfly"
+STROKE_BACKSTROKE = "Backstroke"
+STROKE_BREASTSTROKE = "Breaststroke"
+STROKE_FREESTYLE = "Freestyle"
+STROKE_INDIVIDUAL_MEDLEY = "Individual Medley"
+STROKE_MEDLEY_RELAY = "Medley Relay"
+STROKE_FREESTYLE_RELAY = "Freestyle Relay"
+# Strokes for which every swimmer swims one stroke (so slip codes can be chosen from it).
+SINGLE_STROKES = (STROKE_BUTTERFLY, STROKE_BACKSTROKE, STROKE_BREASTSTROKE, STROKE_FREESTYLE)
+
 # Recordings of a meet go in recordings/<start date>_<name>/<day>/ (name made file-safe).
 MEET_FOLDER_FORMAT = "{start_date}_{slug}"
 ROUTE_EXPORT = "/api/export"

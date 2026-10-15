@@ -17,6 +17,8 @@
 let meetDraft = null; // {name, start_date, officials: [{name, role}]} being edited
 let meetDraftDirty = false;
 let quickAddRole = null; // the role the quick-add row keeps between names
+let meetProgram = null; // the meet's loaded Meet Manager file: {active, history, events, sessions}
+let meetFileBusy = false;
 
 /** Open the meet setup view for the active meet. */
 function openMeetSetup() {
@@ -30,7 +32,123 @@ function openMeetSetup() {
     officials: activeMeet.officials.map((official) => ({ name: official.name, role: official.role })),
   };
   meetDraftDirty = false;
+  meetProgram = null;
   setView("meet");
+  loadMeetProgram();
+}
+
+/** Fetch the meet's loaded Meet Manager file (summary and events), then redraw. */
+async function loadMeetProgram() {
+  if (activeMeet === null) {
+    return;
+  }
+  try {
+    const reply = await (await fetch(CONFIG.meetsRoute + "/" + activeMeet.id + CONFIG.meetProgramSuffix)).json();
+    meetProgram = reply[CONFIG.programKey];
+  } catch (error) {
+    meetProgram = null;
+  }
+  if (currentView === "meet") {
+    renderMeetView();
+  }
+}
+
+/** Send a meet file (picked on the tablet, or a web address) to be read. */
+async function loadMeetFile(file, url) {
+  if (activeMeet === null || meetFileBusy) {
+    return;
+  }
+  meetFileBusy = true;
+  renderMeetView();
+  const base = CONFIG.meetsRoute + "/" + activeMeet.id + CONFIG.meetFileSuffix;
+  try {
+    let response;
+    if (file) {
+      response = await fetch(base + "?" + CONFIG.filenameQueryKey + "=" + encodeURIComponent(file.name), {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: file,
+      });
+    } else {
+      const body = {};
+      body[CONFIG.urlKey] = url;
+      response = await fetch(base, { method: "POST", headers: { "Content-Type": CONFIG.jsonMediaType }, body: JSON.stringify(body) });
+    }
+    const reply = await response.json();
+    if (!response.ok) {
+      throw new Error(reply.error || "server answered " + response.status);
+    }
+    meetProgram = reply[CONFIG.programKey];
+    const summary = meetProgram.active.summary;
+    notify("\u2713 Loaded " + summary.events + " events, " + summary.entries + " entries");
+  } catch (error) {
+    notify("Could not load the meet file: " + error.message, "error");
+  }
+  meetFileBusy = false;
+  renderMeetView();
+}
+
+/** The "Meet file" card: what is loaded, and buttons to load a newer file. */
+function buildMeetFileCard() {
+  const card = makeElement("section", "meet-card meet-file");
+  card.append(makeElement("h3", "", "Meet file (Hy-Tek Meet Manager)"));
+  const active = meetProgram && meetProgram.active;
+  if (active) {
+    const summary = active.summary;
+    const loaded = formatTime(new Date(active.loaded_at));
+    card.append(makeElement("p", "meet-file-loaded",
+      "\u2713 " + (CONFIG.meetFileFormatLabels[active.file_format] || active.file_format) + " loaded " + loaded + " from " + active.source));
+    card.append(makeElement("p", "note", [
+      summary.events + " events", summary.entries + " entries", summary.heats + " heats",
+      summary.sessions ? summary.sessions + " sessions" : null,
+      meetProgram.history.length ? meetProgram.history.length + " older version(s) kept" : null,
+    ].filter(Boolean).join(" \u00b7 ")));
+    (summary.warnings || []).forEach((warning) => card.append(makeElement("p", "meet-file-warning", "\u26a0 " + warning)));
+  } else {
+    card.append(makeElement("p", "note", "No meet file yet. Load the heat sheet (PDF or HTML) or the Meet Manager backup (.zip): swimmer and club then fill in from event, heat and lane, and each event's stroke picks the slip codes."));
+  }
+
+  const row = makeElement("div", "meet-file-actions");
+  const picker = document.createElement("input");
+  picker.type = "file";
+  // No "accept" filter: Android greys out .mdb/.zip files it has no type for. The server works out the format.
+  picker.hidden = true;
+  picker.addEventListener("change", () => {
+    if (picker.files.length) {
+      loadMeetFile(picker.files[0], null);
+    }
+  });
+  const pickButton = makeButton("primary", meetFileBusy ? "Reading the file\u2026" : active ? "Load a newer file" : "Load meet file", () => picker.click());
+  pickButton.disabled = meetFileBusy;
+  const urlInput = document.createElement("input");
+  urlInput.type = "url";
+  urlInput.placeholder = "or a web address (https://\u2026)";
+  urlInput.className = "meet-file-url";
+  const urlButton = makeButton("", "Load from address", () => {
+    if (urlInput.value.trim()) {
+      loadMeetFile(null, urlInput.value.trim());
+    }
+  });
+  urlButton.disabled = meetFileBusy;
+  row.append(picker, pickButton, urlInput, urlButton);
+  card.append(row);
+
+  if (meetProgram && meetProgram.events.length) {
+    const details = document.createElement("details");
+    details.append(makeElement("summary", "", "Events (" + meetProgram.events.length + ")"));
+    const list = makeElement("div", "program-events");
+    for (const event of meetProgram.events) {
+      const line = makeElement("div", "program-event");
+      line.append(makeElement("strong", "", "E" + event.number), makeElement("span", "", " " + event.description));
+      if (event.session) {
+        line.append(makeElement("span", "muted", " \u00b7 session " + event.session));
+      }
+      list.append(line);
+    }
+    details.append(list);
+    card.append(details);
+  }
+  return card;
 }
 
 /** Draw the meet setup view from the draft. */
@@ -60,6 +178,7 @@ function renderMeetView() {
   dateLabel.append(dateInput);
   details.append(nameLabel, dateLabel);
   page.append(details);
+  page.append(buildMeetFileCard());
 
   const roster = makeElement("section", "meet-card");
   roster.append(makeElement("h3", "", "Officials (" + meetDraft.officials.length + ")"));

@@ -472,18 +472,22 @@ def stroke_clues(call: CandidateCall) -> set[str]:
     return {next(iter(codes)) for codes in call._code_maps if len(codes) == 1 and ANY_STROKE not in codes}
 
 
-def choose_codes(call: CandidateCall, event_stroke: str | None = None) -> None:
+def choose_codes(call: CandidateCall, event_stroke: str | None = None, stroke_is_certain: bool = False) -> None:
     """Work out the stroke and pick a DQ slip code for each infraction where possible.
 
     Args:
         call: The detected call (its codes and flags are updated).
         event_stroke: The stroke of the call's event if known from elsewhere (another
-            call in the same event, a saved DQ, or later the Meet Manager file). Used
-            only when the call itself gives no single stroke.
+            call in the same event, a saved DQ, or the Meet Manager file).
+        stroke_is_certain: True when ``event_stroke`` comes from the Meet Manager
+            file: it then wins over clues in the call. Otherwise it is used only when
+            the call itself gives no stroke.
     """
     call.flags = [flag for flag in call.flags if flag not in (FLAG_CODE_NEEDS_STROKE, FLAG_CODE_CHOICE)]
     clues = stroke_clues(call)
-    if len(clues) == 1:
+    if stroke_is_certain and event_stroke:
+        call.stroke = event_stroke
+    elif len(clues) == 1:
         call.stroke = next(iter(clues))
     else:
         call.stroke = event_stroke if not clues else None

@@ -273,3 +273,22 @@ class ServerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_upload_and_read_program(self) -> None:
+        response = self._post_json(constants.ROUTE_MEETS, {constants.REQUEST_KEY_MEET_NAME: "Candy Meet",
+                                                           constants.REQUEST_KEY_MEET_START_DATE: "2026-10-16"})
+        meet_id = json.loads(response.read())[constants.RESPONSE_KEY_MEET_ID]
+        sample = (Path(__file__).parent / "data" / "sample_heat_sheet.txt").read_bytes()
+        route = f"{constants.ROUTE_MEETS}/{meet_id}{constants.ROUTE_MEET_FILE_SUFFIX}?{constants.QUERY_KEY_FILENAME}=heats.txt"
+        response = self._request("POST", route, sample, {constants.CONTENT_TYPE_HEADER: "application/octet-stream"})
+        self.assertEqual(response.status, 200)
+        program = json.loads(response.read())[constants.RESPONSE_KEY_PROGRAM]
+        self.assertEqual((program["active"]["summary"]["events"], program["active"]["source"]), (3, "heats.txt"))
+        stored = list((self.root / constants.MEET_FILES_DIRECTORY.name).rglob("*heats.txt"))
+        self.assertEqual(len(stored), 1)
+        response = self._request("GET", f"{constants.ROUTE_MEETS}/{meet_id}{constants.ROUTE_MEET_PROGRAM_SUFFIX}")
+        self.assertEqual(len(json.loads(response.read())[constants.RESPONSE_KEY_PROGRAM]["events"]), 3)
+        bad = self._request("POST", route, b"hello", {constants.CONTENT_TYPE_HEADER: "application/octet-stream"})
+        self.assertEqual(bad.status, 422)
+        self.assertIn("No events", json.loads(bad.read())["error"])

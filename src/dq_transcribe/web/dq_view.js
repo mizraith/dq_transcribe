@@ -109,7 +109,9 @@ function buildCandidateSection(groupId) {
     summary.append(makeElement("strong", "", eventHeatLane(candidate)));
     summary.append(makeElement("span", "", " " + (candidate.infractions.map((description, index) =>
       description + codeHint(candidate.codes[index], candidate.code_options[index])).join("; ") || "infraction?")));
-    if (candidate.stroke) {
+    if (candidate.event_label) {
+      summary.append(makeElement("span", "muted", " · " + candidate.event_label));
+    } else if (candidate.stroke) {
       summary.append(makeElement("span", "muted", " · " + candidate.stroke));
     }
     if (candidate.phases.length) {
@@ -277,6 +279,9 @@ function buildDqCard(dq) {
   const summary = makeElement("button", "dq-summary");
   summary.type = "button";
   summary.append(makeElement("strong", "dq-ehl", eventHeatLane(dq)));
+  if (dq.event_label) {
+    summary.append(makeElement("span", "dq-event-label", " " + dq.event_label));
+  }
   summary.append(makeElement("span", "", " " + (dq.infractions.map((item) => item.description).join("; ") || "no infraction yet")));
   summary.append(makeElement("span", "badge dq-status-badge status-" + dq.status, CONFIG.dqStatusLabels[dq.status] || dq.status));
   if (dq.missing.length && dq.state !== CONFIG.dqStates.declined) {
@@ -472,6 +477,17 @@ function buildDqEditor(dq) {
   const fields = makeElement("div", "dq-fields");
   Object.keys(DQ_FIELD_LABELS).forEach((name) => fields.append(buildField(dq, name)));
   editor.append(fields);
+  if (dq.lookup_differs) {
+    // A newer meet file (or a changed lane) names someone else: the admin decides.
+    const warning = makeElement("div", "lookup-warning");
+    warning.append(makeElement("span", "", "\u26a0 The meet file has " + dq.lookup.swimmer + (dq.lookup.club ? " (" + dq.lookup.club + ")" : "") + " in this event, heat and lane. "));
+    warning.append(makeButton("", "Use " + dq.lookup.swimmer, () => {
+      editor.querySelector("[data-field=swimmer]").value = dq.lookup.swimmer;
+      editor.querySelector("[data-field=club]").value = dq.lookup.club || "";
+      warning.remove();
+    }));
+    editor.append(warning);
+  }
   fillRoleFromRoster(editor);
 
   editor.append(makeElement("div", "dq-subtitle", "Infractions"));

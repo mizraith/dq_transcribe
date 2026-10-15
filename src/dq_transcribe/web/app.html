@@ -45,6 +45,15 @@
     .roster-line { display: grid; grid-template-columns: 2fr 1.3fr auto; gap: 0.5rem; padding: 0.25rem 0; }
     .meet-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
     .unsaved { color: #b45309; font-weight: 600; }
+    .dq-event-label { color: #555b66; font-size: 0.9rem; margin-right: 0.3rem; }
+    .lookup-warning { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.5rem 0; padding: 0.5rem 0.7rem; background: #fff7ed; border: 1px solid #fdba74; border-radius: 0.4rem; }
+    .meet-file-loaded { margin: 0.2rem 0; font-weight: 600; color: #166534; }
+    .meet-file-warning { margin: 0.2rem 0; color: #b45309; font-size: 0.9rem; }
+    .meet-file-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.5rem 0; }
+    .meet-file-actions button { font-size: 1rem; padding: 0.55rem 1rem; border-radius: 0.4rem; }
+    .meet-file-url { flex: 1 1 14rem; font-size: 1rem; padding: 0.5rem; border: 1px solid var(--line); border-radius: 0.4rem; min-width: 0; }
+    .program-events { max-height: 22rem; overflow-y: auto; font-size: 0.95rem; }
+    .program-event { padding: 0.2rem 0; border-bottom: 1px dashed var(--line); }
     #toast { position: fixed; left: 50%; bottom: 1.5rem; transform: translate(-50%, 2rem); opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; padding: 0.8rem 1.4rem; border-radius: 0.6rem; font-size: 1.1rem; font-weight: 600; color: #fff; background: #166534; box-shadow: 0 0.3rem 1rem rgba(0,0,0,0.25); z-index: 10; }
     #toast.show { opacity: 1; transform: translate(-50%, 0); }
     #toast.error { background: #b91c1c; }
@@ -184,7 +193,7 @@
     <h2>Meet</h2>
     <select id="meet-select" aria-label="Active meet"></select>
     <p class="hint">New recordings are filed under this meet.</p>
-    <button id="edit-meet-button" class="wide" type="button" hidden>Edit meet &amp; officials</button>
+    <button id="edit-meet-button" class="wide" type="button" hidden>Meet setup: officials &amp; meet file</button>
     <button id="new-meet-button" class="wide" type="button">New meet</button>
     <div id="new-meet-form" hidden>
       <label for="meet-name">Meet name</label>

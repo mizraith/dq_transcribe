@@ -30,6 +30,8 @@ from typing import Any
 from dq_transcribe import constants
 from dq_transcribe.call_parser import CandidateCall, choose_codes, load_phrases, parse_call_group, stroke_clues
 from dq_transcribe.database import Database, utc_now_iso
+from dq_transcribe.meet_files.model import normalize_event_number
+from dq_transcribe.meet_files.store import MeetProgramStore
 from dq_transcribe.slip_codes import load_dq_codes, rank_codes  # load_dq_codes is re-exported for the server
 
 _CREATE_TABLES = (
@@ -122,9 +124,16 @@ def number_sort_key(value: str | None) -> tuple[int, str]:
 class DqStore:
     """DQ records in the app database."""
 
-    def __init__(self, database: Database) -> None:
-        """Use the app's database (call ``initialize`` once at start-up)."""
+    def __init__(self, database: Database, program_store: MeetProgramStore | None = None) -> None:
+        """Use the app's database (call ``initialize`` once at start-up).
+
+        Args:
+            database: The app database.
+            program_store: Loaded Meet Manager files, used to fill in swimmer and
+                club from event/heat/lane and to know each event's stroke. Optional.
+        """
         self._database = database
+        self._program_store = program_store
         self._phrases = load_phrases()
         self._parse_cache: dict[tuple, list[CandidateCall]] = {}
 
@@ -173,17 +182,21 @@ class DqStore:
         # Every call in an event has the same stroke: learn each event's stroke from
         # the calls and saved DQs that reveal it, then use it for the other calls.
         event_strokes = self._event_strokes(meet_id, [call for _, call in parsed])
+        strokes_from_file = self._program_store.event_strokes(meet_id) if self._program_store else {}
         results: list[dict[str, Any]] = []
         for group_id, call in parsed:
             if call.event in event_strokes:
-                choose_codes(call, event_strokes[call.event])
+                choose_codes(call, event_strokes[call.event], stroke_is_certain=call.event in strokes_from_file)
             key = candidate_key(call)
             if key not in used:
                 results.append({**call.to_dict(), "key": key, "group_id": group_id})
+        self._add_program_details(results, meet_id)
         return results
 
     def _event_strokes(self, meet_id: int | None, calls: list[CandidateCall]) -> dict[str, str]:
-        """Each event's stroke where the evidence agrees (events with mixed clues, such as an IM, are left out)."""
+        """Each event's stroke: from the meet file when loaded, otherwise where the
+        calls and saved DQs agree (events with mixed clues, such as an IM, are left out)."""
+        from_file = self._program_store.event_strokes(meet_id) if self._program_store else {}
         clues: dict[str, set[str]] = {}
         for call in calls:
             if call.event:
@@ -195,7 +208,8 @@ class DqStore:
                 stroke = _CODE_PREFIX_TO_STROKE.get((infraction["code"] or " ")[0])
                 if stroke:
                     clues.setdefault(dq["event"], set()).add(stroke)
-        return {event: next(iter(strokes)) for event, strokes in clues.items() if len(strokes) == 1}
+        learned = {event: next(iter(strokes)) for event, strokes in clues.items() if len(strokes) == 1}
+        return {**learned, **from_file}
 
     def _parse_cached(self, utterances: list[dict[str, Any]]) -> list[CandidateCall]:
         """Parse a group's turns, reusing the last result if nothing in the group changed."""
@@ -260,7 +274,8 @@ class DqStore:
                 "INSERT INTO dq_history (dq_id, at, from_state, to_state, by_name, note) VALUES (?, ?, NULL, ?, ?, ?)",
                 (dq_id, now, state, None, "created from a detected call" if key else "created by hand"),
             )
-            return dq_id
+        self._fill_from_program(dq_id)
+        return dq_id
 
     def update_dq(self, dq_id: int, payload: dict[str, Any]) -> bool:
         """Change a DQ's text fields and/or replace its infractions.
@@ -287,7 +302,27 @@ class DqStore:
             )
             if infractions is not None:
                 _replace_infractions(connection, dq_id, infractions)
-            return True
+        self._fill_from_program(dq_id)
+        return True
+
+    def _fill_from_program(self, dq_id: int) -> None:
+        """Fill in an empty swimmer and club from the meet file (event, heat and lane).
+
+        Only empty fields are filled: a name the admin typed is never replaced.
+        """
+        if self._program_store is None:
+            return
+        with self._database.transaction() as connection:
+            row = connection.execute("SELECT meet_id, event, heat, lane, swimmer, club FROM dqs WHERE id = ?", (dq_id,)).fetchone()
+            if row is None or (row["swimmer"] and row["club"]):
+                return
+            entry = self._program_store.lookup(row["meet_id"], row["event"], row["heat"], row["lane"])
+            if entry is None:
+                return
+            connection.execute(
+                "UPDATE dqs SET swimmer = COALESCE(swimmer, ?), club = COALESCE(club, ?) WHERE id = ?",
+                (entry["swimmer"], entry["club"] or None, dq_id),
+            )
 
     def change_state(self, dq_id: int, state: str, by_name: str | None = None, note: str | None = None) -> bool:
         """Move a DQ to a new state, recording who and when in the history.
@@ -358,8 +393,27 @@ class DqStore:
                         (dq["id"],),
                     )
                 ]
+        self._add_program_details(dqs, meet_id)
         dqs.sort(key=lambda dq: (number_sort_key(dq["event"]), number_sort_key(dq["heat"]), number_sort_key(dq["lane"]), dq["id"]))
         return dqs
+
+    def _add_program_details(self, items: list[dict[str, Any]], meet_id: int | None) -> None:
+        """Add ``event_label`` (from the meet file) and, for DQs, ``lookup`` and ``lookup_differs``.
+
+        ``lookup_differs`` is true when the meet file names a different swimmer than
+        the DQ, for example after a newer file was loaded: the admin confirms it.
+        """
+        if self._program_store is None:
+            return
+        events = self._program_store.events(meet_id)
+        for item in items:
+            event = events.get(normalize_event_number(item["event"])) if item.get("event") else None
+            item["event_label"] = _event_label(event)
+            if "swimmer" not in item:
+                continue
+            lookup = self._program_store.lookup(item.get("meet_id", meet_id), item["event"], item["heat"], item["lane"])
+            item["lookup"] = lookup
+            item["lookup_differs"] = bool(lookup and item["swimmer"] and item["swimmer"] != lookup["swimmer"])
 
 
 # --- Validation helpers ------------------------------------------------------
@@ -379,6 +433,14 @@ def _text_fields(payload: dict[str, Any]) -> dict[str, str | None]:
             raise DqError(f"{name} is too long")
         fields[name] = text or None
     return fields
+
+
+def _event_label(event: dict[str, Any] | None) -> str | None:
+    """"Girls 10 & Under 50 Breaststroke" for an event from the meet file."""
+    if not event:
+        return None
+    parts = [event["gender"], event["age_group"], str(event["distance"]) if event["distance"] else None, event["stroke"]]
+    return " ".join(part for part in parts if part) or event["description"]
 
 
 def missing_fields(dq: dict[str, Any]) -> list[str]:
