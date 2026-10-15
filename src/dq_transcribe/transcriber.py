@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Protocol
 
 from dq_transcribe import constants
+from dq_transcribe.text_normalization import normalize_spoken_numbers
 
 LOGGER = logging.getLogger(__name__)
 
@@ -60,7 +61,8 @@ _NON_SPEECH_ANNOTATION = re.compile(constants.NON_SPEECH_ANNOTATION_PATTERN)
 
 
 def clean_transcript_text(text: str) -> str:
-    """Remove sound labels such as "[Music]" or "*static*" and normalize spaces.
+    """Remove sound labels such as "[Music]" or "*static*", normalize spaces, and
+    write event/heat/lane numbers as digits (see ``text_normalization``).
 
     Args:
         text: Text as printed by whisper.
@@ -68,7 +70,7 @@ def clean_transcript_text(text: str) -> str:
     Returns:
         The spoken words only, single-spaced.
     """
-    return " ".join(_NON_SPEECH_ANNOTATION.sub(" ", text).split())
+    return normalize_spoken_numbers(" ".join(_NON_SPEECH_ANNOTATION.sub(" ", text).split()))
 
 
 def load_prompt(prompt_path: Path) -> str:
