@@ -1,0 +1,11 @@
+task: install_numbered_prompt
+started: 2026-10-14T19:23:06-07:00
+finished: 2026-10-14T19:23:10-07:00
+work_repo_commit: 5d5ffcb
+exit_code: 0
+--- output ---
+running 5d5ffcb
+2026-10-14 19:23:08,828 Refine pass on, using ggml-small.en
+2026-10-14 19:23:09,387 whisper-server ready: ggml-base
+2026-10-14 19:23:09,892 whisper-server ready: ggml-small.en
+page status 200
