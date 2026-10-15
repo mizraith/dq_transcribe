@@ -156,7 +156,6 @@ def build_web_config() -> dict[str, Any]:
         "noMeetId": constants.NO_MEET_ID,
         "officialsKey": constants.REQUEST_KEY_OFFICIALS,
         "rosterRoles": list(constants.MEET_ROSTER_ROLES),
-        "rosterToDqRole": constants.ROSTER_TO_DQ_ROLE,
         "meetNameKey": constants.REQUEST_KEY_MEET_NAME,
         "meetStartDateKey": constants.REQUEST_KEY_MEET_START_DATE,
         "audioInputStorageKey": constants.AUDIO_INPUT_STORAGE_KEY,
@@ -233,6 +232,7 @@ def render_app_page() -> bytes:
         {
             "script_route": constants.ROUTE_APP_SCRIPT,
             "dq_script_route": constants.ROUTE_DQ_SCRIPT,
+            "meet_script_route": constants.ROUTE_MEET_SCRIPT,
             "transcript_route": constants.ROUTE_TRANSCRIPT_TEXT,
             "export_route": constants.ROUTE_EXPORT,
             "mic_test_route": constants.ROUTE_MIC_TEST,
@@ -297,6 +297,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_mic_test_page())
         elif path == constants.ROUTE_APP_SCRIPT:
             self._send_bytes(HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.APP_SCRIPT_FILENAME))
+        elif path == constants.ROUTE_MEET_SCRIPT:
+            self._send_bytes(HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.MEET_SCRIPT_FILENAME))
         elif path == constants.ROUTE_DQ_SCRIPT:
             self._send_bytes(HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.DQ_SCRIPT_FILENAME))
         elif path == constants.ROUTE_CAPTURE_WORKLET:

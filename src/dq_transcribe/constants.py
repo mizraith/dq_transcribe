@@ -139,6 +139,7 @@ ROUTE_MIC_TEST = "/mic-test"
 ROUTE_APP_SCRIPT = "/app.js"
 ROUTE_CAPTURE_WORKLET = "/capture_worklet.js"
 ROUTE_DQ_SCRIPT = "/dq_view.js"
+ROUTE_MEET_SCRIPT = "/meet_view.js"
 ROUTE_UPLOAD_RECORDING = "/api/recordings"  # legacy mic test
 ROUTE_CLIPS = "/api/clips"
 CLIP_AUDIO_SUFFIX = "/audio"
@@ -167,15 +168,12 @@ RESPONSE_KEY_COUNT = "count"
 MAX_MEET_NAME_CHARS = 100
 REQUEST_KEY_OFFICIALS = "officials"
 MAX_MEET_OFFICIALS = 200
-# Roles for a meet's officials roster (stated by the owner, 2026-10-14). The DQ's
-# own "official role" uses OFFICIAL_ROLES; ROSTER_TO_DQ_ROLE maps between them.
+# Roles for a meet's officials roster (stated by the owner, 2026-10-14). A DQ's
+# "official role" uses the same list, so picking an official from the roster
+# copies their role.
 MEET_ROSTER_ROLES = (
-    "Meet Referee", "Deck Referee", "Chief Judge", "Stroke & Turn Judge", "Starter", "Relay Take-off Judge", "Admin Official",
+    "Stroke & Turn Judge", "Chief Judge", "Deck Referee", "Meet Referee", "Starter", "Relay Take-off Judge", "Admin Official",
 )
-ROSTER_TO_DQ_ROLE = {
-    "Meet Referee": "Referee", "Deck Referee": "Referee", "Chief Judge": "Chief Judge",
-    "Stroke & Turn Judge": "Judge", "Starter": "Starter", "Relay Take-off Judge": "RTO",
-}
 MEET_START_DATE_FORMAT = "%Y-%m-%d"
 SETTING_ACTIVE_MEET_ID = "active_meet_id"
 # --- DQs -----------------------------------------------------------------------
@@ -192,7 +190,7 @@ RACE_PHASES = ("Start", "Swim", "Turn", "Finish")
 # Editable DQ fields (text) and their maximum length.
 DQ_TEXT_FIELDS = ("event", "heat", "lane", "relay_leg", "swimmer", "club", "official", "official_role", "chief_judge", "referee", "notes")
 MAX_DQ_FIELD_CHARS = 200
-OFFICIAL_ROLES = ("Judge", "Chief Judge", "Referee", "RTO", "Starter")
+OFFICIAL_ROLES = MEET_ROSTER_ROLES
 ROUTE_DQS = "/api/dqs"  # GET list (active meet), POST create
 DQ_STATE_SUFFIX = "/state"  # POST /api/dqs/<id>/state {"state", "by", "note"}
 ROUTE_CANDIDATES = "/api/candidates"  # GET detected calls for the active meet
@@ -223,6 +221,7 @@ MIC_TEST_PAGE_FILENAME = "mic_test.html"
 APP_PAGE_FILENAME = "app.html"
 APP_SCRIPT_FILENAME = "app.js"
 DQ_SCRIPT_FILENAME = "dq_view.js"
+MEET_SCRIPT_FILENAME = "meet_view.js"
 CAPTURE_WORKLET_FILENAME = "capture_worklet.js"
 MIC_TEST_RECORD_SECONDS = 5
 

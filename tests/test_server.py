@@ -102,7 +102,7 @@ class ServerTests(unittest.TestCase):
 
     def test_pages_have_no_unfilled_placeholders(self) -> None:
         for route in (constants.ROUTE_HOME, constants.ROUTE_MIC_TEST, constants.ROUTE_APP_SCRIPT,
-                      constants.ROUTE_CAPTURE_WORKLET, constants.ROUTE_DQ_SCRIPT):
+                      constants.ROUTE_CAPTURE_WORKLET, constants.ROUTE_DQ_SCRIPT, constants.ROUTE_MEET_SCRIPT):
             response = self._request("GET", route)
             self.assertEqual(response.status, 200, route)
             self.assertNotIn("${", response.read().decode("utf-8"), route)
@@ -114,7 +114,7 @@ class ServerTests(unittest.TestCase):
         node = shutil.which("node")
         if node is None:
             self.skipTest("node not installed")
-        for name in (constants.APP_SCRIPT_FILENAME, constants.CAPTURE_WORKLET_FILENAME, constants.DQ_SCRIPT_FILENAME):
+        for name in (constants.APP_SCRIPT_FILENAME, constants.CAPTURE_WORKLET_FILENAME, constants.DQ_SCRIPT_FILENAME, constants.MEET_SCRIPT_FILENAME):
             path = self.root / name
             path.write_bytes(render_script(name))
             result = subprocess.run([node, "--check", str(path)], capture_output=True, text=True)

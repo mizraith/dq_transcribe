@@ -20,7 +20,7 @@ const DQ_NUMBER_FIELDS = ["event", "heat", "lane", "relay_leg"];
 // Which roster roles to suggest for each people field of a DQ (null = everyone).
 const ROSTER_SUGGESTIONS = {
   official: null,
-  referee: ["Meet Referee", "Deck Referee"],
+  referee: ["Deck Referee", "Meet Referee"],
   chief_judge: ["Chief Judge"],
 };
 const DQ_STATE_LABELS = { called: "called", accepted: "accepted", declined: "declined" };
@@ -267,6 +267,9 @@ function buildField(dq, name) {
     input = document.createElement("select");
     input.append(new Option("", ""));
     CONFIG.officialRoles.forEach((role) => input.append(new Option(role, role)));
+    if (dq[name] && !CONFIG.officialRoles.includes(dq[name])) {
+      input.append(new Option(dq[name], dq[name])); // a role saved under an older list
+    }
   } else {
     input = document.createElement("input");
     input.type = "text";
@@ -449,8 +452,8 @@ function fillRoleFromRoster(editor) {
   const role = editor.querySelector("[data-field=official_role]");
   official.addEventListener("change", () => {
     const entry = activeMeet && activeMeet.officials.find((item) => item.name === official.value.trim());
-    if (entry && !role.value && CONFIG.rosterToDqRole[entry.role]) {
-      role.value = CONFIG.rosterToDqRole[entry.role];
+    if (entry) {
+      role.value = entry.role;
     }
   });
 }
