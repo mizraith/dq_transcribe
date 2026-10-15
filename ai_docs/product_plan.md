@@ -695,6 +695,15 @@ Hy-Tek Meet Manager file, auto-filled from event/heat/lane. The owner will get t
 file for Friday's meet. These files can be **updated mid-meet**, so the main app
 window needs a way to **browse for and load a new file** at any time.
 
+**Event details from the Meet Manager file (stated, 2026-10-14):** besides
+swimmer names, the file gives each **event's stroke, distance, gender and age
+group**. Knowing the stroke narrows things down:
+- the DQ code picker lists only that stroke's infractions (plus general ones such
+  as false start);
+- the call matcher prefers infractions of that stroke;
+- the right slip code can be chosen automatically (for example, "one hand touch"
+  in a breaststroke event is 3J, in butterfly 1J).
+
 **Proposed for the Meet Manager file:**
 - **Loading (stated: file picker or web address):** a "Load meet file" button on
   the main window offers two ways in:

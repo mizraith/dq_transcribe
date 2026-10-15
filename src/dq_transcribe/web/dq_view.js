@@ -17,6 +17,12 @@ const DQ_FIELD_LABELS = {
   club: "Club", official: "Official", official_role: "Official role", chief_judge: "Chief Judge", referee: "Referee", notes: "Notes",
 };
 const DQ_NUMBER_FIELDS = ["event", "heat", "lane", "relay_leg"];
+// Which roster roles to suggest for each people field of a DQ (null = everyone).
+const ROSTER_SUGGESTIONS = {
+  official: null,
+  referee: ["Meet Referee", "Deck Referee"],
+  chief_judge: ["Chief Judge"],
+};
 const DQ_STATE_LABELS = { called: "called", accepted: "accepted", declined: "declined" };
 
 let candidatesByGroup = new Map(); // group id -> detected calls not yet turned into DQs
@@ -168,6 +174,9 @@ async function refreshDqView(force) {
   await loadDqCodes();
   try {
     const text = await (await fetch(CONFIG.dqsRoute)).text();
+    if (currentView !== "dqs") {
+      return; // the user switched views while this was loading
+    }
     const dqs = JSON.parse(text)[CONFIG.dqsKey];
     dqCount = dqs.filter((dq) => dq.state !== CONFIG.dqStates.declined).length;
     updateViewButtons();
@@ -243,6 +252,18 @@ function buildField(dq, name) {
   }
   input.value = dq[name] || "";
   input.dataset.field = name;
+  if (name in ROSTER_SUGGESTIONS && activeMeet !== null) {
+    // Suggest names from the meet's officials roster (typing any other name still works).
+    const listId = "roster-" + name;
+    const datalist = document.createElement("datalist");
+    datalist.id = listId;
+    const roles = ROSTER_SUGGESTIONS[name];
+    activeMeet.officials
+      .filter((official) => roles === null || roles.includes(official.role))
+      .forEach((official) => datalist.append(new Option(official.role, official.name)));
+    input.setAttribute("list", listId);
+    wrapper.append(datalist);
+  }
   if (DQ_NUMBER_FIELDS.includes(name)) {
     const row = makeElement("div", "stepper");
     const step = (delta) => {
@@ -328,6 +349,7 @@ function buildDqEditor(dq) {
   const fields = makeElement("div", "dq-fields");
   Object.keys(DQ_FIELD_LABELS).forEach((name) => fields.append(buildField(dq, name)));
   editor.append(fields);
+  fillRoleFromRoster(editor);
 
   editor.append(makeElement("div", "dq-subtitle", "Infractions"));
   const infractions = makeElement("div", "infractions");
@@ -364,6 +386,18 @@ function buildDqEditor(dq) {
   const history = dq.history.map((item) => formatTime(new Date(item.at)) + " " + item.to_state + (item.by_name ? " (" + item.by_name + ")" : "")).join(" → ");
   editor.append(makeElement("p", "note", "History: " + history));
   return editor;
+}
+
+/** When an official is picked from the roster, fill in their role if it is empty. */
+function fillRoleFromRoster(editor) {
+  const official = editor.querySelector("[data-field=official]");
+  const role = editor.querySelector("[data-field=official_role]");
+  official.addEventListener("change", () => {
+    const entry = activeMeet && activeMeet.officials.find((item) => item.name === official.value.trim());
+    if (entry && !role.value && CONFIG.rosterToDqRole[entry.role]) {
+      role.value = CONFIG.rosterToDqRole[entry.role];
+    }
+  });
 }
 
 /** Save the editor's fields and infractions. */

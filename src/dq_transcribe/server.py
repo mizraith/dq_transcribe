@@ -54,6 +54,7 @@ _UTTERANCE_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_UTTERANCES)}/(\d+
 _MEET_ACTIVATE_PATTERN = re.compile(
     rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_ACTIVATE_SUFFIX)}$"
 )
+_MEET_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+)$")
 _MEET_ASSIGN_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_ASSIGN_SUFFIX)}$")
 _NON_FILENAME_CHARACTERS = re.compile(r"[^a-z0-9]+")
 _DQ_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_DQS)}/(\d+)$")
@@ -153,6 +154,9 @@ def build_web_config() -> dict[str, Any]:
         "activeMeetKey": constants.RESPONSE_KEY_ACTIVE_MEET_ID,
         "meetActivateSuffix": constants.MEET_ACTIVATE_SUFFIX,
         "noMeetId": constants.NO_MEET_ID,
+        "officialsKey": constants.REQUEST_KEY_OFFICIALS,
+        "rosterRoles": list(constants.MEET_ROSTER_ROLES),
+        "rosterToDqRole": constants.ROSTER_TO_DQ_ROLE,
         "meetNameKey": constants.REQUEST_KEY_MEET_NAME,
         "meetStartDateKey": constants.REQUEST_KEY_MEET_START_DATE,
         "audioInputStorageKey": constants.AUDIO_INPUT_STORAGE_KEY,
@@ -364,6 +368,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_dq_state(int(match.group(1)))
         elif (match := _DQ_PATTERN.match(path)) is not None:
             self._handle_update_dq(int(match.group(1)))
+        elif (match := _MEET_PATTERN.match(path)) is not None:
+            self._handle_update_meet(int(match.group(1)))
         elif (match := _MEET_ACTIVATE_PATTERN.match(path)) is not None:
             self._handle_activate_meet(int(match.group(1)))
         elif (match := _MEET_ASSIGN_PATTERN.match(path)) is not None:
@@ -460,6 +466,47 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json_error(HTTPStatus.BAD_REQUEST, "Expected a JSON object")
             return None
         return payload
+
+    def _read_meet_name_and_date(self, payload: dict[str, Any]) -> tuple[str, str] | None:
+        """Validate a meet's name and first day, or send an error and return None."""
+        name = payload.get(constants.REQUEST_KEY_MEET_NAME)
+        start_date = payload.get(constants.REQUEST_KEY_MEET_START_DATE)
+        if not isinstance(name, str) or not name.strip() or len(name) > constants.MAX_MEET_NAME_CHARS:
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "The meet needs a name")
+            return None
+        try:
+            datetime.strptime(str(start_date), constants.MEET_START_DATE_FORMAT)
+        except ValueError:
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "The start date must look like 2026-10-16")
+            return None
+        return name.strip(), str(start_date)
+
+    def _handle_update_meet(self, meet_id: int) -> None:
+        """Change a meet: {"name", "start_date", "officials": [{"name", "role"}, ...]}."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        name_and_date = self._read_meet_name_and_date(payload)
+        if name_and_date is None:
+            return
+        officials_payload = payload.get(constants.REQUEST_KEY_OFFICIALS, [])
+        officials: list[tuple[str, str]] = []
+        if not isinstance(officials_payload, list) or len(officials_payload) > constants.MAX_MEET_OFFICIALS:
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "officials must be a list")
+            return
+        for item in officials_payload:
+            official_name = item.get("name") if isinstance(item, dict) else None
+            role = item.get("role") if isinstance(item, dict) else None
+            if not isinstance(official_name, str) or not official_name.strip():
+                continue  # blank rows are ignored
+            if role not in constants.MEET_ROSTER_ROLES:
+                self._send_json_error(HTTPStatus.BAD_REQUEST, f"Unknown role {role!r}")
+                return
+            officials.append((official_name.strip()[: constants.MAX_MEET_NAME_CHARS], role))
+        if not self.server.database.update_meet(meet_id, *name_and_date, officials):
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such meet")
+            return
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
 
     def _handle_create_meet(self) -> None:
         """Create a meet from {"name", "start_date"} and make it the active meet."""

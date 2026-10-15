@@ -42,6 +42,14 @@ const meetNameInput = document.getElementById("meet-name");
 const meetDateInput = document.getElementById("meet-date");
 const createMeetButton = document.getElementById("create-meet-button");
 const cancelMeetButton = document.getElementById("cancel-meet-button");
+const editMeetButton = document.getElementById("edit-meet-button");
+const editMeetForm = document.getElementById("edit-meet-form");
+const editMeetName = document.getElementById("edit-meet-name");
+const editMeetDate = document.getElementById("edit-meet-date");
+const rosterRows = document.getElementById("roster-rows");
+const addOfficialButton = document.getElementById("add-official-button");
+const saveMeetButton = document.getElementById("save-meet-button");
+const cancelEditMeetButton = document.getElementById("cancel-edit-meet-button");
 const startInput = document.getElementById("start-dbfs");
 const endInput = document.getElementById("end-dbfs");
 const hangInput = document.getElementById("hang-seconds");
@@ -784,6 +792,7 @@ async function onAudioInputChange() {
 
 const NO_MEET_LABEL = "No meet (show all clips)";
 let activeMeetName = "";
+let activeMeet = null; // the active meet, with its officials roster
 
 /** Today's local date as YYYY-MM-DD (for the date picker). */
 function todayIsoDate() {
@@ -809,7 +818,9 @@ async function loadMeets() {
     meetSelect.replaceChildren(...options);
     meetSelect.value = String(activeId === null ? CONFIG.noMeetId : activeId);
     const active = data[CONFIG.meetsKey].find((meet) => meet.id === activeId);
+    activeMeet = active || null;
     activeMeetName = active ? active.name : "";
+    editMeetButton.hidden = activeMeet === null || !editMeetForm.hidden || !newMeetForm.hidden;
     updateViewButtons();
   } catch (error) {
     // Server restarting: try again on the next refresh.
@@ -833,10 +844,69 @@ async function onMeetChange() {
 function showNewMeetForm(visible) {
   newMeetForm.hidden = !visible;
   newMeetButton.hidden = visible;
+  editMeetButton.hidden = visible || activeMeet === null;
   if (visible) {
     meetDateInput.value = meetDateInput.value || todayIsoDate();
     meetNameInput.focus();
   }
+}
+
+/** One roster row: official's name, role, and a remove button. */
+function buildRosterRow(official) {
+  const row = makeElement("div", "roster-row");
+  const name = document.createElement("input");
+  name.type = "text";
+  name.placeholder = "Name";
+  name.value = official.name || "";
+  const role = document.createElement("select");
+  CONFIG.rosterRoles.forEach((label) => role.append(new Option(label, label)));
+  role.value = official.role || CONFIG.rosterRoles[0];
+  row.append(name, role, makeButton("", "\u2715", () => row.remove()));
+  return row;
+}
+
+/** Show or hide the "edit meet" form, filled from the active meet. */
+function showEditMeetForm(visible) {
+  editMeetForm.hidden = !visible;
+  editMeetButton.hidden = visible || activeMeet === null;
+  newMeetButton.hidden = visible;
+  if (visible && activeMeet !== null) {
+    editMeetName.value = activeMeet.name;
+    editMeetDate.value = activeMeet.start_date;
+    rosterRows.replaceChildren(...activeMeet.officials.map(buildRosterRow));
+    if (!activeMeet.officials.length) {
+      rosterRows.append(buildRosterRow({}));
+    }
+  }
+}
+
+/** Save the meet's name, first day and officials roster. */
+async function saveMeet() {
+  if (activeMeet === null) {
+    return;
+  }
+  const body = {};
+  body[CONFIG.meetNameKey] = editMeetName.value.trim();
+  body[CONFIG.meetStartDateKey] = editMeetDate.value;
+  body[CONFIG.officialsKey] = Array.from(rosterRows.querySelectorAll(".roster-row")).map((row) => ({
+    name: row.querySelector("input").value.trim(),
+    role: row.querySelector("select").value,
+  }));
+  try {
+    const response = await fetch(CONFIG.meetsRoute + "/" + activeMeet.id, {
+      method: "POST",
+      headers: { "Content-Type": CONFIG.jsonMediaType },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error((await response.json()).error || "server answered " + response.status);
+    }
+    setStatus("Saved meet " + body[CONFIG.meetNameKey] + ".");
+    showEditMeetForm(false);
+  } catch (error) {
+    setStatus("Could not save the meet: " + error.message);
+  }
+  await loadMeets();
 }
 
 /** Create a meet from the form and make it the active meet. */
@@ -1242,11 +1312,15 @@ async function refreshDqCount() {
 
 /** Fetch the latest clips (and detected calls) and redraw the transcript or trash. */
 async function refreshTranscript() {
+  const view = currentView;
   try {
     const url = showingTrash ? CONFIG.clipsRoute + "?" + CONFIG.viewQueryKey + "=" + CONFIG.viewTrash : CONFIG.clipsRoute;
     const response = await fetch(url);
     const text = await response.text();
     const candidatesChanged = showingTrash ? false : await loadCandidates();
+    if (view !== currentView) {
+      return; // the user switched views while this was loading: do not draw over the new view
+    }
     if (text === lastClipsSignature && !candidatesChanged) {
       return; // nothing changed: keep the page (and any playing audio) as it is
     }
@@ -1273,6 +1347,10 @@ function startApp() {
   newMeetButton.addEventListener("click", () => showNewMeetForm(true));
   cancelMeetButton.addEventListener("click", () => showNewMeetForm(false));
   createMeetButton.addEventListener("click", createMeet);
+  editMeetButton.addEventListener("click", () => showEditMeetForm(true));
+  cancelEditMeetButton.addEventListener("click", () => showEditMeetForm(false));
+  addOfficialButton.addEventListener("click", () => rosterRows.append(buildRosterRow({})));
+  saveMeetButton.addEventListener("click", saveMeet);
   loadMeets();
   audioInputSelect.addEventListener("change", onAudioInputChange);
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {

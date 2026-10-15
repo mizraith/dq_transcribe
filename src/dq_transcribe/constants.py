@@ -165,6 +165,17 @@ RESPONSE_KEY_ACTIVE_MEET_ID = "active_meet_id"
 RESPONSE_KEY_MEET_ID = "meet_id"
 RESPONSE_KEY_COUNT = "count"
 MAX_MEET_NAME_CHARS = 100
+REQUEST_KEY_OFFICIALS = "officials"
+MAX_MEET_OFFICIALS = 200
+# Roles for a meet's officials roster (stated by the owner, 2026-10-14). The DQ's
+# own "official role" uses OFFICIAL_ROLES; ROSTER_TO_DQ_ROLE maps between them.
+MEET_ROSTER_ROLES = (
+    "Meet Referee", "Deck Referee", "Chief Judge", "Stroke & Turn Judge", "Starter", "Relay Take-off Judge", "Admin Official",
+)
+ROSTER_TO_DQ_ROLE = {
+    "Meet Referee": "Referee", "Deck Referee": "Referee", "Chief Judge": "Chief Judge",
+    "Stroke & Turn Judge": "Judge", "Starter": "Starter", "Relay Take-off Judge": "RTO",
+}
 MEET_START_DATE_FORMAT = "%Y-%m-%d"
 SETTING_ACTIVE_MEET_ID = "active_meet_id"
 # --- DQs -----------------------------------------------------------------------

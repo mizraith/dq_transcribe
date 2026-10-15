@@ -209,6 +209,23 @@ class ServerTests(unittest.TestCase):
         self.assertIsNone(json.loads(self._request("GET", constants.ROUTE_MEETS).read())[constants.RESPONSE_KEY_ACTIVE_MEET_ID])
         self.assertEqual(self._upload_clip()[constants.RESPONSE_KEY_SAVED_AS].count("/"), 1)  # day folder only
 
+    def test_edit_meet_and_roster(self) -> None:
+        response = self._post_json(constants.ROUTE_MEETS, {constants.REQUEST_KEY_MEET_NAME: "Candy Meet",
+                                                           constants.REQUEST_KEY_MEET_START_DATE: "2026-10-16"})
+        meet_id = json.loads(response.read())[constants.RESPONSE_KEY_MEET_ID]
+        roster = [{"name": "Sam", "role": "Deck Referee"}, {"name": " ", "role": "Starter"}, {"name": "Red", "role": "Stroke & Turn Judge"}]
+        saved = self._post_json(f"{constants.ROUTE_MEETS}/{meet_id}", {constants.REQUEST_KEY_MEET_NAME: "Candy Meet 2026",
+                                                                        constants.REQUEST_KEY_MEET_START_DATE: "2026-10-16",
+                                                                        constants.REQUEST_KEY_OFFICIALS: roster})
+        self.assertEqual(saved.status, 200)
+        meet = json.loads(self._request("GET", constants.ROUTE_MEETS).read())[constants.RESPONSE_KEY_MEETS][0]
+        self.assertEqual(meet["name"], "Candy Meet 2026")
+        self.assertEqual(meet["officials"], [{"name": "Sam", "role": "Deck Referee"}, {"name": "Red", "role": "Stroke & Turn Judge"}])
+        bad_role = self._post_json(f"{constants.ROUTE_MEETS}/{meet_id}", {constants.REQUEST_KEY_MEET_NAME: "X",
+                                                                           constants.REQUEST_KEY_MEET_START_DATE: "2026-10-16",
+                                                                           constants.REQUEST_KEY_OFFICIALS: [{"name": "A", "role": "Boss"}]})
+        self.assertEqual(bad_role.status, 400)
+
     def test_meet_validation(self) -> None:
         bad_date = self._post_json(constants.ROUTE_MEETS, {constants.REQUEST_KEY_MEET_NAME: "X",
                                                            constants.REQUEST_KEY_MEET_START_DATE: "Friday"})

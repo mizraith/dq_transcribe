@@ -142,6 +142,7 @@ def find_infractions(words: list[str], phrases: list[InfractionPhrase]) -> list[
         size = len(phrase.words)
         target = " ".join(phrase.words)
         allow_fuzzy = len(target) >= FUZZY_MIN_PHRASE_CHARACTERS
+        matcher = difflib.SequenceMatcher(None, "", target)  # target analysis is cached by set_seq1 reuse
         # Also try one extra word, so "shoulders were past vertical" matches "shoulders past vertical".
         for window_size in (size, size + 1) if allow_fuzzy else (size,):
             for start in range(0, len(words) - window_size + 1):
@@ -151,7 +152,11 @@ def find_infractions(words: list[str], phrases: list[InfractionPhrase]) -> list[
                 if window == target:
                     ratio = 1.0
                 elif allow_fuzzy:
-                    ratio = difflib.SequenceMatcher(None, window, target).ratio()
+                    matcher.set_seq1(window)
+                    # Cheap upper bounds first; the full ratio is only computed for likely matches.
+                    if matcher.real_quick_ratio() < PHRASE_MATCH_MIN_RATIO or matcher.quick_ratio() < PHRASE_MATCH_MIN_RATIO:
+                        continue
+                    ratio = matcher.ratio()
                 else:
                     continue
                 if ratio >= PHRASE_MATCH_MIN_RATIO:

@@ -74,6 +74,16 @@ CREATE TABLE IF NOT EXISTS meets (
 )
 """
 
+_CREATE_MEET_OFFICIALS_TABLE = """
+CREATE TABLE IF NOT EXISTS meet_officials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    meet_id INTEGER NOT NULL REFERENCES meets(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL
+)
+"""
+
 # Small key/value store for app-wide settings, such as the active meet.
 _CREATE_SETTINGS_TABLE = """
 CREATE TABLE IF NOT EXISTS settings (
@@ -198,6 +208,7 @@ class Database:
             connection.execute(_CREATE_UTTERANCES_INDEX)
             connection.execute(_CREATE_MEETS_TABLE)
             connection.execute(_CREATE_SETTINGS_TABLE)
+            connection.execute(_CREATE_MEET_OFFICIALS_TABLE)
             existing_columns = {row["name"] for row in connection.execute("PRAGMA table_info(clips)")}
             for column, column_type in _ADDED_CLIP_COLUMNS.items():
                 if column not in existing_columns:
@@ -552,7 +563,38 @@ class Database:
                 "(SELECT COUNT(*) FROM clips c WHERE c.meet_id = m.id AND c.trashed_at IS NULL) AS clip_count "
                 "FROM meets m ORDER BY m.start_date DESC, m.name"
             )
-            return [dict(row) for row in rows]
+            meets = [dict(row) for row in rows]
+            for meet in meets:
+                meet["officials"] = [
+                    dict(row)
+                    for row in connection.execute(
+                        "SELECT name, role FROM meet_officials WHERE meet_id = ? ORDER BY position", (meet["id"],)
+                    )
+                ]
+            return meets
+
+    def update_meet(self, meet_id: int, name: str, start_date: str, officials: list[tuple[str, str]]) -> bool:
+        """Change a meet's name, first day and officials roster.
+
+        Args:
+            meet_id: Meet to change.
+            name: New name.
+            start_date: New first day, ``YYYY-MM-DD``.
+            officials: ``(name, role)`` pairs, in display order; replaces the roster.
+
+        Returns:
+            False if there is no such meet. Audio files already recorded keep their folder.
+        """
+        with self._transaction() as connection:
+            cursor = connection.execute("UPDATE meets SET name = ?, start_date = ? WHERE id = ?", (name, start_date, meet_id))
+            if cursor.rowcount == 0:
+                return False
+            connection.execute("DELETE FROM meet_officials WHERE meet_id = ?", (meet_id,))
+            connection.executemany(
+                "INSERT INTO meet_officials (meet_id, position, name, role) VALUES (?, ?, ?, ?)",
+                [(meet_id, position, official_name, role) for position, (official_name, role) in enumerate(officials)],
+            )
+            return True
 
     def get_meet(self, meet_id: int) -> dict[str, Any] | None:
         """One meet, or None if there is no such meet."""

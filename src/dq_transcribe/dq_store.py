@@ -90,6 +90,10 @@ _CREATE_TABLES = (
     """,
 )
 _EVENT_SORT_PATTERN = re.compile(r"^(\d+)(.*)$")
+# Parsed calls are cached per conversation group and recomputed only when the
+# group's turns or their text change (parsing every group on every page refresh
+# was too slow on the tablet). The cache is cleared when it grows past this size.
+_PARSE_CACHE_LIMIT = 2000
 _UNKNOWN_SORT_VALUE = 10**9  # blanks sort last
 
 
@@ -128,6 +132,7 @@ class DqStore:
         """Use the app's database (call ``initialize`` once at start-up)."""
         self._database = database
         self._phrases = load_phrases()
+        self._parse_cache: dict[tuple, list[CandidateCall]] = {}
 
     def initialize(self) -> None:
         """Create the DQ tables if they do not exist."""
@@ -167,11 +172,22 @@ class DqStore:
                 for clip in sorted(group_clips, key=lambda item: item["id"])
                 for utterance in clip["utterances"]
             ]
-            for call in parse_call_group(utterances, self._phrases):
+            for call in self._parse_cached(utterances):
                 key = candidate_key(call)
                 if key not in used:
                     results.append({**call.to_dict(), "key": key, "group_id": group_id})
         return results
+
+    def _parse_cached(self, utterances: list[dict[str, Any]]) -> list[CandidateCall]:
+        """Parse a group's turns, reusing the last result if nothing in the group changed."""
+        signature = tuple((item["id"], item["clip_id"], item["start_seconds"], item["end_seconds"], item["text"]) for item in utterances)
+        calls = self._parse_cache.get(signature)
+        if calls is None:
+            if len(self._parse_cache) >= _PARSE_CACHE_LIMIT:
+                self._parse_cache.clear()
+            calls = parse_call_group(utterances, self._phrases)
+            self._parse_cache[signature] = calls
+        return calls
 
     def dismiss_candidate(self, key: str, meet_id: int | None) -> None:
         """Hide a detected call (it can be recreated by hand if needed)."""
