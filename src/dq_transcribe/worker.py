@@ -9,6 +9,11 @@ Two worker threads run at the same time:
   accurate model and replaces the draft text, except on lines edited by hand
   (their refined text is kept alongside for comparison).
 
+The draft pass always has priority: before each turn, the refine worker waits
+until the draft worker is idle. Running both at once was measured to slow the
+drafts badly (whisper's threads compete for the CPU), so refining happens in the
+gaps between radio calls instead.
+
 If anything goes wrong, the clip is marked failed with a reason (draft pass) or
 keeps its draft text (refine pass), and can be reprocessed from the web page.
 """
@@ -19,7 +24,7 @@ import logging
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from dq_transcribe import constants
 from dq_transcribe.audio_analysis import analyze_clip, read_mono_wav, write_wav_segment
@@ -84,6 +89,7 @@ def refine_clip(
     clip: dict[str, Any],
     recordings_directory: Path,
     scratch_directory: Path,
+    before_each_turn: Callable[[], None] | None = None,
 ) -> None:
     """Re-transcribe a clip's turns with the refine model and store the results.
 
@@ -97,6 +103,7 @@ def refine_clip(
             (each with ``id``, ``start_seconds`` and ``end_seconds``).
         recordings_directory: Folder holding the clip's WAV file.
         scratch_directory: Folder for temporary per-turn WAV files.
+        before_each_turn: Called before each turn; may block (used to give the draft pass priority).
     """
     clip_id = clip["id"]
     started = time.monotonic()
@@ -105,6 +112,8 @@ def refine_clip(
         scratch_directory.mkdir(parents=True, exist_ok=True)
         refined: list[tuple[int, str, str]] = []
         for turn in clip["utterances"]:
+            if before_each_turn is not None:
+                before_each_turn()
             turn_path = scratch_directory / f"refine_clip{clip_id}_utterance{turn['id']}{constants.CLIP_FILE_EXTENSION}"
             write_wav_segment(audio, turn["start_seconds"], turn["end_seconds"], turn_path)
             try:
@@ -183,7 +192,14 @@ class _QueueWorker(threading.Thread):
 
 
 class RefineWorker(_QueueWorker):
-    """Second-pass worker: re-transcribes finished clips with a more accurate model."""
+    """Second-pass worker: re-transcribes finished clips with a more accurate model.
+
+    It only works while the draft pass is idle (see ``draft_idle``).
+
+    Attributes:
+        draft_idle: Set while the draft worker has nothing to do. The draft
+            worker clears it while busy; this worker waits on it before each turn.
+    """
 
     def __init__(
         self,
@@ -202,12 +218,32 @@ class RefineWorker(_QueueWorker):
             scratch_directory,
             idle_poll_seconds,
         )
+        self.draft_idle = threading.Event()
+        self.draft_idle.set()
+
+    def stop(self) -> None:
+        """Ask the worker to finish its current turn and exit."""
+        super().stop()
+        self.draft_idle.set()  # release a wait so the thread can exit
+
+    def _wait_for_draft_idle(self) -> None:
+        """Block until the draft pass is idle (or the worker is stopping)."""
+        while not self._stop_event.is_set() and not self.draft_idle.wait(self._idle_poll_seconds):
+            pass
 
     def _claim_next(self) -> dict[str, Any] | None:
+        self._wait_for_draft_idle()
         return self._database.claim_next_refine_clip()
 
     def _process(self, job: dict[str, Any]) -> None:
-        refine_clip(self._database, self._transcriber, job, self._recordings_directory, self._scratch_directory)
+        refine_clip(
+            self._database,
+            self._transcriber,
+            job,
+            self._recordings_directory,
+            self._scratch_directory,
+            before_each_turn=self._wait_for_draft_idle,
+        )
 
 
 class TranscriptionWorker(_QueueWorker):
@@ -243,7 +279,20 @@ class TranscriptionWorker(_QueueWorker):
         self._refine_worker = refine_worker
 
     def _claim_next(self) -> dict[str, Any] | None:
-        return self._database.claim_next_queued_clip()
+        clip = self._database.claim_next_queued_clip()
+        if self._refine_worker is not None:
+            # Busy while there is a draft to do; idle (refining allowed) otherwise.
+            if clip is None:
+                self._refine_worker.draft_idle.set()
+            else:
+                self._refine_worker.draft_idle.clear()
+        return clip
+
+    def wake(self) -> None:
+        """Tell the worker a clip was queued, and pause refining right away."""
+        if self._refine_worker is not None:
+            self._refine_worker.draft_idle.clear()
+        super().wake()
 
     def _process(self, job: dict[str, Any]) -> None:
         process_clip(
