@@ -146,6 +146,7 @@ def build_web_config() -> dict[str, Any]:
         "stateKey": constants.REQUEST_KEY_STATE,
         "dqStates": {"called": constants.DQ_STATE_CALLED, "accepted": constants.DQ_STATE_ACCEPTED, "declined": constants.DQ_STATE_DECLINED},
         "racePhases": list(constants.RACE_PHASES),
+        "sectionAbbreviations": constants.SLIP_SECTION_ABBREVIATIONS,
         "officialRoles": list(constants.OFFICIAL_ROLES),
         "slipRevision": constants.CURRENT_SLIP_REVISION,
         "evidenceRoleCall": constants.EVIDENCE_ROLE_CALL,

@@ -382,7 +382,11 @@ function buildInfractionEditor(infraction, dq, onRemove) {
         picker.value = row.code;
         picker.dispatchEvent(new Event("change"));
       });
-      chip.append(makeElement("strong", "", row.code), document.createTextNode(" " + (row.group ? row.group + ": " : "") + row.description));
+      chip.append(
+        makeElement("strong", "", row.code),
+        makeElement("span", "chip-stroke", CONFIG.sectionAbbreviations[row.section] || row.section),
+        document.createTextNode((row.group ? row.group + ": " : "") + row.description),
+      );
       chip.dataset.code = row.code;
       chips.append(chip);
     });

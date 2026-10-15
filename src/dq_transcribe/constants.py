@@ -210,6 +210,11 @@ REQUEST_KEY_EVIDENCE = "evidence"
 REFERENCE_DIRECTORY = Path(__file__).resolve().parents[2] / "reference"
 DQ_CODES_FILENAME_FORMAT = "dq_codes_rev-{revision}.csv"
 CURRENT_SLIP_REVISION = "2024-01"
+# Short stroke tags shown on the one-tap code buttons ("2C BA ..."), by slip section.
+SLIP_SECTION_ABBREVIATIONS = {
+    "Butterfly": "BU", "Backstroke": "BA", "Breaststroke": "BR", "Freestyle": "FR",
+    "Individual Medley": "IM", "Relays": "RE", "Miscellaneous": "GEN", "Article 105": "105",
+}
 
 # Recordings of a meet go in recordings/<start date>_<name>/<day>/ (name made file-safe).
 MEET_FOLDER_FORMAT = "{start_date}_{slug}"
