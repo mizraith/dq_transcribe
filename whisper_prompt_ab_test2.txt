@@ -1,0 +1,34 @@
+task: whisper_prompt_ab_test2
+started: 2026-10-14T17:50:55-07:00
+finished: 2026-10-14T17:51:34-07:00
+work_repo_commit: 7f46940
+exit_code: 0
+--- output ---
+== clip_20261014_174158_116223.wav ==
+-- no prompt, suppress non-speech --
+
+ The thing is to work it. It's possible to make you a event for 8-5-6-1-1-touch.
+-- word-only prompt --
+
+ A thing's to work it out. A few events. Heat, lane 6, one hand touch.
+== c4_turn3.wav ==
+-- no prompt, suppress non-speech --
+
+ Thank you, eventor. 8-5-0-6. One hand touch.
+-- word-only prompt --
+
+ DQ. Event, heat, lane. One hand touch.
+== clip_20261014_174228_084285.wav ==
+-- no prompt, suppress non-speech --
+
+ 2 events, 16, 8, 4, 8, 3, butterfly kick in the breaststroke. Do you put a light kick from the breaststroke off the wall so that fits the turn? Acknowledged.
+-- word-only prompt --
+
+ DQ. Event, 16, heat, four, lane, three, butterfly kick, in the breaststroke, two foot-like kicks in the breaststroke, off the walls, so that's at the turn. Acknowledged.
+== c6_turn1.wav ==
+-- no prompt, suppress non-speech --
+
+ Q, events 16, 8, 4, 8, 3, butterfly kick in the breaststroke. Do you put a light kick from the breaststroke off the wall so that fits the turn?
+-- word-only prompt --
+
+ DQ. Event, 16. Heat, 4, lane, 3. Butterfly kick, in the breaststroke. Do you put a light kick from the breaststroke off the wall so that that's at the turn?
