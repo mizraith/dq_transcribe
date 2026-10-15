@@ -54,6 +54,8 @@
     #meter { position: relative; height: 0.9rem; background: #e6e8ec; border-radius: 0.45rem; margin-top: 0.9rem; overflow: hidden; }
     #meter-bar { height: 100%; width: 0; background: #2563eb; transition: width 0.06s linear; }
     #meter-bar.clipping { background: var(--rec); }
+    #meter-target { position: absolute; top: 0; bottom: 0; background: rgba(21, 128, 61, 0.28); }
+    #meter-bar { position: relative; }
     #meter-threshold { position: absolute; top: 0; bottom: 0; width: 3px; background: #111; }
     #level-text, #last-audio-text, #status, #queue-text { margin: 0.4rem 0 0; font-size: 0.9rem; min-height: 1.2rem; }
 
@@ -107,7 +109,7 @@
     <p id="audio-input-text" class="hint"></p>
     <button id="level-check-button" type="button">Check levels (no recording)</button>
     <button id="capture-button" type="button">Start capturing</button>
-    <div id="meter"><div id="meter-bar"></div><div id="meter-threshold"></div></div>
+    <div id="meter"><div id="meter-target"></div><div id="meter-bar"></div><div id="meter-threshold"></div></div>
     <p id="level-text"></p>
     <p id="last-audio-text">Last audio received: none yet</p>
     <p id="status"></p>
@@ -121,7 +123,7 @@
       <input id="end-dbfs" type="range">
       <label for="hang-seconds">End the clip after quiet for: <output id="hang-seconds-value"></output></label>
       <input id="hang-seconds" type="range">
-      <p class="hint">The black line on the meter marks the start level. Watch the meter while the radio is quiet and while it is talking, then set the start level between the two.</p>
+      <p class="hint">The green zone is where speech should be: if the meter goes past it, turn the radio volume down. The black line marks the start level; set it between the quiet level and the talking level.</p>
     </details>
   </section>
 

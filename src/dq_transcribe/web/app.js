@@ -23,6 +23,7 @@ const levelCheckButton = document.getElementById("level-check-button");
 const recLabel = document.getElementById("rec-label");
 const meterBar = document.getElementById("meter-bar");
 const meterThreshold = document.getElementById("meter-threshold");
+const meterTarget = document.getElementById("meter-target");
 const levelText = document.getElementById("level-text");
 const statusText = document.getElementById("status");
 const lastAudioText = document.getElementById("last-audio-text");
@@ -174,11 +175,14 @@ function meterPercent(dbfs) {
 /** Move the black marker on the meter to the start threshold. */
 function positionThresholdMarker() {
   meterThreshold.style.left = meterPercent(settings.startDbfs) + "%";
+  const targetLeft = meterPercent(CONFIG.levelTargetLowDbfs);
+  meterTarget.style.left = targetLeft + "%";
+  meterTarget.style.width = meterPercent(CONFIG.levelTargetHighDbfs) - targetLeft + "%";
 }
 
 /** Update the meter and the level readout. */
 function showLevel(dbfs, clipped) {
-  if (clipped) {
+  if (clipped || dbfs > CONFIG.levelTooHotDbfs) {
     lastClippedAtMs = Date.now();
   }
   const tooLoud = lastClippedAtMs !== null
@@ -186,14 +190,18 @@ function showLevel(dbfs, clipped) {
   meterBar.style.width = meterPercent(dbfs) + "%";
   meterBar.classList.toggle("clipping", tooLoud);
   levelText.textContent = "Level " + Math.round(dbfs) + " dBFS"
-    + (tooLoud ? " - TOO LOUD (clipping): turn the radio volume down" : "");
+    + (tooLoud ? " - TOO LOUD: turn the radio volume down (speech belongs in the green zone)" : "");
 }
 
 /** True if any sample reaches the clipping amplitude. */
 function isClipped(samples) {
+  let count = 0;
   for (let index = 0; index < samples.length; index += 1) {
     if (Math.abs(samples[index]) >= CONFIG.clippingAmplitude) {
-      return true;
+      count += 1;
+      if (count >= CONFIG.clippingMinSamples) {
+        return true;
+      }
     }
   }
   return false;
@@ -207,21 +215,64 @@ function concatenateChunks(chunks) {
 }
 
 /** Resample by averaging the input samples that fall into each output sample. */
+// Filter weights for downsampling, cached by sample rates and fractional position.
+const downsampleKernelCache = new Map();
+const KERNEL_POSITION_STEPS = 1000; // fractional input positions are rounded to 1/1000 sample
+
+/** Normalized Blackman-windowed sinc weights for one fractional input position. */
+function downsampleKernel(inputRate, outputRate, fractionStep) {
+  const key = inputRate + ":" + outputRate + ":" + fractionStep;
+  let kernel = downsampleKernelCache.get(key);
+  if (kernel !== undefined) {
+    return kernel;
+  }
+  const cutoff = (CONFIG.downsampleCutoffFraction * outputRate) / 2 / inputRate; // cycles per input sample
+  const halfWidth = CONFIG.downsampleHalfWidth;
+  const fraction = fractionStep / KERNEL_POSITION_STEPS;
+  kernel = new Float32Array(2 * halfWidth + 1);
+  let total = 0;
+  for (let tap = 0; tap < kernel.length; tap += 1) {
+    const distance = tap - halfWidth - fraction; // input sample position minus the output position
+    const sinc = distance === 0 ? 1 : Math.sin(2 * Math.PI * cutoff * distance) / (2 * Math.PI * cutoff * distance);
+    const window = Math.abs(distance) >= halfWidth
+      ? 0
+      : 0.42 + 0.5 * Math.cos((Math.PI * distance) / halfWidth) + 0.08 * Math.cos((2 * Math.PI * distance) / halfWidth);
+    kernel[tap] = sinc * window;
+    total += kernel[tap];
+  }
+  for (let tap = 0; tap < kernel.length; tap += 1) {
+    kernel[tap] /= total;
+  }
+  downsampleKernelCache.set(key, kernel);
+  return kernel;
+}
+
+/**
+ * Resample to a lower rate with a band-limiting (windowed-sinc) low-pass filter.
+ * Removing everything above the cutoff first keeps high-frequency noise from
+ * folding into the speech band, which simple averaging did.
+ */
 function downsample(samples, inputRate, outputRate) {
   if (inputRate === outputRate) {
     return samples;
   }
   const ratio = inputRate / outputRate;
+  const halfWidth = CONFIG.downsampleHalfWidth;
   const outputLength = Math.floor(samples.length / ratio);
   const output = new Float32Array(outputLength);
   for (let outputIndex = 0; outputIndex < outputLength; outputIndex += 1) {
-    const first = Math.floor(outputIndex * ratio);
-    const last = Math.min(samples.length, Math.max(first + 1, Math.floor((outputIndex + 1) * ratio)));
+    const center = outputIndex * ratio;
+    const base = Math.floor(center);
+    const fractionStep = Math.round((center - base) * KERNEL_POSITION_STEPS);
+    const kernel = downsampleKernel(inputRate, outputRate, fractionStep);
     let sum = 0;
-    for (let inputIndex = first; inputIndex < last; inputIndex += 1) {
-      sum += samples[inputIndex];
+    for (let tap = 0; tap < kernel.length; tap += 1) {
+      const inputIndex = base - halfWidth + tap;
+      if (inputIndex >= 0 && inputIndex < samples.length) {
+        sum += samples[inputIndex] * kernel[tap];
+      }
     }
-    output[outputIndex] = sum / (last - first);
+    output[outputIndex] = sum;
   }
   return output;
 }

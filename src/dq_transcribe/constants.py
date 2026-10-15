@@ -217,11 +217,25 @@ CAPTURE_INFO_KEY_STARTED_AT = "startedAt"
 CAPTURE_INFO_KEY_ENDED_AT = "endedAt"
 # The level meter on the page shows this range, in dB relative to full scale.
 METER_FLOOR_DBFS = -80.0
-# A sample at or above this amplitude (fraction of full scale) counts as clipping:
-# the input is too loud (for example the radio volume is too high on a cable).
-CLIPPING_AMPLITUDE = 0.99
-# How long the "too loud" warning stays visible after the last clipped chunk.
+# Clipping: samples at or above this amplitude (fraction of full scale). The
+# tablet's wired-headset input limits at about 0.92 (-0.7 dBFS), so a check at
+# 0.99 never fired even when the input was badly overdriven (measured 2026-10-14).
+CLIPPING_AMPLITUDE = 0.89
+# A chunk counts as clipped only if at least this many samples reach that level.
+CLIPPING_MIN_SAMPLES = 3
+# Too hot: a chunk louder than this (RMS) means the input is overdriven even if it
+# does not clip. Overdriven radio speech measured -6 to -9 dBFS; healthy speech is
+# about -20 to -25 dBFS.
+LEVEL_TOO_HOT_DBFS = -9.0
+# The meter shades this range as the target for speech.
+LEVEL_TARGET_LOW_DBFS = -30.0
+LEVEL_TARGET_HIGH_DBFS = -12.0
+# How long the "too loud" warning stays visible after the last loud chunk.
 CLIPPING_WARNING_SECONDS = 3.0
+# Downsampling to 16 kHz uses a windowed-sinc low-pass filter (instead of simple
+# averaging, which folded high-frequency noise into the speech band).
+DOWNSAMPLE_FILTER_HALF_WIDTH = 32  # input samples on each side of an output sample
+DOWNSAMPLE_CUTOFF_FRACTION = 0.9  # cutoff as a fraction of the output Nyquist frequency
 # Raw signal wanted: browser audio "enhancements" would distort radio audio.
 CAPTURE_ECHO_CANCELLATION = False
 CAPTURE_NOISE_SUPPRESSION = False
