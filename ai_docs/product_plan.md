@@ -19,6 +19,11 @@ any protests.
 - Audio and transcripts stay on the device. Speech-to-text is whisper.cpp, run locally.
 - **Chances to capture real audio are rare.** The next one is **Friday 2026-10-16**,
   for 2 to 3 hours. Everything after component 1 is built and tuned on that recording.
+- **Design rule: automate first, ask only on exceptions (stated 2026-10-14).**
+  The deck is very busy. Keep taps to a minimum and make the guesses good; a
+  person should only be involved when the app is at a loss or something is an
+  exception. The more that is automated, the better. Every screen is judged by
+  how few taps the common case takes.
 
 ## 2. Components
 
@@ -756,15 +761,35 @@ listing that dq_transcribe ingests**.
   session; dq_transcribe's meet → days → sessions structure (section 4.0) would
   then hold a roster per session.
 
-**Open questions (for the owner):**
-1. How is certification validated: checking a card or screen by eye, entering a
-   USA Swimming member ID, an expiry date check, or a downloaded list of certified
-   officials (e.g. from the LSC) to check against?
-2. What are the "basic rules" for teams (for example: pair a trainee with a
-   certified official, spread experienced judges across both ends, no one on the
-   same position all session, balance by count per jurisdiction)?
-3. What does sign-in capture beyond name and role: club, phone/email, training
-   status (trainee/apprentice), sessions they are working?
+**Answers (stated 2026-10-14):**
+- **Validation today:** by eye, looking at the official's card or (preferred)
+  the USA Swimming app on their phone while they are logged in. Owner's idea: a
+  **reader that uses the tablet camera** to scan the official's credential.
+- **Sign-in collects:** name, role(s), **club, zone, years certified** (if possible).
+- **Trainees** (formerly "apprentices") must be **paired** with a certified official.
+- **Sessions:** usually sign-in is for one session at a time; at some meets
+  officials can **pre-sign up for later sessions that day**.
+- Team assignment rules: to discuss later.
+
+**Proposed, to keep taps down (automation first):**
+- **Check against the host's list first, camera second.** A meet host can pull a
+  *Non-Athlete Membership Status Report* from SWIMS (USA Swimming's database)
+  before the meet ([Minnesota Swimming check-in FAQ](https://www.gomotionapp.com/team/czmnlsc/page/meet-directors1/meet-check-in-faqs-and-sheets)).
+  Imported into the sign-in app, it lets an official type a few letters of their
+  name, tap themselves, and be **validated automatically** (active membership,
+  background check, athlete protection training). Only someone missing from the
+  list, or with something expired, needs the admin.
+- **Camera scan** as the second path: read the phone screen or card with the
+  tablet camera (on-device text recognition, no network) and match the name and
+  member ID to the report. Whether the USA Swimming card shows a scannable barcode
+  or QR code is unknown; to check with a real card. No public USA Swimming lookup
+  service was found, so live queries are not planned.
+- Note from the same FAQ: check-in confirms membership, background check and
+  training, not position certifications (stroke & turn, starter, referee); the
+  Referee assigns positions.
+- **Returning officials:** remember everyone from earlier sessions and meets, so
+  signing in again is one tap and club/zone/years are pre-filled.
+- **Pre-sign-up:** one tap per extra session ("also working: Sat PM").
 
 ## 9b. Next steps
 
