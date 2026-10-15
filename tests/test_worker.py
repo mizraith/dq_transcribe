@@ -8,7 +8,7 @@ from pathlib import Path
 
 from dq_transcribe import constants
 from dq_transcribe.database import Database
-from dq_transcribe.worker import process_clip
+from dq_transcribe.worker import process_clip, refine_clip
 from helpers import FakeTranscriber, write_wav
 
 TWO_TURN_PATTERN = [("tone", 2.0), ("silence", 1.5), ("tone", 2.0)]
@@ -82,6 +82,47 @@ class ProcessClipTests(unittest.TestCase):
         clip_id = self.database.list_clips()[0]["id"]
         self.database.trash_clip(clip_id)
         self.assertIsNone(self.database.claim_next_queued_clip())
+
+    def test_refine_pass_replaces_draft_but_keeps_edits(self) -> None:
+        write_wav(self.recordings / CLIP_NAME, TWO_TURN_PATTERN)
+        clip = self._queue_and_claim()
+        process_clip(self.database, FakeTranscriber(), clip, self.recordings, self.scratch, queue_refine=True)
+        stored = self.database.list_clips()[0]
+        self.assertEqual(stored["refine_status"], constants.CLIP_STATUS_QUEUED)
+        edited_id = stored["utterances"][0]["id"]
+        self.database.update_utterance_text(edited_id, "hand edit")
+
+        job = self.database.claim_next_refine_clip()
+        self.assertEqual([turn["id"] for turn in job["utterances"]], [u["id"] for u in stored["utterances"]])
+        refine_clip(self.database, FakeTranscriber(prefix="refined", model_name="small"), job, self.recordings, self.scratch)
+
+        refined = self.database.list_clips()[0]
+        self.assertEqual((refined["refine_status"], refined["refine_model"]), (constants.CLIP_STATUS_DONE, "small"))
+        texts = [(u["text"], u["refined_text"], u["original_text"]) for u in refined["utterances"]]
+        self.assertEqual(texts, [("hand edit", "refined 1", "turn 1"), ("refined 2", "refined 2", "turn 2")])
+        self.assertIsNone(self.database.claim_next_refine_clip())
+
+    def test_refine_failure_keeps_draft(self) -> None:
+        write_wav(self.recordings / CLIP_NAME, TWO_TURN_PATTERN)
+        process_clip(self.database, FakeTranscriber(), self._queue_and_claim(), self.recordings, self.scratch, queue_refine=True)
+        refine_clip(self.database, FakeTranscriber(fail=True), self.database.claim_next_refine_clip(), self.recordings, self.scratch)
+        stored = self.database.list_clips()[0]
+        self.assertEqual(stored["refine_status"], constants.CLIP_STATUS_FAILED)
+        self.assertEqual([u["text"] for u in stored["utterances"]], ["turn 1", "turn 2"])
+
+    def test_reprocess_during_refine_discards_stale_refine(self) -> None:
+        write_wav(self.recordings / CLIP_NAME, TWO_TURN_PATTERN)
+        process_clip(self.database, FakeTranscriber(), self._queue_and_claim(), self.recordings, self.scratch, queue_refine=True)
+        job = self.database.claim_next_refine_clip()
+        self.database.mark_clip_failed(job["id"], "simulate")  # make it requeueable
+        self.assertTrue(self.database.requeue_clip(job["id"]))
+        self.assertFalse(self.database.save_refine_result(job["id"], [(1, "stale", "")], "small", 1.0))
+
+    def test_no_refine_without_refine_worker(self) -> None:
+        write_wav(self.recordings / CLIP_NAME, TWO_TURN_PATTERN)
+        process_clip(self.database, FakeTranscriber(), self._queue_and_claim(), self.recordings, self.scratch)
+        self.assertIsNone(self.database.list_clips()[0]["refine_status"])
+        self.assertIsNone(self.database.claim_next_refine_clip())
 
     def test_interrupted_clip_is_requeued(self) -> None:
         self._queue_and_claim()

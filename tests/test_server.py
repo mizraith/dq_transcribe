@@ -18,7 +18,7 @@ from pathlib import Path
 from dq_transcribe import constants
 from dq_transcribe.database import Database
 from dq_transcribe.server import DqTranscribeServer, build_audio_path, render_script
-from dq_transcribe.worker import TranscriptionWorker
+from dq_transcribe.worker import RefineWorker, TranscriptionWorker
 from helpers import FakeTranscriber, build_wav_bytes
 
 LOOPBACK_HOST = "127.0.0.1"
@@ -49,9 +49,18 @@ class ServerTests(unittest.TestCase):
         self.database = Database(self.root / "test.db")
         self.database.initialize()
         self.transcriber = FakeTranscriber()
-        self.worker = TranscriptionWorker(
-            self.database, self.transcriber, self.recordings, self.root / "scratch", idle_poll_seconds=0.1
+        self.refine_worker = RefineWorker(
+            self.database, FakeTranscriber(prefix="refined"), self.recordings, self.root / "scratch", idle_poll_seconds=0.1
         )
+        self.worker = TranscriptionWorker(
+            self.database,
+            self.transcriber,
+            self.recordings,
+            self.root / "scratch",
+            idle_poll_seconds=0.1,
+            refine_worker=self.refine_worker,
+        )
+        self.refine_worker.start()
         self.server = DqTranscribeServer((LOOPBACK_HOST, 0), self.recordings, self.database, self.worker)
         self.worker.start()
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -60,6 +69,7 @@ class ServerTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.worker.stop()
+        self.refine_worker.stop()
         self.server.shutdown()
         self.server.server_close()
         self.thread.join()
@@ -81,7 +91,11 @@ class ServerTests(unittest.TestCase):
         deadline = time.monotonic() + WAIT_SECONDS
         while time.monotonic() < deadline:
             clips = json.loads(self._request("GET", constants.ROUTE_CLIPS).read())[constants.RESPONSE_KEY_CLIPS]
-            if len(clips) == expected_clips and all(c["status"] == constants.CLIP_STATUS_DONE for c in clips):
+            finished = all(
+                c["status"] == constants.CLIP_STATUS_DONE and c["refine_status"] == constants.CLIP_STATUS_DONE
+                for c in clips
+            )
+            if len(clips) == expected_clips and finished:
                 return clips
             time.sleep(0.1)
         self.fail("clips were not transcribed in time")
@@ -114,7 +128,8 @@ class ServerTests(unittest.TestCase):
         self.assertRegex(saved, r"^\d{4}-\d{2}-\d{2}/clip_.*\.wav$")
         self.assertTrue((self.recordings / saved).is_file())
         clips = self._wait_until_done(1)
-        self.assertEqual([u["text"] for u in clips[0]["utterances"]], ["turn 1", "turn 2"])
+        self.assertEqual([u["original_text"] for u in clips[0]["utterances"]], ["turn 1", "turn 2"])
+        self.assertEqual([u["text"] for u in clips[0]["utterances"]], ["refined 1", "refined 2"])
         self.assertTrue(clips[0]["started_at"].startswith("2026-10-16T10:00:00"))
 
     def test_close_clips_share_a_group(self) -> None:

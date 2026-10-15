@@ -47,6 +47,14 @@ const CAPTURE_STATE_LABELS = {
 };
 const DEFAULT_INPUT_ID = "default";
 const CONFIRM_TIMEOUT_SECONDS = 8;
+// Labels for the second (refine) pass; values match the server's status names.
+const REFINE_LABELS = {
+  queued: "draft · refining soon",
+  processing: "draft · refining…",
+  done: "refined",
+  failed: "draft (refine failed)",
+  skipped: "no speech",
+};
 const LEVEL_CHECK_ON_TEXT = "Stop level check";
 const LEVEL_CHECK_OFF_TEXT = "Check levels (no recording)";
 const START_BUTTON_TEXT = "Start capturing";
@@ -923,6 +931,9 @@ function buildClipRow(clip) {
   }
   const statusLabels = { queued: "waiting", processing: "transcribing", done: "done", failed: "failed" };
   meta.append(makeElement("span", "badge " + clip.status, statusLabels[clip.status] || clip.status));
+  if (clip.status === "done" && clip.refine_status) {
+    meta.append(makeElement("span", "badge refine-" + clip.refine_status, REFINE_LABELS[clip.refine_status] || clip.refine_status));
+  }
 
   const audio = document.createElement("audio");
   audio.controls = true;
@@ -963,6 +974,10 @@ function buildClipRow(clip) {
     textarea.rows = Math.max(1, Math.ceil(utterance.text.length / 55));
     textarea.addEventListener("change", () => saveUtterance(utterance, textarea));
     row.append(textarea);
+    // A hand-edited line keeps the edit; show the refined text beside it for comparison.
+    if (utterance.edited_at && utterance.refined_text && utterance.refined_text !== utterance.text) {
+      row.append(makeElement("p", "note", "Refined pass heard: " + utterance.refined_text));
+    }
   }
   return row;
 }

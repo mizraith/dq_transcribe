@@ -39,7 +39,11 @@ CREATE TABLE IF NOT EXISTS clips (
     whisper_model TEXT,
     transcribe_seconds REAL,
     processed_at TEXT,
-    trashed_at TEXT
+    trashed_at TEXT,
+    refine_status TEXT,
+    refine_model TEXT,
+    refine_seconds REAL,
+    refined_at TEXT
 )
 """
 
@@ -55,22 +59,36 @@ CREATE TABLE IF NOT EXISTS utterances (
     text TEXT NOT NULL,
     original_text TEXT NOT NULL,
     edited_at TEXT,
-    raw_output TEXT
+    raw_output TEXT,
+    refined_text TEXT,
+    refined_raw_output TEXT
 )
 """
 
 _CREATE_UTTERANCES_INDEX = "CREATE INDEX IF NOT EXISTS utterances_clip ON utterances(clip_id, position)"
 
 # Columns added after the first release; `initialize` adds them to older databases.
-_ADDED_CLIP_COLUMNS = {"started_at": "TEXT", "ended_at": "TEXT", "trashed_at": "TEXT"}
+_ADDED_CLIP_COLUMNS = {
+    "started_at": "TEXT",
+    "ended_at": "TEXT",
+    "trashed_at": "TEXT",
+    "refine_status": "TEXT",
+    "refine_model": "TEXT",
+    "refine_seconds": "REAL",
+    "refined_at": "TEXT",
+}
+_ADDED_UTTERANCE_COLUMNS = {"refined_text": "TEXT", "refined_raw_output": "TEXT"}
 
 _CLIP_SUMMARY_COLUMNS = (
     "id, created_at, started_at, ended_at, audio_filename, status, error_message, duration_seconds, "
-    "peak_dbfs, rms_dbfs, whisper_model, transcribe_seconds, processed_at, trashed_at"
+    "peak_dbfs, rms_dbfs, whisper_model, transcribe_seconds, processed_at, trashed_at, "
+    "refine_status, refine_model, refine_seconds, refined_at"
 )
 _CLIP_JSON_COLUMNS = ("capture_info_json", "levels_json", "pauses_json", "analysis_params_json")
-_UTTERANCE_SUMMARY_COLUMNS = "id, clip_id, position, start_seconds, end_seconds, speaker, text, original_text, edited_at"
-_UTTERANCE_FULL_COLUMNS = _UTTERANCE_SUMMARY_COLUMNS + ", raw_output"
+_UTTERANCE_SUMMARY_COLUMNS = (
+    "id, clip_id, position, start_seconds, end_seconds, speaker, text, original_text, edited_at, refined_text"
+)
+_UTTERANCE_FULL_COLUMNS = _UTTERANCE_SUMMARY_COLUMNS + ", raw_output, refined_raw_output"
 
 
 @dataclass(frozen=True)
@@ -156,6 +174,10 @@ class Database:
             for column, column_type in _ADDED_CLIP_COLUMNS.items():
                 if column not in existing_columns:
                     connection.execute(f"ALTER TABLE clips ADD COLUMN {column} {column_type}")
+            existing_columns = {row["name"] for row in connection.execute("PRAGMA table_info(utterances)")}
+            for column, column_type in _ADDED_UTTERANCE_COLUMNS.items():
+                if column not in existing_columns:
+                    connection.execute(f"ALTER TABLE utterances ADD COLUMN {column} {column_type}")
 
     def add_clip(
         self,
@@ -203,7 +225,9 @@ class Database:
             return dict(row)
 
     def requeue_interrupted_clips(self) -> int:
-        """Return clips left in "processing" (for example after a crash) to the queue.
+        """Return clips left in "processing" (for example after a crash) to their queues.
+
+        Covers both the draft pass and the refine pass.
 
         Returns:
             How many clips were requeued.
@@ -211,6 +235,10 @@ class Database:
         with self._transaction() as connection:
             cursor = connection.execute(
                 "UPDATE clips SET status = ? WHERE status = ?",
+                (constants.CLIP_STATUS_QUEUED, constants.CLIP_STATUS_PROCESSING),
+            )
+            connection.execute(
+                "UPDATE clips SET refine_status = ? WHERE refine_status = ?",
                 (constants.CLIP_STATUS_QUEUED, constants.CLIP_STATUS_PROCESSING),
             )
             return cursor.rowcount
@@ -222,6 +250,7 @@ class Database:
         utterances: list[NewUtterance],
         whisper_model: str,
         transcribe_seconds: float,
+        queue_refine: bool = False,
     ) -> None:
         """Store a finished clip's measurements and utterances, replacing earlier ones.
 
@@ -231,7 +260,14 @@ class Database:
             utterances: Transcribed turns.
             whisper_model: Name of the model that produced the text.
             transcribe_seconds: Total processing time for the clip.
+            queue_refine: Queue the clip for the second, more accurate pass.
         """
+        if not queue_refine:
+            refine_status = None
+        elif utterances:
+            refine_status = constants.CLIP_STATUS_QUEUED
+        else:
+            refine_status = constants.REFINE_STATUS_SKIPPED
         with self._transaction() as connection:
             timing = connection.execute(
                 "SELECT created_at, started_at, ended_at FROM clips WHERE id = ?", (clip_id,)
@@ -254,7 +290,8 @@ class Database:
             connection.execute(
                 "UPDATE clips SET started_at = ?, ended_at = ?, status = ?, error_message = NULL, "
                 "duration_seconds = ?, peak_dbfs = ?, rms_dbfs = ?, levels_json = ?, pauses_json = ?, "
-                "analysis_params_json = ?, whisper_model = ?, transcribe_seconds = ?, processed_at = ? WHERE id = ?",
+                "analysis_params_json = ?, whisper_model = ?, transcribe_seconds = ?, processed_at = ?, "
+                "refine_status = ?, refine_model = NULL, refine_seconds = NULL, refined_at = NULL WHERE id = ?",
                 (
                     started_at,
                     ended_at,
@@ -268,8 +305,74 @@ class Database:
                     whisper_model,
                     transcribe_seconds,
                     utc_now_iso(),
+                    refine_status,
                     clip_id,
                 ),
+            )
+
+    def claim_next_refine_clip(self) -> dict[str, Any] | None:
+        """Take the oldest clip waiting for the refine pass and mark it as refining.
+
+        Returns:
+            ``{"id", "audio_filename", "utterances": [{"id", "start_seconds", "end_seconds"}]}``,
+            or None if nothing is waiting.
+        """
+        with self._transaction() as connection:
+            row = connection.execute(
+                "SELECT id, audio_filename FROM clips WHERE status = ? AND refine_status = ? "
+                "AND trashed_at IS NULL ORDER BY id LIMIT 1",
+                (constants.CLIP_STATUS_DONE, constants.CLIP_STATUS_QUEUED),
+            ).fetchone()
+            if row is None:
+                return None
+            connection.execute(
+                "UPDATE clips SET refine_status = ? WHERE id = ?", (constants.CLIP_STATUS_PROCESSING, row["id"])
+            )
+            turns = connection.execute(
+                "SELECT id, start_seconds, end_seconds FROM utterances WHERE clip_id = ? ORDER BY position",
+                (row["id"],),
+            )
+            return {**dict(row), "utterances": [dict(turn) for turn in turns]}
+
+    def save_refine_result(
+        self, clip_id: int, refined: list[tuple[int, str, str]], model: str, refine_seconds: float
+    ) -> bool:
+        """Store the refine pass. Lines edited by hand keep their edit.
+
+        Args:
+            clip_id: Clip that was refined.
+            refined: ``(utterance_id, text, raw_output)`` for each turn.
+            model: Name of the refine model.
+            refine_seconds: Time the refine pass took.
+
+        Returns:
+            False if the clip was reprocessed or deleted meanwhile (nothing is saved).
+        """
+        with self._transaction() as connection:
+            row = connection.execute("SELECT refine_status FROM clips WHERE id = ?", (clip_id,)).fetchone()
+            if row is None or row["refine_status"] != constants.CLIP_STATUS_PROCESSING:
+                return False
+            connection.executemany(
+                "UPDATE utterances SET refined_text = ?, refined_raw_output = ?, "
+                "text = CASE WHEN edited_at IS NULL THEN ? ELSE text END WHERE id = ? AND clip_id = ?",
+                [(text, raw, text, utterance_id, clip_id) for utterance_id, text, raw in refined],
+            )
+            connection.execute(
+                "UPDATE clips SET refine_status = ?, refine_model = ?, refine_seconds = ?, refined_at = ? WHERE id = ?",
+                (constants.CLIP_STATUS_DONE, model, refine_seconds, utc_now_iso(), clip_id),
+            )
+            return True
+
+    def mark_refine_failed(self, clip_id: int) -> None:
+        """Record that the refine pass failed; the draft text stays.
+
+        Args:
+            clip_id: Clip whose refine pass failed.
+        """
+        with self._transaction() as connection:
+            connection.execute(
+                "UPDATE clips SET refine_status = ? WHERE id = ? AND refine_status = ?",
+                (constants.CLIP_STATUS_FAILED, clip_id, constants.CLIP_STATUS_PROCESSING),
             )
 
     def mark_clip_failed(self, clip_id: int, message: str) -> None:
@@ -302,7 +405,7 @@ class Database:
                 return False
             connection.execute("DELETE FROM utterances WHERE clip_id = ?", (clip_id,))
             connection.execute(
-                "UPDATE clips SET status = ?, error_message = NULL WHERE id = ?",
+                "UPDATE clips SET status = ?, error_message = NULL, refine_status = NULL WHERE id = ?",
                 (constants.CLIP_STATUS_QUEUED, clip_id),
             )
             return True
