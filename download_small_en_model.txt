@@ -1,0 +1,8 @@
+task: download_small_en_model
+started: 2026-10-14T17:51:59-07:00
+finished: 2026-10-14T17:51:59-07:00
+work_repo_commit: 9b4a4a1
+exit_code: 0
+--- output ---
+already downloaded
+-rw-------. 1 u0_a307 u0_a307 182616064 Oct 14 17:51 models/ggml-small.en.bin
