@@ -98,3 +98,21 @@ class DqStoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DqStatusTests(unittest.TestCase):
+    """Accepted DQs split into incomplete and pending notification."""
+
+    def test_status(self) -> None:
+        from dq_transcribe.dq_store import dq_status, missing_fields
+        complete = {name: "x" for name in constants.DQ_REQUIRED_FIELDS} | {"infractions": [{"description": "One hand touch"}]}
+        self.assertEqual(missing_fields(complete), [])
+        self.assertEqual(missing_fields({"event": "4"})[-1], constants.DQ_REQUIRED_INFRACTION)
+        self.assertEqual(dq_status(constants.DQ_STATE_ACCEPTED, []), constants.DQ_STATUS_PENDING_NOTIFICATION)
+        self.assertEqual(dq_status(constants.DQ_STATE_ACCEPTED, ["club"]), constants.DQ_STATUS_INCOMPLETE)
+        self.assertEqual(dq_status(constants.DQ_STATE_CALLED, ["club"]), constants.DQ_STATUS_CALLED)
+        self.assertEqual(dq_status(constants.DQ_STATE_NOTIFIED, []), constants.DQ_STATUS_NOTIFIED)
+        self.assertEqual(list(constants.DQ_STATUS_LABELS), [
+            constants.DQ_STATUS_CALLED, constants.DQ_STATUS_INCOMPLETE, constants.DQ_STATUS_PENDING_NOTIFICATION,
+            constants.DQ_STATUS_NOTIFIED, constants.DQ_STATUS_DECLINED,
+        ])

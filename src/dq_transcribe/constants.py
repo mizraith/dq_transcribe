@@ -179,8 +179,26 @@ SETTING_ACTIVE_MEET_ID = "active_meet_id"
 # --- DQs -----------------------------------------------------------------------
 DQ_STATE_CALLED = "called"
 DQ_STATE_ACCEPTED = "accepted"
+DQ_STATE_NOTIFIED = "notified"  # the coach has been told (slip handed over, or published)
 DQ_STATE_DECLINED = "declined"
-DQ_STATES = (DQ_STATE_CALLED, DQ_STATE_ACCEPTED, DQ_STATE_DECLINED)
+DQ_STATES = (DQ_STATE_CALLED, DQ_STATE_ACCEPTED, DQ_STATE_NOTIFIED, DQ_STATE_DECLINED)
+# Fields a DQ needs before the coach can be notified ("infraction" = at least one).
+DQ_REQUIRED_FIELDS = ("event", "heat", "lane", "swimmer", "club", "official", "referee")
+DQ_REQUIRED_INFRACTION = "infraction"
+# What the DQ list shows and filters by: the stored state, with "accepted" split
+# by whether the required information is filled in.
+DQ_STATUS_CALLED = "called"
+DQ_STATUS_INCOMPLETE = "incomplete"  # accepted, information still missing
+DQ_STATUS_PENDING_NOTIFICATION = "pending_notification"  # accepted and complete; coach not told yet
+DQ_STATUS_NOTIFIED = "notified"
+DQ_STATUS_DECLINED = "declined"
+DQ_STATUS_LABELS = {  # in workflow order (the filter buttons use this order)
+    DQ_STATUS_CALLED: "Called",
+    DQ_STATUS_INCOMPLETE: "Incomplete",
+    DQ_STATUS_PENDING_NOTIFICATION: "Pending notification",
+    DQ_STATUS_NOTIFIED: "Notified",
+    DQ_STATUS_DECLINED: "Declined",
+}
 DQ_SOURCE_AUTO = "auto"  # created from a detected call
 DQ_SOURCE_MANUAL = "manual"
 EVIDENCE_ROLE_CALL = "call"

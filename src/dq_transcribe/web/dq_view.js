@@ -11,7 +11,6 @@
  */
 "use strict";
 
-const DQ_REQUIRED_FIELDS = ["event", "heat", "lane", "swimmer", "club", "official", "referee"];
 const DQ_FIELD_LABELS = {
   event: "Event", heat: "Heat", lane: "Lane", relay_leg: "Relay leg", swimmer: "Swimmer (or relay, e.g. PASA-A)",
   club: "Club", official: "Official", official_role: "Official role", chief_judge: "Chief Judge", referee: "Referee", notes: "Notes",
@@ -25,7 +24,8 @@ const ROSTER_SUGGESTIONS = {
 };
 // How many likely codes to show as one-tap buttons under an infraction.
 const MAX_CODE_CHIPS = 4;
-const DQ_STATE_LABELS = { called: "called", accepted: "accepted", declined: "declined" };
+const DQ_FILTER_ALL = "all";
+const DQ_FILTER_STORAGE_KEY = "dq_transcribe.dqFilter";
 
 let candidatesByGroup = new Map(); // group id -> detected calls not yet turned into DQs
 let candidatesSignature = "";
@@ -33,11 +33,13 @@ let dqCodes = []; // current DQ slip codes, for the infraction picker
 let expandedDqId = null; // the DQ whose edit panel is open
 let dqsSignature = "";
 let dqCount = 0;
+let dqFilter = loadDqFilter(); // a status from CONFIG.dqStatusLabels, or DQ_FILTER_ALL
 let flashDqId = null; // the DQ just changed, highlighted once when the list is redrawn
 // State buttons in the editor, in order (labels say what tapping does when not current).
 const DQ_STATE_BUTTONS = [
   { state: "called", label: "Called", current: "Called" },
   { state: "accepted", label: "Mark accepted", current: "\u2713 Accepted" },
+  { state: "notified", label: "Mark notified", current: "\u2713 Notified" },
   { state: "declined", label: "Decline", current: "Declined" },
 ];
 const rangePlayer = new Audio(); // plays one evidence range at a time
@@ -219,35 +221,66 @@ async function refreshDqView(force) {
   }
 }
 
-/** Draw the DQ list, sorted by event, heat and lane (the server sorts). */
-function renderDqList(dqs) {
-  const cards = dqs.map((dq) => buildDqCard(dq));
-  if (cards.length === 0) {
-    cards.push(makeElement("p", "note", "No DQs yet for this meet. Create them from the detected calls in the transcript."));
+/** The status filter remembered on this tablet (falls back to showing all). */
+function loadDqFilter() {
+  try {
+    const saved = localStorage.getItem(DQ_FILTER_STORAGE_KEY);
+    return saved && (saved === DQ_FILTER_ALL || saved in CONFIG.dqStatusLabels) ? saved : DQ_FILTER_ALL;
+  } catch (error) {
+    return DQ_FILTER_ALL;
   }
-  clipsContainer.replaceChildren(...cards);
 }
 
-/** Missing required fields of a DQ (needed before it can be published). */
-function missingFields(dq) {
-  const missing = DQ_REQUIRED_FIELDS.filter((name) => !dq[name]);
-  if (!dq.infractions.length) {
-    missing.push("infraction");
+/** Show only DQs with one status (or all), and remember the choice. */
+function setDqFilter(filter) {
+  dqFilter = filter;
+  try {
+    localStorage.setItem(DQ_FILTER_STORAGE_KEY, filter);
+  } catch (error) {
+    // Not remembered; it still applies now.
   }
-  return missing;
+  expandedDqId = null;
+  forceRefresh();
+}
+
+/** The filter buttons: All, then each status in workflow order, with counts. */
+function buildDqFilterBar(dqs) {
+  const bar = makeElement("div", "dq-filter");
+  const addButton = (filter, label, count) => {
+    const button = makeButton("dq-filter-button status-" + filter + (dqFilter === filter ? " on" : "") + (count ? "" : " empty"), "", () => setDqFilter(filter));
+    button.append(document.createTextNode(label + " "), makeElement("span", "dq-filter-count", String(count)));
+    button.setAttribute("aria-pressed", dqFilter === filter ? "true" : "false");
+    bar.append(button);
+  };
+  addButton(DQ_FILTER_ALL, "All", dqs.length);
+  for (const [status, label] of Object.entries(CONFIG.dqStatusLabels)) {
+    addButton(status, label, dqs.filter((dq) => dq.status === status).length);
+  }
+  return bar;
+}
+
+/** Draw the filter bar and the DQ list, sorted by event, heat and lane (the server sorts). */
+function renderDqList(dqs) {
+  const shown = dqFilter === DQ_FILTER_ALL ? dqs : dqs.filter((dq) => dq.status === dqFilter);
+  const cards = shown.map((dq) => buildDqCard(dq));
+  if (dqs.length === 0) {
+    cards.push(makeElement("p", "note", "No DQs yet for this meet. Create them from the detected calls in the transcript."));
+  } else if (cards.length === 0) {
+    cards.push(makeElement("p", "note", "No DQs are " + CONFIG.dqStatusLabels[dqFilter].toLowerCase() + ". Tap All to see every DQ."));
+  }
+  clipsContainer.replaceChildren(buildDqFilterBar(dqs), ...cards);
 }
 
 /** One DQ in the list: a summary row; tap to open the editor. */
 function buildDqCard(dq) {
-  const card = makeElement("section", "dq-card state-" + dq.state + (flashDqId === dq.id ? " flash" : ""));
+  const card = makeElement("section", "dq-card state-" + dq.state + " status-" + dq.status + (flashDqId === dq.id ? " flash" : ""));
   const summary = makeElement("button", "dq-summary");
   summary.type = "button";
   summary.append(makeElement("strong", "dq-ehl", eventHeatLane(dq)));
   summary.append(makeElement("span", "", " " + (dq.infractions.map((item) => item.description).join("; ") || "no infraction yet")));
-  summary.append(makeElement("span", "badge " + (dq.state === CONFIG.dqStates.accepted ? "done" : dq.state === CONFIG.dqStates.declined ? "failed" : "queued"), DQ_STATE_LABELS[dq.state] || dq.state));
-  const missing = missingFields(dq);
-  if (missing.length) {
-    summary.append(makeElement("span", "dq-missing", "missing: " + missing.join(", ")));
+  summary.append(makeElement("span", "badge dq-status-badge status-" + dq.status, CONFIG.dqStatusLabels[dq.status] || dq.status));
+  if (dq.missing.length && dq.state !== CONFIG.dqStates.declined) {
+    summary.append(makeElement("span", "dq-missing", "missing: " + dq.missing.join(", ")));
   }
   if (dq.swimmer || dq.club) {
     summary.append(makeElement("span", "muted", " · " + [dq.swimmer, dq.club].filter(Boolean).join(", ")));
@@ -272,7 +305,7 @@ function buildDqCard(dq) {
 
 /** A labeled text input for a DQ field (numbers get the number keypad and +/- buttons). */
 function buildField(dq, name) {
-  const wrapper = makeElement("label", "dq-field" + (DQ_REQUIRED_FIELDS.includes(name) && !dq[name] ? " missing" : ""));
+  const wrapper = makeElement("label", "dq-field" + (CONFIG.dqRequiredFields.includes(name) && !dq[name] ? " missing" : ""));
   wrapper.append(makeElement("span", "", DQ_FIELD_LABELS[name]));
   let input;
   if (name === "official_role") {
@@ -542,7 +575,7 @@ async function changeDqState(dq, state, editor) {
       await postJson(CONFIG.dqsRoute + "/" + dq.id, readDqEditor(editor));
     }
     await postJson(CONFIG.dqsRoute + "/" + dq.id + CONFIG.dqStateSuffix, body);
-    notify((state === CONFIG.dqStates.accepted ? "\u2713 " : "") + "DQ " + label + " " + state);
+    notify((state === CONFIG.dqStates.declined ? "" : "\u2713 ") + "DQ " + label + " " + state);
   } catch (error) {
     notify("Could not change the status: " + error.message, "error");
   }

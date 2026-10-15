@@ -349,6 +349,8 @@ class DqStore:
                     )
                 )
                 _suggest_codes(dq, heard)
+                dq["missing"] = missing_fields(dq)
+                dq["status"] = dq_status(dq["state"], dq["missing"])
                 dq["history"] = [
                     dict(row)
                     for row in connection.execute(
@@ -377,6 +379,26 @@ def _text_fields(payload: dict[str, Any]) -> dict[str, str | None]:
             raise DqError(f"{name} is too long")
         fields[name] = text or None
     return fields
+
+
+def missing_fields(dq: dict[str, Any]) -> list[str]:
+    """Required fields a DQ still lacks (``"infraction"`` if it has none)."""
+    missing = [name for name in constants.DQ_REQUIRED_FIELDS if not dq.get(name)]
+    if not dq.get("infractions"):
+        missing.append(constants.DQ_REQUIRED_INFRACTION)
+    return missing
+
+
+def dq_status(state: str, missing: list[str]) -> str:
+    """The status shown and filtered on: the state, with an accepted DQ split into
+    "incomplete" (information missing) and "pending notification" (ready)."""
+    if state == constants.DQ_STATE_ACCEPTED:
+        return constants.DQ_STATUS_INCOMPLETE if missing else constants.DQ_STATUS_PENDING_NOTIFICATION
+    return {
+        constants.DQ_STATE_CALLED: constants.DQ_STATUS_CALLED,
+        constants.DQ_STATE_NOTIFIED: constants.DQ_STATUS_NOTIFIED,
+        constants.DQ_STATE_DECLINED: constants.DQ_STATUS_DECLINED,
+    }.get(state, state)
 
 
 def _suggest_codes(dq: dict[str, Any], heard: str) -> None:

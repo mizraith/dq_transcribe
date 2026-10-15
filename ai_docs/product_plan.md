@@ -177,6 +177,12 @@ States the owner described: **Called → Accepted → (admin validates) → Publ
 → Notified → Protested → Under Investigation → Upheld or Overturned.**
 An Upheld DQ can be protested again, up to 2 (maybe 3) cycles, never without limit.
 
+**Built so far (2026-10-14):** stored states Called, Accepted, Notified and
+Declined. The DQ list shows a **status** that splits Accepted in two (stated):
+**Incomplete** (required information missing) and **Pending notification**
+(complete, coach not told yet). Filter buttons at the top of the DQ list show each
+status with its count. Published and the protest states come later.
+
 **Who can decline (stated):**
 - Technically only the referee declines a DQ.
 - In practice anyone in the chain can decline one that is unclear, confusing or
