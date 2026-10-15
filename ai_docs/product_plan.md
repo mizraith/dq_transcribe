@@ -267,6 +267,88 @@ stateDiagram-v2
   leaves the decision to a person. It never fills in a guess as fact, because
   the benefit of the doubt goes to the swimmer.
 
+### 4.3 One clip, many calls (decided design, 2026-10-14)
+
+**Stated (from test recordings, clips 25–52):** real radio traffic packs several
+calls into one clip:
+- **Multiple lanes** in one call ("lanes 1, 3 and 4, scissors kick").
+- **Multiple infractions** for one lane.
+- **Add-ons** ("…and then lane 6 had a one hand touch", clip 38).
+- **Rapid-fire calls** from several officials (clip 48).
+- **Missing numbers** (no event number).
+
+The app must split these apart.
+
+**Model: DQs point at audio; audio is never copied.**
+
+```mermaid
+erDiagram
+    CLIP ||--o{ UTTERANCE : "split into turns"
+    DQ ||--o{ INFRACTION : has
+    DQ ||--o{ EVIDENCE : "heard in"
+    UTTERANCE ||--o{ EVIDENCE : "cited by"
+    EVIDENCE {
+        int dq_id
+        int clip_id
+        int utterance_id
+        real start_seconds
+        real end_seconds
+        string role "call | acknowledgment | correction"
+        string source "auto | admin"
+    }
+```
+
+- **Evidence:** a DQ has one or more *evidence* links, each pointing at a clip and a
+  time range (usually one utterance).
+- **Sharing:** many DQs can cite the same utterance (four lanes from one call), and
+  one DQ can cite several clips (the call, then the referee's "Accepted", or a
+  repeat in a later clip).
+- **Playback:** plays only that part of the clip, using a time range on the
+  existing audio (an HTML media fragment such as `#t=3.2,10.4`). Nothing is
+  duplicated.
+- **Splitting a call:** creates more DQs that cite the same evidence. **Merging**
+  moves evidence links onto one DQ. **Re-linking** an exchange to another DQ is
+  just moving a link. This is the touch-friendly linking workflow from section 5.
+- **Infractions:** each is its own row (description, code, phases, detail), as
+  section 4.1 already requires.
+
+**Automatic splitting (prototype built: `src/dq_transcribe/call_parser.py`,
+rule-based, no AI).** For each call/response group:
+1. **Numbers:** spoken numbers after event/heat/lane/turn become digits ("heat
+   full" → heat 4, "E46" → Event 46). "one hand touch" stays words. The same
+   normalization now applies to displayed transcripts.
+2. **Lanes:** each lane mention starts a candidate. Lists ("lanes 1, 3 and 4",
+   "lane 6 and lane 7") give one candidate per lane, sharing the infractions that
+   follow.
+3. **Corrections:** "sorry", "I mean", "I think", "or is it" make a later number
+   replace an earlier one, and the candidate is flagged.
+4. **Infractions:** matched from `data/infraction_phrases.csv`, which maps spoken
+   variants to slip descriptions. Short phrases need exact words; longer ones may
+   match loosely, and those are flagged.
+5. **Carry-over:** a missing event or heat is taken from earlier in the group, and
+   flagged. If nothing is found, it is left blank and flagged, **never guessed**.
+6. **Acknowledgments:** "Accepted", "Acknowledged", "Confirmed", "Got it",
+   "Roger" mark the open candidates as accepted. A follow-up that repeats a lane
+   confirms the existing candidate instead of duplicating it.
+7. **Nothing is lost:** an utterance with nothing recognized still becomes a "not
+   understood — listen to the audio" candidate.
+
+**Result on clips 25–52 (draft and refined text as captured):**
+- **Multi-lane and add-on calls:** split correctly. Clip 38 gave lanes 1, 3 and 4
+  scissors kick, plus lane 6 one hand touch.
+- **Corrections:** clip 32's "heat 4, sorry, heat 2, lane 4" was resolved.
+- **Follow-ups:** clip 43 confirmed clip 42 instead of duplicating it.
+- **Rapid fire:** clip 48 became 4 accepted "not understood" candidates, the
+  right count, for the admin to fill in.
+- **Remaining errors come from transcription:** misheard numbers ("Event 184",
+  "Event 48") and dropped numbers.
+
+**Proposed review UI:**
+- **Candidate list:** under each call group, one row per lane (E/H/L, infraction,
+  accepted, flags) with **Create DQ** and **Dismiss**.
+- **Manual DQ:** "New DQ from this clip" lets the admin select the words (tap the
+  first, then the last) to set the time range.
+
 ## 5. Component 2: DQ detection (no online AI)
 
 **What "without AI" means (stated):**
