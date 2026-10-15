@@ -1,0 +1,10 @@
+task: 20261015T011932Z_time_servers_alone
+started: 2026-10-14T18:22:38-07:00
+finished: 2026-10-14T18:23:14-07:00
+work_repo_commit: a8f54a2
+exit_code: 0
+--- output ---
+port 8178 3.8 s {"text":" DQ. Event, 16, heat, 4, lane, 3, butterfly kick, in the breaststroke, 2 foot of light kick, from the
+port 8179 13.2 s {"text":" DQ, Event 16, heat, four, lane three, butterfly kick in the breaststroke, two butterfly kicks in the
+port 8178 3.9 s {"text":" DQ. Event, 16, heat, 4, lane, 3, butterfly kick, in the breaststroke, 2 foot of light kick, from the
+port 8179 14.2 s {"text":" DQ, Event 16, heat, four, lane three, butterfly kick in the breaststroke, two butterfly kicks in the
