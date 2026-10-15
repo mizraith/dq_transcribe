@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import socket
 import stat
 import sys
@@ -39,12 +40,12 @@ class CleanTranscriptTextTests(unittest.TestCase):
 
 
 class PromptTests(unittest.TestCase):
-    """The shipped prompt exists and contains no digits (numbers would leak into transcripts)."""
+    """The shipped prompt exists and teaches the call format with several different numbers."""
 
-    def test_shipped_prompt_has_vocabulary_and_no_digits(self) -> None:
+    def test_shipped_prompt_has_vocabulary_and_varied_numbers(self) -> None:
         prompt = load_prompt(constants.WHISPER_PROMPT_PATH)
         self.assertIn("DQ", prompt)
-        self.assertFalse(any(character.isdigit() for character in prompt))
+        self.assertGreaterEqual(len(set(re.findall(r"\d+", prompt))), 4)  # one repeated number leaks more easily
 
     def test_missing_prompt_file_gives_empty_prompt(self) -> None:
         self.assertEqual(load_prompt(Path(tempfile.mkdtemp()) / "missing.txt"), "")
