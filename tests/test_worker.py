@@ -8,7 +8,9 @@ from pathlib import Path
 
 from dq_transcribe import constants
 from dq_transcribe.database import Database
-from dq_transcribe.worker import process_clip, refine_clip
+import time
+
+from dq_transcribe.worker import RefineWorker, process_clip, refine_clip
 from helpers import FakeTranscriber, write_wav
 
 TWO_TURN_PATTERN = [("tone", 2.0), ("silence", 1.5), ("tone", 2.0)]
@@ -123,6 +125,24 @@ class ProcessClipTests(unittest.TestCase):
         process_clip(self.database, FakeTranscriber(), self._queue_and_claim(), self.recordings, self.scratch)
         self.assertIsNone(self.database.list_clips()[0]["refine_status"])
         self.assertIsNone(self.database.claim_next_refine_clip())
+
+    def test_refine_worker_waits_while_draft_is_busy(self) -> None:
+        write_wav(self.recordings / CLIP_NAME, TWO_TURN_PATTERN)
+        process_clip(self.database, FakeTranscriber(), self._queue_and_claim(), self.recordings, self.scratch, queue_refine=True)
+        worker = RefineWorker(self.database, FakeTranscriber(prefix="refined"), self.recordings, self.scratch, idle_poll_seconds=0.05)
+        worker.draft_idle.clear()  # the draft pass is busy
+        worker.start()
+        try:
+            time.sleep(0.4)
+            self.assertEqual(self.database.list_clips()[0]["refine_status"], constants.CLIP_STATUS_QUEUED)
+            worker.draft_idle.set()  # the draft pass is idle again
+            deadline = time.monotonic() + 5
+            while self.database.list_clips()[0]["refine_status"] != constants.CLIP_STATUS_DONE:
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.05)
+        finally:
+            worker.stop()
+            worker.join(timeout=5)
 
     def test_interrupted_clip_is_requeued(self) -> None:
         self._queue_and_claim()
