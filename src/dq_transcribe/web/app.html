@@ -1,7 +1,9 @@
 <!doctype html>
 <!--
-  Main page for dq_transcribe: start/stop capturing, a blinking REC light, a
-  level meter, and the transcript grouped into call/response conversations.
+  Main page for dq_transcribe. Left column: controls and meta information
+  (audio input, level check, start/stop with a blinking REC light, meter,
+  settings, trash, downloads). Main area: the transcript grouped into
+  call/response conversations.
 
   This file is a string.Template: dollar-brace placeholders are filled in by
   dq_transcribe.server.render_app_page, so never use a literal dollar sign here.
@@ -14,19 +16,37 @@
   <title>dq_transcribe</title>
   <style>
     :root { --idle: #8a8f98; --rec: #e11d2e; --go: #15803d; --ink: #1f2430; --paper: #f4f5f7; --card: #ffffff; --line: #d7dbe2; }
-    body { font-family: system-ui, sans-serif; font-size: 18px; color: var(--ink); background: var(--paper); margin: 0; padding: 1rem; max-width: 52rem; margin-inline: auto; }
-    h1 { font-size: 1.3rem; margin: 0 0 0.75rem; }
+    body { font-family: system-ui, sans-serif; font-size: 18px; color: var(--ink); background: var(--paper); margin: 0; }
+    h1 { font-size: 1.2rem; margin: 0 0 0.6rem; }
 
-    #capture-panel { background: var(--card); border: 1px solid var(--line); border-radius: 0.75rem; padding: 1rem; }
+    /* Two columns: controls on the left (about a quarter), transcript on the right.
+       Each column scrolls on its own so the controls never scroll away. */
+    #layout { display: grid; grid-template-columns: minmax(17rem, 25%) 1fr; height: 100vh; }
+    #controls { overflow-y: auto; padding: 0.8rem; border-right: 1px solid var(--line); background: #eceef2; }
+    #transcript { overflow-y: auto; padding: 0.8rem 1rem; }
+    @media (max-width: 760px) {
+      #layout { display: block; height: auto; }
+      #controls { border-right: 0; border-bottom: 1px solid var(--line); }
+    }
+
+    .panel { background: var(--card); border: 1px solid var(--line); border-radius: 0.75rem; padding: 0.8rem; margin-bottom: 0.8rem; }
+    .panel h2 { font-size: 0.95rem; margin: 0 0 0.5rem; color: #555b66; text-transform: uppercase; letter-spacing: 0.05em; }
+    .panel button.wide { display: block; width: 100%; font-size: 1rem; padding: 0.6rem; margin-top: 0.5rem; border-radius: 0.5rem; }
+    .panel a { display: block; padding: 0.35rem 0; font-size: 0.95rem; }
     #rec-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
     #rec-dot { width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--idle); flex: none; }
     #rec-label { font-weight: 700; letter-spacing: 0.04em; }
+    #capture-panel[data-state="monitoring"] #rec-dot { background: var(--go); }
+    #capture-panel[data-state="monitoring"] #rec-label { color: var(--go); }
     #capture-panel[data-state="listening"] #rec-dot { background: var(--rec); animation: blink 1.2s ease-in-out infinite; }
     #capture-panel[data-state="receiving"] #rec-dot { background: var(--rec); box-shadow: 0 0 0 0.35rem rgba(225, 29, 46, 0.35); animation: blink 0.45s ease-in-out infinite; }
     #capture-panel[data-state="listening"] #rec-label, #capture-panel[data-state="receiving"] #rec-label { color: var(--rec); }
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
     @media (prefers-reduced-motion: reduce) { #rec-dot { animation: none !important; } }
 
+    #level-check-button { display: block; width: 100%; font-size: 1rem; padding: 0.6rem; margin-bottom: 0.6rem; border-radius: 0.5rem; border: 1px solid var(--go); background: #fff; color: var(--go); }
+    #level-check-button.active { background: #dcfce7; }
+    #level-check-button:disabled { opacity: 0.5; }
     #capture-button { width: 100%; font-size: 1.3rem; font-weight: 700; padding: 1rem; border: 0; border-radius: 0.6rem; color: #fff; background: var(--go); }
     #capture-button.active { background: var(--rec); }
     #capture-button:disabled { opacity: 0.6; }
@@ -42,7 +62,6 @@
     details input[type="range"] { width: 100%; height: 2.4rem; margin: 0; }
     details output { font-weight: 700; }
     .hint { color: #555b66; font-size: 0.85rem; margin: 0.25rem 0 0; }
-    .links { margin: 0.9rem 0; font-size: 0.95rem; }
 
     .group { background: var(--card); border: 1px solid var(--line); border-left: 0.35rem solid #2563eb; border-radius: 0.6rem; padding: 0.6rem 0.8rem; margin-bottom: 0.9rem; }
     .group-header { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; }
@@ -60,19 +79,21 @@
     .utterance-text.saved { border-color: var(--go); }
     #audio-input-row { display: block; font-size: 0.95rem; margin-bottom: 0.6rem; }
     #audio-input { display: block; width: 100%; font-size: 1.05rem; padding: 0.55rem; margin-top: 0.25rem; border-radius: 0.4rem; }
-    #view-bar { display: flex; align-items: center; justify-content: space-between; margin: 0.5rem 0 0.6rem; }
-    #view-bar h2 { font-size: 1.1rem; margin: 0; }
-    #view-bar button { font-size: 1rem; padding: 0.45rem 0.9rem; }
+    #view-title { font-size: 1.15rem; margin: 0 0 0.6rem; }
     .clip-meta button.trash { font-size: 1.15rem; padding: 0.15rem 0.6rem; margin-left: auto; }
-    .clip-meta button.danger { color: #fff; background: var(--rec); border: 0; border-radius: 0.3rem; }
+    .confirm-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-top: 0.4rem; padding: 0.5rem 0.6rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 0.4rem; font-size: 0.95rem; }
+    .confirm-bar button { font-size: 0.95rem; padding: 0.35rem 0.8rem; }
+    button.danger { color: #fff; background: var(--rec); border: 0; border-radius: 0.3rem; }
     .note { font-size: 0.9rem; color: #555b66; margin: 0.4rem 0 0; }
     .error { color: #b91c1c; }
   </style>
 </head>
 <body>
+<div id="layout">
+<aside id="controls">
   <h1>dq_transcribe</h1>
 
-  <section id="capture-panel" data-state="idle">
+  <section id="capture-panel" class="panel" data-state="idle">
     <div id="rec-row">
       <span id="rec-dot"></span>
       <span id="rec-label">Not capturing</span>
@@ -81,6 +102,7 @@
       <select id="audio-input"></select>
     </label>
     <p id="audio-input-text" class="hint"></p>
+    <button id="level-check-button" type="button">Check levels (no recording)</button>
     <button id="capture-button" type="button">Start capturing</button>
     <div id="meter"><div id="meter-bar"></div><div id="meter-threshold"></div></div>
     <p id="level-text"></p>
@@ -100,17 +122,24 @@
     </details>
   </section>
 
-  <p class="links">
-    <a href="${transcript_route}" download>Download transcript</a> &middot;
-    <a href="${export_route}" download>Download all data (JSON)</a> &middot;
-    <a href="${mic_test_route}">Mic test</a>
-  </p>
+  <section class="panel">
+    <h2>View</h2>
+    <button id="trash-view-button" class="wide" type="button">&#128465; Trash</button>
+  </section>
 
-  <div id="view-bar">
-    <h2 id="view-title">Transcript</h2>
-    <button id="trash-view-button" type="button">&#128465; Trash</button>
-  </div>
-  <main id="clips"></main>
+  <section class="panel">
+    <h2>Downloads</h2>
+    <a href="${transcript_route}" download>Transcript (text)</a>
+    <a href="${export_route}" download>All data (JSON)</a>
+    <a href="${mic_test_route}">Mic test page</a>
+  </section>
+</aside>
+
+<main id="transcript">
+  <h2 id="view-title">Transcript</h2>
+  <div id="clips"></div>
+</main>
+</div>
 
   <script src="${script_route}"></script>
 </body>

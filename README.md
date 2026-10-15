@@ -38,7 +38,10 @@ foreground with the screen on (the page requests a screen wake lock).
 - The page shows "Last audio received: HH:MM:SS" so you can tell a quiet radio from a dead microphone.
 - Uploads are never dropped when the server is unreachable; they retry until sent.
 - **Audio input:** pick the microphone, headset jack or USB audio adapter from the list above the Start button. The choice is remembered.
-- **Trash:** each clip has a trash icon. The Trash view can restore a clip or delete it for good (tap twice).
+- **Layout:** controls on the left (input, level check, start/stop, meter, settings, Trash, downloads); transcript on the right.
+- **Check levels:** shows the live meter without recording anything, so levels can be set before capturing.
+- **Trash:** each clip has a trash icon, which asks for confirmation. The Trash view (left column) can restore a clip or delete it for good (also confirmed).
+- **Transcription vocabulary:** whisper is primed with swim-meet words from `src/dq_transcribe/data/whisper_prompt.txt`. Keep numbers out of it; whisper copies them into transcripts.
 - The page `/mic-test` is the original microphone check.
 
 Run the tests with `PYTHONPATH=src:tests python3 -m unittest discover -s tests`.
