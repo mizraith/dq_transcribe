@@ -343,6 +343,22 @@ rule-based, no AI).** For each call/response group:
 - **Remaining errors come from transcription:** misheard numbers ("Event 184",
   "Event 48") and dropped numbers.
 
+**Turns, not clips, are the unit (stated, 2026-10-14):** clip boundaries come
+from the audio level, not from meaning, so a clip can start with the tail of the
+previous exchange. On clips 46–48, the "Accepted" at the start of clip 47 belongs
+to clip 46's call, and the "Got it" at the start of clip 48 belongs to clip 47's.
+- **Already handled when clips share a group:** the splitter works on turns
+  (utterances) in time order across the clips of a group, so in this case it
+  already attached both acknowledgments correctly.
+- **Manual regrouping is needed for the rest:** turns must be movable between
+  groups when automatic grouping gets it wrong. **Proposed:**
+  - each turn row has a drag handle (long-press, then drag, built with pointer
+    events so it works on a touchscreen);
+  - one-tap fallbacks: "↑ goes with the previous call" and "↓ goes with the next
+    call";
+  - the move is stored as a per-utterance group override, so no audio is cut or
+    copied, and automatic grouping still applies to everything not moved.
+
 **Proposed review UI:**
 - **Candidate list:** under each call group, one row per lane (E/H/L, infraction,
   accepted, flags) with **Create DQ** and **Dismiss**.
