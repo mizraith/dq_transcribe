@@ -1,0 +1,13 @@
+task: 20261015T035326Z_install_save_layout
+started: 2026-10-14T20:53:44-07:00
+finished: 2026-10-14T20:53:49-07:00
+work_repo_commit: ffedb36
+exit_code: 0
+--- output ---
+running ffedb36
+2026-10-14 20:53:46,977 Refine pass on, using ggml-small.en
+2026-10-14 20:53:47,500 whisper-server ready: ggml-base
+2026-10-14 20:53:48,016 whisper-server ready: ggml-small.en
+page status 200
+meet script status 200
+27 detected calls in the active meet
