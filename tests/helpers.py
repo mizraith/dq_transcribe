@@ -56,13 +56,15 @@ class FakeTranscriber:
 
     model_name = FAKE_MODEL_NAME
 
-    def __init__(self, fail: bool = False) -> None:
+    def __init__(self, fail: bool = False, prefix: str = "turn", model_name: str = FAKE_MODEL_NAME) -> None:
         self.fail = fail
+        self.prefix = prefix
+        self.model_name = model_name
         self.call_count = 0
 
     def transcribe(self, wav_path: Path) -> TranscriptionResult:
-        """Return ``"turn N"`` (or raise if constructed with ``fail=True``)."""
+        """Return ``"<prefix> N"`` (or raise if constructed with ``fail=True``)."""
         self.call_count += 1
         if self.fail:
             raise RuntimeError("fake failure")
-        return TranscriptionResult(f"turn {self.call_count}", FAKE_RAW_OUTPUT)
+        return TranscriptionResult(f"{self.prefix} {self.call_count}", FAKE_RAW_OUTPUT)

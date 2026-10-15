@@ -57,6 +57,15 @@ CLIP_STATUS_FAILED = "failed"
 WORKER_IDLE_POLL_SECONDS = 2.0
 WORKER_THREAD_NAME = "transcription-worker"
 
+# Two-pass transcription: a fast draft with the "base" model, then a second,
+# more accurate pass with "small.en" over the same turns. The refine pass replaces
+# the draft text unless the line was edited by hand. Both passes run in parallel.
+# Refine status values reuse the clip status values above, plus "skipped" for
+# clips with nothing to refine.
+REFINE_STATUS_SKIPPED = "skipped"
+REFINE_WORKER_THREAD_NAME = "refine-worker"
+REFINE_WHISPER_MODEL_SIZE = "small.en"
+
 # --- Turn detection (server side) -------------------------------------------
 # Level measurements are taken in short frames; a "pause" is a run of quiet
 # frames, and speech between pauses becomes one turn (one radio transmission).
@@ -82,7 +91,9 @@ WHISPER_DIRECTORY = DATA_DIRECTORY / "whisper.cpp"
 WHISPER_LIBRARY_DIRECTORY = WHISPER_DIRECTORY / "build" / "bin"
 WHISPER_CLI_PATH = WHISPER_LIBRARY_DIRECTORY / "whisper-cli"
 WHISPER_MODEL_PATH = WHISPER_DIRECTORY / "models" / f"ggml-{DEFAULT_WHISPER_MODEL_SIZE}.bin"
-WHISPER_THREAD_COUNT = 4
+WHISPER_THREAD_COUNT = 4  # threads for the fast (draft) pass
+WHISPER_REFINE_MODEL_PATH = WHISPER_DIRECTORY / "models" / f"ggml-{REFINE_WHISPER_MODEL_SIZE}.bin"
+WHISPER_REFINE_THREAD_COUNT = 4  # threads for the refine pass (runs at the same time as the fast pass)
 WHISPER_LANGUAGE = "en"
 WHISPER_TIMEOUT_SECONDS = 300
 WHISPER_LIBRARY_PATH_VARIABLE = "LD_LIBRARY_PATH"
