@@ -359,6 +359,18 @@ to clip 46's call, and the "Got it" at the start of clip 48 belongs to clip 47's
   - the move is stored as a per-utterance group override, so no audio is cut or
     copied, and automatic grouping still applies to everything not moved.
 
+**Built (first slice, 2026-10-14):**
+- **On each conversation card:** detected calls appear with **Play**,
+  **Create DQ** and **Dismiss**.
+- **DQs view:** sorted by event/heat/lane, flags missing required fields, and has
+  a tap-to-edit panel:
+  - event, heat and lane steppers, plus the people and official role;
+  - infractions with a DQ slip code picker, phase toggles and a detail field;
+  - every linked audio range plays back;
+  - state buttons and the history.
+- **Still to build:** manual DQ from a selected text span, regrouping turns, and
+  merging or splitting DQs.
+
 **Proposed review UI:**
 - **Candidate list:** under each call group, one row per lane (E/H/L, infraction,
   accepted, flags) with **Create DQ** and **Dismiss**.

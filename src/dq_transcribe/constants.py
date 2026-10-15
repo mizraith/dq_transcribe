@@ -138,6 +138,7 @@ ROUTE_HOME = "/"
 ROUTE_MIC_TEST = "/mic-test"
 ROUTE_APP_SCRIPT = "/app.js"
 ROUTE_CAPTURE_WORKLET = "/capture_worklet.js"
+ROUTE_DQ_SCRIPT = "/dq_view.js"
 ROUTE_UPLOAD_RECORDING = "/api/recordings"  # legacy mic test
 ROUTE_CLIPS = "/api/clips"
 CLIP_AUDIO_SUFFIX = "/audio"
@@ -210,6 +211,7 @@ WEB_DIRECTORY_NAME = "web"
 MIC_TEST_PAGE_FILENAME = "mic_test.html"
 APP_PAGE_FILENAME = "app.html"
 APP_SCRIPT_FILENAME = "app.js"
+DQ_SCRIPT_FILENAME = "dq_view.js"
 CAPTURE_WORKLET_FILENAME = "capture_worklet.js"
 MIC_TEST_RECORD_SECONDS = 5
 

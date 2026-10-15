@@ -228,6 +228,7 @@ def render_app_page() -> bytes:
         constants.APP_PAGE_FILENAME,
         {
             "script_route": constants.ROUTE_APP_SCRIPT,
+            "dq_script_route": constants.ROUTE_DQ_SCRIPT,
             "transcript_route": constants.ROUTE_TRANSCRIPT_TEXT,
             "export_route": constants.ROUTE_EXPORT,
             "mic_test_route": constants.ROUTE_MIC_TEST,
@@ -292,6 +293,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_mic_test_page())
         elif path == constants.ROUTE_APP_SCRIPT:
             self._send_bytes(HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.APP_SCRIPT_FILENAME))
+        elif path == constants.ROUTE_DQ_SCRIPT:
+            self._send_bytes(HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.DQ_SCRIPT_FILENAME))
         elif path == constants.ROUTE_CAPTURE_WORKLET:
             self._send_bytes(
                 HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.CAPTURE_WORKLET_FILENAME)

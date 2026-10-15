@@ -102,7 +102,7 @@ class ServerTests(unittest.TestCase):
 
     def test_pages_have_no_unfilled_placeholders(self) -> None:
         for route in (constants.ROUTE_HOME, constants.ROUTE_MIC_TEST, constants.ROUTE_APP_SCRIPT,
-                      constants.ROUTE_CAPTURE_WORKLET):
+                      constants.ROUTE_CAPTURE_WORKLET, constants.ROUTE_DQ_SCRIPT):
             response = self._request("GET", route)
             self.assertEqual(response.status, 200, route)
             self.assertNotIn("${", response.read().decode("utf-8"), route)
@@ -114,7 +114,7 @@ class ServerTests(unittest.TestCase):
         node = shutil.which("node")
         if node is None:
             self.skipTest("node not installed")
-        for name in (constants.APP_SCRIPT_FILENAME, constants.CAPTURE_WORKLET_FILENAME):
+        for name in (constants.APP_SCRIPT_FILENAME, constants.CAPTURE_WORKLET_FILENAME, constants.DQ_SCRIPT_FILENAME):
             path = self.root / name
             path.write_bytes(render_script(name))
             result = subprocess.run([node, "--check", str(path)], capture_output=True, text=True)
@@ -218,6 +218,22 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(no_name.status, 400)
         missing = self._request("POST", f"{constants.ROUTE_MEETS}/999{constants.MEET_ACTIVATE_SUFFIX}", b"x")
         self.assertEqual(missing.status, 404)
+
+    def test_dq_api_round_trip(self) -> None:
+        response = self._post_json(constants.ROUTE_DQS, {"event": "6", "heat": "4", "lane": "1",
+                                                         "infractions": [{"description": "Kick: scissors", "phases": ["Turn"]}]})
+        dq_id = json.loads(response.read())[constants.RESPONSE_KEY_DQ_ID]
+        self.assertEqual(self._post_json(f"{constants.ROUTE_DQS}/{dq_id}", {"swimmer": "Pat Lee"}).status, 200)
+        self.assertEqual(self._post_json(f"{constants.ROUTE_DQS}/{dq_id}{constants.DQ_STATE_SUFFIX}",
+                                         {constants.REQUEST_KEY_STATE: constants.DQ_STATE_ACCEPTED}).status, 200)
+        dqs = json.loads(self._request("GET", constants.ROUTE_DQS).read())[constants.RESPONSE_KEY_DQS]
+        self.assertEqual((dqs[0]["swimmer"], dqs[0]["state"]), ("Pat Lee", constants.DQ_STATE_ACCEPTED))
+        self.assertEqual(self._post_json(constants.ROUTE_DQS, {"infractions": [{"description": ""}]}).status, 400)
+        self.assertEqual(self._post_json(f"{constants.ROUTE_DQS}/999", {"lane": "1"}).status, 404)
+        codes = json.loads(self._request("GET", constants.ROUTE_DQ_CODES).read())[constants.RESPONSE_KEY_CODES]
+        self.assertTrue(codes)
+        candidates = json.loads(self._request("GET", constants.ROUTE_CANDIDATES).read())
+        self.assertIn(constants.RESPONSE_KEY_CANDIDATES, candidates)
 
     def test_non_wav_upload_is_rejected(self) -> None:
         response = self._request("POST", constants.ROUTE_CLIPS, b"abc",

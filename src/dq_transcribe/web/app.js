@@ -32,6 +32,8 @@ const clipsContainer = document.getElementById("clips");
 const audioInputSelect = document.getElementById("audio-input");
 const audioInputText = document.getElementById("audio-input-text");
 const trashViewButton = document.getElementById("trash-view-button");
+const transcriptViewButton = document.getElementById("transcript-view-button");
+const dqViewButton = document.getElementById("dq-view-button");
 const viewTitle = document.getElementById("view-title");
 const meetSelect = document.getElementById("meet-select");
 const newMeetButton = document.getElementById("new-meet-button");
@@ -808,7 +810,7 @@ async function loadMeets() {
     meetSelect.value = String(activeId === null ? CONFIG.noMeetId : activeId);
     const active = data[CONFIG.meetsKey].find((meet) => meet.id === activeId);
     activeMeetName = active ? active.name : "";
-    viewTitle.textContent = (showingTrash ? "Trash" : "Transcript") + (activeMeetName ? " · " + activeMeetName : "");
+    updateViewButtons();
   } catch (error) {
     // Server restarting: try again on the next refresh.
   }
@@ -1067,14 +1069,32 @@ async function clipAction(clip, suffix, doneMessage) {
   refreshClips();
 }
 
-/** Switch between the transcript and the trash bin. */
-function toggleTrashView() {
-  showingTrash = !showingTrash;
-  trashViewButton.textContent = showingTrash ? "Back to transcript" : "\u{1F5D1} Trash";
-  viewTitle.textContent = (showingTrash ? "Trash" : "Transcript") + (activeMeetName ? " · " + activeMeetName : "");
+const VIEW_TITLES = { transcript: "Transcript", dqs: "DQs", trash: "Trash" };
+
+/** Switch the main area between the transcript, the DQ list and the trash bin. */
+function setView(view) {
+  currentView = view;
+  showingTrash = view === "trash";
+  updateViewButtons();
   clipsContainer.replaceChildren();
-  lastClipsSignature = "";
   pendingConfirm = null;
+  forceRefresh();
+}
+
+/** Highlight the current view's button and show the DQ count. */
+function updateViewButtons() {
+  transcriptViewButton.classList.toggle("active", currentView === "transcript");
+  dqViewButton.classList.toggle("active", currentView === "dqs");
+  trashViewButton.classList.toggle("active", currentView === "trash");
+  dqViewButton.textContent = "DQs" + (dqCount ? " (" + dqCount + ")" : "");
+  viewTitle.textContent = VIEW_TITLES[currentView] + (activeMeetName ? " · " + activeMeetName : "");
+}
+
+/** Redraw the current view now, even if the data looks unchanged. */
+function forceRefresh() {
+  lastClipsSignature = "";
+  dqsSignature = "";
+  candidatesSignature = "";
   refreshClips();
 }
 
@@ -1149,6 +1169,12 @@ function buildGroupCard(groupClips) {
   header.append(makeElement("span", "", " · " + groupClips.length + " clip" + (groupClips.length === 1 ? "" : "s")));
   card.append(header);
   groupClips.forEach((clip) => card.append(buildClipRow(clip)));
+  if (!showingTrash) {
+    const detected = buildCandidateSection(first.group_id);
+    if (detected !== null) {
+      card.append(detected);
+    }
+  }
   return card;
 }
 
@@ -1183,6 +1209,7 @@ function renderClips(clips) {
   return true;
 }
 
+let currentView = "transcript"; // "transcript", "dqs" or "trash"
 let showingTrash = false;
 let lastClips = []; // the clips last drawn, for redrawing after a local change
 let lastClipsSignature = "";
@@ -1192,13 +1219,35 @@ function redrawLastClips() {
   renderClips(lastClips);
 }
 
-/** Fetch the latest clips and redraw. */
+/** Refresh whichever view is showing. */
 async function refreshClips() {
+  if (currentView === "dqs") {
+    await refreshDqView(false);
+    return;
+  }
+  refreshDqCount();
+  await refreshTranscript();
+}
+
+/** Keep the DQ count on the view button current while another view is showing. */
+async function refreshDqCount() {
+  try {
+    const dqs = (await (await fetch(CONFIG.dqsRoute)).json())[CONFIG.dqsKey];
+    dqCount = dqs.filter((dq) => dq.state !== CONFIG.dqStates.declined).length;
+    updateViewButtons();
+  } catch (error) {
+    // Try again on the next poll.
+  }
+}
+
+/** Fetch the latest clips (and detected calls) and redraw the transcript or trash. */
+async function refreshTranscript() {
   try {
     const url = showingTrash ? CONFIG.clipsRoute + "?" + CONFIG.viewQueryKey + "=" + CONFIG.viewTrash : CONFIG.clipsRoute;
     const response = await fetch(url);
     const text = await response.text();
-    if (text === lastClipsSignature) {
+    const candidatesChanged = showingTrash ? false : await loadCandidates();
+    if (text === lastClipsSignature && !candidatesChanged) {
       return; // nothing changed: keep the page (and any playing audio) as it is
     }
     const data = JSON.parse(text);
@@ -1214,19 +1263,26 @@ async function refreshClips() {
 
 // --- Start up ---------------------------------------------------------------
 
-[startInput, endInput, hangInput].forEach((input) => input.addEventListener("input", saveSettings));
-trashViewButton.addEventListener("click", toggleTrashView);
-meetSelect.addEventListener("change", onMeetChange);
-newMeetButton.addEventListener("click", () => showNewMeetForm(true));
-cancelMeetButton.addEventListener("click", () => showNewMeetForm(false));
-createMeetButton.addEventListener("click", createMeet);
-loadMeets();
-audioInputSelect.addEventListener("change", onAudioInputChange);
-if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-  navigator.mediaDevices.addEventListener("devicechange", populateAudioInputs);
+/** Wire up the page; runs once every script (including dq_view.js) has loaded. */
+function startApp() {
+  [startInput, endInput, hangInput].forEach((input) => input.addEventListener("input", saveSettings));
+  trashViewButton.addEventListener("click", () => setView(currentView === "trash" ? "transcript" : "trash"));
+  transcriptViewButton.addEventListener("click", () => setView("transcript"));
+  dqViewButton.addEventListener("click", () => setView("dqs"));
+  meetSelect.addEventListener("change", onMeetChange);
+  newMeetButton.addEventListener("click", () => showNewMeetForm(true));
+  cancelMeetButton.addEventListener("click", () => showNewMeetForm(false));
+  createMeetButton.addEventListener("click", createMeet);
+  loadMeets();
+  audioInputSelect.addEventListener("change", onAudioInputChange);
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener("devicechange", populateAudioInputs);
+  }
+  loadSettings();
+  populateAudioInputs();
+  refreshControls();
+  refreshClips();
+  setInterval(refreshClips, CONFIG.pollSeconds * MILLISECONDS_PER_SECOND);
 }
-loadSettings();
-populateAudioInputs();
-refreshControls();
-refreshClips();
-setInterval(refreshClips, CONFIG.pollSeconds * MILLISECONDS_PER_SECOND);
+
+document.addEventListener("DOMContentLoaded", startApp);
