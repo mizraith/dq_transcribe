@@ -1,0 +1,30 @@
+task: 20261015T010547Z_measure_two_pass_niced
+started: 2026-10-14T18:07:47-07:00
+finished: 2026-10-14T18:10:23-07:00
+work_repo_commit: 3903767
+exit_code: 0
+--- output ---
+--- model load overhead (1 s of silence, idle tablet) ---
+base 3.1 s
+small.en 10.3 s
+whisper-server
+8
+8
+--- two-pass run ---
+all finished after 137.9 s
+copy of clip 4: 14.4 s audio | draft shown at 13.3 s (draft 12.3 s) | refine done 80.3 s, done at 137.9
+   draft:   BAM!
+   refined: Tada!
+   draft:   The thing is to work it.
+   refined: I think it's worth it.
+   draft:   DQ. Event, heat, lane. One hand touch.
+   refined: Possible DQ. Event, heat, lane six. One hand touch.
+copy of clip 5: 2.0 s audio | draft shown at 18.4 s (draft 5.3 s) | refine done 12.8 s, done at 137.9
+   draft:   Accompanied.
+   refined: Accepted.
+copy of clip 6: 18.3 s audio | draft shown at 34.7 s (draft 16.2 s) | refine done 31.4 s, done at 137.9
+   draft:   DQ. Event, 16, heat, 4, lane, 3, butterfly kick, in the breaststroke. Do you put a light kick from the breaststroke off the wall so that that's at the turn?
+   refined: DQ. Event 16. Heat 4, lane 3. Butterfly kick in the breaststroke. Two butterfly kicks in the breaststroke off the wall, so that's at the turn.
+   draft:   Acknowledged.
+   refined: Acknowledged.
+deleted the test copies
