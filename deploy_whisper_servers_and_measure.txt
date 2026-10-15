@@ -1,0 +1,30 @@
+task: deploy_whisper_servers_and_measure
+started: 2026-10-14T18:19:14-07:00
+finished: 2026-10-14T18:22:20-07:00
+work_repo_commit: 6f31062
+exit_code: 0
+--- output ---
+2026-10-14 18:19:16,379 Refine pass on, using ggml-small.en
+2026-10-14 18:19:16,417 Started whisper-server (ggml-base) on port 8178
+2026-10-14 18:19:16,424 Started whisper-server (ggml-small.en) on port 8179
+2026-10-14 18:19:16,923 whisper-server ready: ggml-base
+2026-10-14 18:19:17,937 whisper-server ready: ggml-small.en
+5667 /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/build/bin/whisper-server /data/data/com.termux/files/ho
+5668 /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/build/bin/whisper-server /data/data/com.termux/files/ho
+all finished after 181.5 s
+copy of clip 4: 14.4 s audio | draft shown at 18.4 s (draft 17.8 s) | refine done 90.8 s, done at 181.5
+   draft:   Copy.
+   refined: Pfft.
+   draft:   The thing is to work it.
+   refined: I think it's worth it.
+   draft:   DQ. Event, heat, lane. One hand touch.
+   refined: Possible DQ. Event, heat, lane six. One hand touch.
+copy of clip 5: 2.0 s audio | draft shown at 28.6 s (draft 9.7 s) | refine done 23.3 s, done at 181.5
+   draft:   Accompanied.
+   refined: Accepted.
+copy of clip 6: 18.3 s audio | draft shown at 49.9 s (draft 21.6 s) | refine done 49.1 s, done at 181.5
+   draft:   DQ. Event, 16, heat, 4, lane, 3, butterfly kick, in the breaststroke, 2 foot of light kick, in the breaststroke, off the wall, so that's at the turn.
+   refined: DQ, Event 16, heat, four, lane three, butterfly kick in the breaststroke, two butterfly kicks in the breaststroke off the wall, so that's at the turn.
+   draft:   Acknowledged.
+   refined: Acknowledged.
+deleted the test copies
