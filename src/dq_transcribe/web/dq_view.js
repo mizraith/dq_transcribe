@@ -461,10 +461,6 @@ function buildDqEditor(dq) {
     editor.append(makeElement("p", "note", "No audio linked."));
   }
 
-  const actions = makeElement("div", "dq-actions");
-  actions.append(makeButton("primary", "Save", () => saveDq(dq, editor)));
-  editor.append(actions);
-
   // Status: one button per state; the current one is filled in.
   const status = makeElement("div", "dq-status");
   status.append(makeElement("span", "dq-status-label", "Status:"));
@@ -481,6 +477,11 @@ function buildDqEditor(dq) {
   editor.append(status);
   const history = dq.history.map((item) => formatTime(new Date(item.at)) + " " + item.to_state + (item.by_name ? " (" + item.by_name + ")" : "")).join(" → ");
   editor.append(makeElement("p", "note", "History: " + history));
+
+  // Save comes last and stands out: it is the action that ends an edit.
+  const actions = makeElement("div", "dq-save-bar");
+  actions.append(makeButton("dq-save", "Save changes", () => saveDq(dq, editor)));
+  editor.append(actions);
   return editor;
 }
 
