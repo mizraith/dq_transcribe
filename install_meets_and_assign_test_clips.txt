@@ -1,0 +1,12 @@
+task: install_meets_and_assign_test_clips
+started: 2026-10-14T19:48:08-07:00
+finished: 2026-10-14T19:48:12-07:00
+work_repo_commit: 4fefbf0
+exit_code: 0
+--- output ---
+running 4fefbf0
+2026-10-14 19:48:10,770 Refine pass on, using ggml-small.en
+2026-10-14 19:48:11,295 whisper-server ready: ggml-base
+2026-10-14 19:48:11,810 whisper-server ready: ggml-small.en
+meet id 1 {'count': 28}
+{'meets': [{'id': 1, 'name': '10/14 Test', 'start_date': '2026-10-14', 'created_at': '2026-10-15T02:48:06+00:00', 'clip_count': 28}], 'active_meet_id': 1}
