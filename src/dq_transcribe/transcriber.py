@@ -117,6 +117,7 @@ class WhisperCppTranscriber:
         timeout_seconds: float = constants.WHISPER_TIMEOUT_SECONDS,
         prompt_path: Path = constants.WHISPER_PROMPT_PATH,
         suppress_non_speech: bool = constants.WHISPER_SUPPRESS_NON_SPEECH,
+        nice_increment: int = 0,
     ) -> None:
         """Remember where whisper.cpp and its model live.
 
@@ -129,6 +130,7 @@ class WhisperCppTranscriber:
             timeout_seconds: Give up on a single file after this long.
             prompt_path: Text file with domain vocabulary for whisper's initial prompt.
             suppress_non_speech: Ask whisper not to emit sound labels such as "[Music]".
+            nice_increment: Lower whisper's CPU priority by this much (Unix only; 0 = unchanged).
         """
         self._cli_path = cli_path
         self._model_path = model_path
@@ -138,7 +140,12 @@ class WhisperCppTranscriber:
         self._timeout_seconds = timeout_seconds
         self._prompt = load_prompt(prompt_path)
         self._suppress_non_speech = suppress_non_speech
+        self._nice_increment = nice_increment
         self.model_name = model_path.stem
+
+    def _lower_priority(self) -> None:
+        """Run in the child process before whisper starts: lower its CPU priority."""
+        os.nice(self._nice_increment)
 
     def transcribe(self, wav_path: Path) -> TranscriptionResult:
         """Transcribe a 16 kHz mono WAV file with whisper.cpp.
@@ -188,6 +195,7 @@ class WhisperCppTranscriber:
                     timeout=self._timeout_seconds,
                     env=environment,
                     check=False,
+                    preexec_fn=self._lower_priority if self._nice_increment and hasattr(os, "nice") else None,
                 )
             except subprocess.TimeoutExpired as error:
                 raise TranscriptionError(f"whisper-cli timed out after {self._timeout_seconds} s") from error

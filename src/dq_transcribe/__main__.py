@@ -31,7 +31,9 @@ def main() -> None:
     refine_worker = None
     if constants.WHISPER_REFINE_MODEL_PATH.exists():
         refine_transcriber = WhisperCppTranscriber(
-            model_path=constants.WHISPER_REFINE_MODEL_PATH, thread_count=constants.WHISPER_REFINE_THREAD_COUNT
+            model_path=constants.WHISPER_REFINE_MODEL_PATH,
+            thread_count=constants.WHISPER_REFINE_THREAD_COUNT,
+            nice_increment=constants.WHISPER_REFINE_NICE_INCREMENT,
         )
         refine_worker = RefineWorker(
             database, refine_transcriber, constants.RECORDINGS_DIRECTORY, constants.SCRATCH_DIRECTORY
