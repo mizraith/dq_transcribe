@@ -50,6 +50,24 @@ _CLIP_DELETE_PATTERN = re.compile(
     rf"^{re.escape(constants.ROUTE_CLIPS)}/(\d+){re.escape(constants.CLIP_DELETE_SUFFIX)}$"
 )
 _UTTERANCE_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_UTTERANCES)}/(\d+)$")
+_MEET_ACTIVATE_PATTERN = re.compile(
+    rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_ACTIVATE_SUFFIX)}$"
+)
+_MEET_ASSIGN_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_ASSIGN_SUFFIX)}$")
+_NON_FILENAME_CHARACTERS = re.compile(r"[^a-z0-9]+")
+
+
+def meet_folder_name(meet: dict[str, Any]) -> str:
+    """File-safe folder name for a meet, for example ``2026-10-16_candy-meet``.
+
+    Args:
+        meet: Meet with ``name`` and ``start_date``.
+
+    Returns:
+        The folder name.
+    """
+    slug = _NON_FILENAME_CHARACTERS.sub("-", meet["name"].lower()).strip("-") or "meet"
+    return constants.MEET_FOLDER_FORMAT.format(start_date=meet["start_date"], slug=slug)
 
 
 def build_audio_path(filename_prefix: str, content_type_header: str, directory: Path, timestamp: datetime | None = None) -> Path:
@@ -112,6 +130,13 @@ def build_web_config() -> dict[str, Any]:
         "deleteSuffix": constants.CLIP_DELETE_SUFFIX,
         "viewQueryKey": constants.QUERY_KEY_VIEW,
         "viewTrash": constants.VIEW_TRASH,
+        "meetsRoute": constants.ROUTE_MEETS,
+        "meetsKey": constants.RESPONSE_KEY_MEETS,
+        "activeMeetKey": constants.RESPONSE_KEY_ACTIVE_MEET_ID,
+        "meetActivateSuffix": constants.MEET_ACTIVATE_SUFFIX,
+        "noMeetId": constants.NO_MEET_ID,
+        "meetNameKey": constants.REQUEST_KEY_MEET_NAME,
+        "meetStartDateKey": constants.REQUEST_KEY_MEET_START_DATE,
         "audioInputStorageKey": constants.AUDIO_INPUT_STORAGE_KEY,
         "utterancesRoute": constants.ROUTE_UTTERANCES,
         "workletRoute": constants.ROUTE_CAPTURE_WORKLET,
@@ -253,15 +278,28 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
         elif path == constants.ROUTE_CLIPS:
             views = parse_qs(url.query).get(constants.QUERY_KEY_VIEW, [])
-            clips = database.list_clips(limit=constants.CLIP_LIST_LIMIT, trashed=constants.VIEW_TRASH in views)
+            # The transcript shows the active meet's clips (all clips if no meet is active).
+            clips = database.list_clips(
+                limit=constants.CLIP_LIST_LIMIT,
+                trashed=constants.VIEW_TRASH in views,
+                meet_id=database.get_active_meet_id(),
+            )
             self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_CLIPS: clips})
+        elif path == constants.ROUTE_MEETS:
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    constants.RESPONSE_KEY_MEETS: database.list_meets(),
+                    constants.RESPONSE_KEY_ACTIVE_MEET_ID: database.get_active_meet_id(),
+                },
+            )
         elif path == constants.ROUTE_EXPORT:
             body = json.dumps(database.export_all(), indent=2).encode("utf-8")
             self._send_bytes(
                 HTTPStatus.OK, constants.JSON_CONTENT_TYPE, body, download_filename=constants.EXPORT_DOWNLOAD_FILENAME
             )
         elif path == constants.ROUTE_TRANSCRIPT_TEXT:
-            text = format_transcript_text(database.list_clips(newest_first=False))
+            text = format_transcript_text(database.list_clips(newest_first=False, meet_id=database.get_active_meet_id()))
             self._send_bytes(
                 HTTPStatus.OK,
                 constants.TEXT_CONTENT_TYPE,
@@ -285,6 +323,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_clip_upload()
         elif (match := _CLIP_REPROCESS_PATTERN.match(path)) is not None:
             self._handle_reprocess(int(match.group(1)))
+        elif path == constants.ROUTE_MEETS:
+            self._handle_create_meet()
+        elif (match := _MEET_ACTIVATE_PATTERN.match(path)) is not None:
+            self._handle_activate_meet(int(match.group(1)))
+        elif (match := _MEET_ASSIGN_PATTERN.match(path)) is not None:
+            self._handle_assign_clips(int(match.group(1)))
         elif (match := _CLIP_TRASH_PATTERN.match(path)) is not None:
             self._handle_trash(int(match.group(1)))
         elif (match := _CLIP_RESTORE_PATTERN.match(path)) is not None:
@@ -328,15 +372,21 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json_error(HTTPStatus.BAD_REQUEST, "Not a mono 16-bit WAV file")
             return
 
-        clip_path = build_audio_path(
-            constants.CLIP_FILENAME_PREFIX, media_type, self.server.recordings_directory
-        )
+        database = self.server.database
+        meet_id = database.get_active_meet_id()
+        meet = None if meet_id is None else database.get_meet(meet_id)
+        clip_directory = self.server.recordings_directory
+        if meet is not None:
+            clip_directory = clip_directory / meet_folder_name(meet)
+        clip_path = build_audio_path(constants.CLIP_FILENAME_PREFIX, media_type, clip_directory)
         clip_path.parent.mkdir(parents=True, exist_ok=True)
         clip_path.write_bytes(audio_bytes)
         relative_clip_name = clip_path.relative_to(self.server.recordings_directory).as_posix()
         capture_info_json = self._read_capture_info(self.headers.get(constants.CAPTURE_INFO_HEADER, ""))
         started_at, ended_at = self._read_capture_times(capture_info_json)
-        clip_id = self.server.database.add_clip(relative_clip_name, capture_info_json, started_at, ended_at)
+        clip_id = database.add_clip(
+            relative_clip_name, capture_info_json, started_at, ended_at, meet_id=None if meet is None else meet_id
+        )
         if self.server.worker is not None:
             self.server.worker.wake()
         LOGGER.info("Queued clip %d (%s, %d bytes)", clip_id, relative_clip_name, len(audio_bytes))
@@ -357,6 +407,62 @@ class RequestHandler(BaseHTTPRequestHandler):
         if self.server.worker is not None:
             self.server.worker.wake()
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _read_json_object(self) -> dict[str, Any] | None:
+        """Read a JSON object request body, or send an error and return None."""
+        body = self._read_request_body()
+        if body is None:
+            return None
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            payload = None
+        if not isinstance(payload, dict):
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "Expected a JSON object")
+            return None
+        return payload
+
+    def _handle_create_meet(self) -> None:
+        """Create a meet from {"name", "start_date"} and make it the active meet."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        name = payload.get(constants.REQUEST_KEY_MEET_NAME)
+        start_date = payload.get(constants.REQUEST_KEY_MEET_START_DATE)
+        if not isinstance(name, str) or not name.strip() or len(name) > constants.MAX_MEET_NAME_CHARS:
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "The meet needs a name")
+            return
+        try:
+            datetime.strptime(str(start_date), constants.MEET_START_DATE_FORMAT)
+        except ValueError:
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "The start date must look like 2026-10-16")
+            return
+        meet_id = self.server.database.create_meet(name.strip(), str(start_date))
+        LOGGER.info("Created meet %d: %s (%s)", meet_id, name.strip(), start_date)
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id})
+
+    def _handle_activate_meet(self, meet_id: int) -> None:
+        """Make a meet active (id 0 clears the active meet)."""
+        if not self.server.database.set_active_meet(None if meet_id == constants.NO_MEET_ID else meet_id):
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such meet")
+            return
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _handle_assign_clips(self, meet_id: int) -> None:
+        """File existing clips under a meet: {"clip_ids": [...]} (id 0 = no meet)."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        clip_ids = payload.get(constants.REQUEST_KEY_CLIP_IDS)
+        if not isinstance(clip_ids, list) or not all(isinstance(item, int) for item in clip_ids):
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "Expected a list of clip ids")
+            return
+        target = None if meet_id == constants.NO_MEET_ID else meet_id
+        if target is not None and self.server.database.get_meet(target) is None:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such meet")
+            return
+        count = self.server.database.assign_clips_to_meet(target, clip_ids)
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_COUNT: count})
 
     def _handle_trash(self, clip_id: int) -> None:
         """Move a clip to the trash bin."""

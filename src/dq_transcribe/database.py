@@ -65,6 +65,23 @@ CREATE TABLE IF NOT EXISTS utterances (
 )
 """
 
+_CREATE_MEETS_TABLE = """
+CREATE TABLE IF NOT EXISTS meets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    created_at TEXT NOT NULL
+)
+"""
+
+# Small key/value store for app-wide settings, such as the active meet.
+_CREATE_SETTINGS_TABLE = """
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+)
+"""
+
 _CREATE_UTTERANCES_INDEX = "CREATE INDEX IF NOT EXISTS utterances_clip ON utterances(clip_id, position)"
 
 # Columns added after the first release; `initialize` adds them to older databases.
@@ -76,13 +93,14 @@ _ADDED_CLIP_COLUMNS = {
     "refine_model": "TEXT",
     "refine_seconds": "REAL",
     "refined_at": "TEXT",
+    "meet_id": "INTEGER",
 }
 _ADDED_UTTERANCE_COLUMNS = {"refined_text": "TEXT", "refined_raw_output": "TEXT"}
 
 _CLIP_SUMMARY_COLUMNS = (
     "id, created_at, started_at, ended_at, audio_filename, status, error_message, duration_seconds, "
     "peak_dbfs, rms_dbfs, whisper_model, transcribe_seconds, processed_at, trashed_at, "
-    "refine_status, refine_model, refine_seconds, refined_at"
+    "refine_status, refine_model, refine_seconds, refined_at, meet_id"
 )
 _CLIP_JSON_COLUMNS = ("capture_info_json", "levels_json", "pauses_json", "analysis_params_json")
 _UTTERANCE_SUMMARY_COLUMNS = (
@@ -170,6 +188,8 @@ class Database:
             connection.execute(_CREATE_CLIPS_TABLE)
             connection.execute(_CREATE_UTTERANCES_TABLE)
             connection.execute(_CREATE_UTTERANCES_INDEX)
+            connection.execute(_CREATE_MEETS_TABLE)
+            connection.execute(_CREATE_SETTINGS_TABLE)
             existing_columns = {row["name"] for row in connection.execute("PRAGMA table_info(clips)")}
             for column, column_type in _ADDED_CLIP_COLUMNS.items():
                 if column not in existing_columns:
@@ -185,6 +205,7 @@ class Database:
         capture_info_json: str | None,
         started_at: str | None = None,
         ended_at: str | None = None,
+        meet_id: int | None = None,
     ) -> int:
         """Queue a newly uploaded clip for transcription.
 
@@ -193,15 +214,16 @@ class Database:
             capture_info_json: What the browser reported about the capture, as JSON text.
             started_at: When the clip's audio began (UTC ISO text), if the browser reported it.
             ended_at: When the clip's audio ended (UTC ISO text), if the browser reported it.
+            meet_id: Meet the clip belongs to (normally the active meet), or None.
 
         Returns:
             The new clip's id.
         """
         with self._transaction() as connection:
             cursor = connection.execute(
-                "INSERT INTO clips (created_at, started_at, ended_at, audio_filename, status, capture_info_json) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (utc_now_iso(), started_at, ended_at, audio_filename, constants.CLIP_STATUS_QUEUED, capture_info_json),
+                "INSERT INTO clips (created_at, started_at, ended_at, audio_filename, status, capture_info_json, meet_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (utc_now_iso(), started_at, ended_at, audio_filename, constants.CLIP_STATUS_QUEUED, capture_info_json, meet_id),
             )
             return int(cursor.lastrowid)
 
@@ -494,8 +516,93 @@ class Database:
             row = connection.execute("SELECT audio_filename FROM clips WHERE id = ?", (clip_id,)).fetchone()
         return None if row is None else str(row["audio_filename"])
 
+    # --- Meets -------------------------------------------------------------
+
+    def create_meet(self, name: str, start_date: str) -> int:
+        """Add a meet and make it the active meet.
+
+        Args:
+            name: Meet name, for example "Candy Meet".
+            start_date: First day, ``YYYY-MM-DD``.
+
+        Returns:
+            The new meet's id.
+        """
+        with self._transaction() as connection:
+            cursor = connection.execute(
+                "INSERT INTO meets (name, start_date, created_at) VALUES (?, ?, ?)", (name, start_date, utc_now_iso())
+            )
+            meet_id = int(cursor.lastrowid)
+            self._set_setting(connection, constants.SETTING_ACTIVE_MEET_ID, str(meet_id))
+            return meet_id
+
+    def list_meets(self) -> list[dict[str, Any]]:
+        """All meets, newest first (by start date, then name), with their clip counts."""
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT m.id, m.name, m.start_date, m.created_at, "
+                "(SELECT COUNT(*) FROM clips c WHERE c.meet_id = m.id AND c.trashed_at IS NULL) AS clip_count "
+                "FROM meets m ORDER BY m.start_date DESC, m.name"
+            )
+            return [dict(row) for row in rows]
+
+    def get_meet(self, meet_id: int) -> dict[str, Any] | None:
+        """One meet, or None if there is no such meet."""
+        with self._connection() as connection:
+            row = connection.execute("SELECT id, name, start_date FROM meets WHERE id = ?", (meet_id,)).fetchone()
+        return None if row is None else dict(row)
+
+    def get_active_meet_id(self) -> int | None:
+        """The active meet's id (new clips are filed under it), or None."""
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT value FROM settings WHERE key = ?", (constants.SETTING_ACTIVE_MEET_ID,)
+            ).fetchone()
+        if row is None or not row["value"]:
+            return None
+        return int(row["value"])
+
+    def set_active_meet(self, meet_id: int | None) -> bool:
+        """Make a meet active, or clear the active meet with None.
+
+        Returns:
+            False if the meet does not exist.
+        """
+        with self._transaction() as connection:
+            if meet_id is not None:
+                if connection.execute("SELECT 1 FROM meets WHERE id = ?", (meet_id,)).fetchone() is None:
+                    return False
+            self._set_setting(connection, constants.SETTING_ACTIVE_MEET_ID, "" if meet_id is None else str(meet_id))
+            return True
+
+    def assign_clips_to_meet(self, meet_id: int | None, clip_ids: list[int]) -> int:
+        """File existing clips under a meet (or under no meet with None). Audio files are not moved.
+
+        Returns:
+            How many clips were updated.
+        """
+        with self._transaction() as connection:
+            if meet_id is not None and connection.execute("SELECT 1 FROM meets WHERE id = ?", (meet_id,)).fetchone() is None:
+                return 0
+            cursor = connection.executemany("UPDATE clips SET meet_id = ? WHERE id = ?", [(meet_id, clip_id) for clip_id in clip_ids])
+            return cursor.rowcount
+
+    @staticmethod
+    def _set_setting(connection: sqlite3.Connection, key: str, value: str) -> None:
+        """Store an app setting (inside the caller's transaction)."""
+        connection.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+    # --- Clip lists ----------------------------------------------------------
+
     def list_clips(
-        self, limit: int | None = None, newest_first: bool = True, trashed: bool = False
+        self,
+        limit: int | None = None,
+        newest_first: bool = True,
+        trashed: bool = False,
+        meet_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """List clips with their utterances (without the bulky measurement data).
 
@@ -503,6 +610,7 @@ class Database:
             limit: Maximum number of clips, or None for all.
             newest_first: Sort newest first (True) or oldest first (False).
             trashed: List the clips in the trash bin instead of the active ones.
+            meet_id: Only clips of this meet (None = all clips).
 
         Returns:
             Clip dictionaries, each with an ``utterances`` list and a ``group_id``
@@ -510,11 +618,14 @@ class Database:
         """
         order = "DESC" if newest_first else "ASC"
         trash_filter = "trashed_at IS NOT NULL" if trashed else "trashed_at IS NULL"
-        query = f"SELECT {_CLIP_SUMMARY_COLUMNS} FROM clips WHERE {trash_filter} ORDER BY id {order}"
         parameters: tuple[Any, ...] = ()
+        if meet_id is not None:
+            trash_filter += " AND meet_id = ?"
+            parameters = (meet_id,)
+        query = f"SELECT {_CLIP_SUMMARY_COLUMNS} FROM clips WHERE {trash_filter} ORDER BY id {order}"
         if limit is not None:
             query += " LIMIT ?"
-            parameters = (limit,)
+            parameters = (*parameters, limit)
         with self._connection() as connection:
             clips = [dict(row) for row in connection.execute(query, parameters)]
             self._attach_utterances(connection, clips, _UTTERANCE_SUMMARY_COLUMNS)
@@ -533,8 +644,9 @@ class Database:
                 for column in _CLIP_JSON_COLUMNS:
                     clip[column.removesuffix("_json")] = _parse_json_column(clip.pop(column))
             self._attach_utterances(connection, clips, _UTTERANCE_FULL_COLUMNS)
+            meets = [dict(row) for row in connection.execute("SELECT * FROM meets ORDER BY id")]
         assign_conversation_groups(clips)
-        return {"exported_at": utc_now_iso(), constants.RESPONSE_KEY_CLIPS: clips}
+        return {"exported_at": utc_now_iso(), constants.RESPONSE_KEY_MEETS: meets, constants.RESPONSE_KEY_CLIPS: clips}
 
     @staticmethod
     def _attach_utterances(connection: sqlite3.Connection, clips: list[dict[str, Any]], columns: str) -> None:

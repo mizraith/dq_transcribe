@@ -33,6 +33,10 @@
     .panel h2 { font-size: 0.95rem; margin: 0 0 0.5rem; color: #555b66; text-transform: uppercase; letter-spacing: 0.05em; }
     .panel button.wide { display: block; width: 100%; font-size: 1rem; padding: 0.6rem; margin-top: 0.5rem; border-radius: 0.5rem; }
     .panel a { display: block; padding: 0.35rem 0; font-size: 0.95rem; }
+    [hidden] { display: none !important; }
+    #meet-select, #meet-name, #meet-date { display: block; width: 100%; box-sizing: border-box; font-size: 1.05rem; padding: 0.5rem; border-radius: 0.4rem; margin-top: 0.25rem; }
+    #new-meet-form label { display: block; margin-top: 0.6rem; font-size: 0.95rem; }
+    .panel button.primary { color: #fff; background: var(--go); border: 0; }
     #rec-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
     #rec-dot { width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--idle); flex: none; }
     #rec-label { font-weight: 700; letter-spacing: 0.04em; }
@@ -97,6 +101,21 @@
 <div id="layout">
 <aside id="controls">
   <h1>dq_transcribe</h1>
+
+  <section id="meet-panel" class="panel">
+    <h2>Meet</h2>
+    <select id="meet-select" aria-label="Active meet"></select>
+    <p class="hint">New recordings are filed under this meet.</p>
+    <button id="new-meet-button" class="wide" type="button">New meet</button>
+    <div id="new-meet-form" hidden>
+      <label for="meet-name">Meet name</label>
+      <input id="meet-name" type="text" maxlength="100" placeholder="Candy Meet">
+      <label for="meet-date">First day</label>
+      <input id="meet-date" type="date">
+      <button id="create-meet-button" class="wide primary" type="button">Create and use this meet</button>
+      <button id="cancel-meet-button" class="wide" type="button">Cancel</button>
+    </div>
+  </section>
 
   <section id="capture-panel" class="panel" data-state="idle">
     <div id="rec-row">

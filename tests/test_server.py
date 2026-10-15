@@ -183,6 +183,42 @@ class ServerTests(unittest.TestCase):
         self.assertFalse(audio_file.exists())
         self.assertEqual(self._request("GET", base + constants.CLIP_AUDIO_SUFFIX).status, 404)
 
+    def _post_json(self, path: str, payload: dict):
+        return self._request("POST", path, json.dumps(payload).encode(), {constants.CONTENT_TYPE_HEADER: constants.JSON_CONTENT_TYPE})
+
+    def test_meets_file_new_clips_and_filter_the_list(self) -> None:
+        early_clip = self._upload_clip()[constants.RESPONSE_KEY_CLIP_ID]  # before any meet exists
+        response = self._post_json(constants.ROUTE_MEETS, {constants.REQUEST_KEY_MEET_NAME: "Candy Meet",
+                                                           constants.REQUEST_KEY_MEET_START_DATE: "2026-10-16"})
+        meet_id = json.loads(response.read())[constants.RESPONSE_KEY_MEET_ID]
+        meets = json.loads(self._request("GET", constants.ROUTE_MEETS).read())
+        self.assertEqual(meets[constants.RESPONSE_KEY_ACTIVE_MEET_ID], meet_id)
+
+        saved = self._upload_clip()[constants.RESPONSE_KEY_SAVED_AS]
+        self.assertTrue(saved.startswith("2026-10-16_candy-meet/"), saved)
+        listed = json.loads(self._request("GET", constants.ROUTE_CLIPS).read())[constants.RESPONSE_KEY_CLIPS]
+        self.assertEqual(len(listed), 1)  # only the active meet's clip
+
+        assigned = self._post_json(f"{constants.ROUTE_MEETS}/{meet_id}{constants.MEET_ASSIGN_SUFFIX}",
+                                   {constants.REQUEST_KEY_CLIP_IDS: [early_clip]})
+        self.assertEqual(json.loads(assigned.read())[constants.RESPONSE_KEY_COUNT], 1)
+        listed = json.loads(self._request("GET", constants.ROUTE_CLIPS).read())[constants.RESPONSE_KEY_CLIPS]
+        self.assertEqual(len(listed), 2)
+
+        self._request("POST", f"{constants.ROUTE_MEETS}/{constants.NO_MEET_ID}{constants.MEET_ACTIVATE_SUFFIX}", b"x").read()
+        self.assertIsNone(json.loads(self._request("GET", constants.ROUTE_MEETS).read())[constants.RESPONSE_KEY_ACTIVE_MEET_ID])
+        self.assertEqual(self._upload_clip()[constants.RESPONSE_KEY_SAVED_AS].count("/"), 1)  # day folder only
+
+    def test_meet_validation(self) -> None:
+        bad_date = self._post_json(constants.ROUTE_MEETS, {constants.REQUEST_KEY_MEET_NAME: "X",
+                                                           constants.REQUEST_KEY_MEET_START_DATE: "Friday"})
+        self.assertEqual(bad_date.status, 400)
+        no_name = self._post_json(constants.ROUTE_MEETS, {constants.REQUEST_KEY_MEET_NAME: " ",
+                                                          constants.REQUEST_KEY_MEET_START_DATE: "2026-10-16"})
+        self.assertEqual(no_name.status, 400)
+        missing = self._request("POST", f"{constants.ROUTE_MEETS}/999{constants.MEET_ACTIVATE_SUFFIX}", b"x")
+        self.assertEqual(missing.status, 404)
+
     def test_non_wav_upload_is_rejected(self) -> None:
         response = self._request("POST", constants.ROUTE_CLIPS, b"abc",
                                  {constants.CONTENT_TYPE_HEADER: "audio/webm"})

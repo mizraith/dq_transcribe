@@ -33,6 +33,13 @@ const audioInputSelect = document.getElementById("audio-input");
 const audioInputText = document.getElementById("audio-input-text");
 const trashViewButton = document.getElementById("trash-view-button");
 const viewTitle = document.getElementById("view-title");
+const meetSelect = document.getElementById("meet-select");
+const newMeetButton = document.getElementById("new-meet-button");
+const newMeetForm = document.getElementById("new-meet-form");
+const meetNameInput = document.getElementById("meet-name");
+const meetDateInput = document.getElementById("meet-date");
+const createMeetButton = document.getElementById("create-meet-button");
+const cancelMeetButton = document.getElementById("cancel-meet-button");
 const startInput = document.getElementById("start-dbfs");
 const endInput = document.getElementById("end-dbfs");
 const hangInput = document.getElementById("hang-seconds");
@@ -760,6 +767,94 @@ async function onAudioInputChange() {
   refreshControls();
 }
 
+// --- Meets -------------------------------------------------------------------
+
+const NO_MEET_LABEL = "No meet (show all clips)";
+let activeMeetName = "";
+
+/** Today's local date as YYYY-MM-DD (for the date picker). */
+function todayIsoDate() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate());
+}
+
+/** Format a YYYY-MM-DD date as e.g. "Oct 16, 2026". */
+function formatMeetDate(isoDate) {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
+/** Fetch the meets and show them in the picker, with the active one selected. */
+async function loadMeets() {
+  try {
+    const data = await (await fetch(CONFIG.meetsRoute)).json();
+    const activeId = data[CONFIG.activeMeetKey];
+    const options = data[CONFIG.meetsKey].map((meet) =>
+      new Option(meet.name + " · " + formatMeetDate(meet.start_date) + " · " + meet.clip_count + " clips", String(meet.id)));
+    options.push(new Option(NO_MEET_LABEL, String(CONFIG.noMeetId)));
+    meetSelect.replaceChildren(...options);
+    meetSelect.value = String(activeId === null ? CONFIG.noMeetId : activeId);
+    const active = data[CONFIG.meetsKey].find((meet) => meet.id === activeId);
+    activeMeetName = active ? active.name : "";
+    viewTitle.textContent = (showingTrash ? "Trash" : "Transcript") + (activeMeetName ? " · " + activeMeetName : "");
+  } catch (error) {
+    // Server restarting: try again on the next refresh.
+  }
+}
+
+/** Switch the active meet (new recordings are filed under it). */
+async function onMeetChange() {
+  try {
+    await fetch(CONFIG.meetsRoute + "/" + meetSelect.value + CONFIG.meetActivateSuffix, { method: "POST" });
+    setStatus(meetSelect.value === String(CONFIG.noMeetId) ? "No active meet." : "Now recording into: " + meetSelect.options[meetSelect.selectedIndex].text);
+  } catch (error) {
+    setStatus("Could not switch meets: " + error.message);
+  }
+  lastClipsSignature = "";
+  await loadMeets();
+  refreshClips();
+}
+
+/** Show or hide the "new meet" form. */
+function showNewMeetForm(visible) {
+  newMeetForm.hidden = !visible;
+  newMeetButton.hidden = visible;
+  if (visible) {
+    meetDateInput.value = meetDateInput.value || todayIsoDate();
+    meetNameInput.focus();
+  }
+}
+
+/** Create a meet from the form and make it the active meet. */
+async function createMeet() {
+  const body = {};
+  body[CONFIG.meetNameKey] = meetNameInput.value.trim();
+  body[CONFIG.meetStartDateKey] = meetDateInput.value;
+  if (!body[CONFIG.meetNameKey]) {
+    setStatus("Give the meet a name.");
+    return;
+  }
+  try {
+    const response = await fetch(CONFIG.meetsRoute, {
+      method: "POST",
+      headers: { "Content-Type": CONFIG.jsonMediaType },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error((await response.json()).error || "server answered " + response.status);
+    }
+    setStatus("Created meet " + body[CONFIG.meetNameKey] + "; new recordings are filed under it.");
+    meetNameInput.value = "";
+    showNewMeetForm(false);
+  } catch (error) {
+    setStatus("Could not create the meet: " + error.message);
+  }
+  lastClipsSignature = "";
+  await loadMeets();
+  refreshClips();
+}
+
 // --- Uploading --------------------------------------------------------------
 
 const uploadQueue = [];
@@ -965,7 +1060,7 @@ async function clipAction(clip, suffix, doneMessage) {
 function toggleTrashView() {
   showingTrash = !showingTrash;
   trashViewButton.textContent = showingTrash ? "Back to transcript" : "\u{1F5D1} Trash";
-  viewTitle.textContent = showingTrash ? "Trash" : "Transcript";
+  viewTitle.textContent = (showingTrash ? "Trash" : "Transcript") + (activeMeetName ? " · " + activeMeetName : "");
   clipsContainer.replaceChildren();
   lastClipsSignature = "";
   pendingConfirm = null;
@@ -1098,6 +1193,7 @@ async function refreshClips() {
     const rendered = renderClips(data[CONFIG.clipsKey]);
     if (rendered) {
       lastClipsSignature = text;
+      loadMeets(); // keep the clip counts in the meet picker current
     }
   } catch (error) {
     // Server busy or restarting: the next poll tries again.
@@ -1108,6 +1204,11 @@ async function refreshClips() {
 
 [startInput, endInput, hangInput].forEach((input) => input.addEventListener("input", saveSettings));
 trashViewButton.addEventListener("click", toggleTrashView);
+meetSelect.addEventListener("change", onMeetChange);
+newMeetButton.addEventListener("click", () => showNewMeetForm(true));
+cancelMeetButton.addEventListener("click", () => showNewMeetForm(false));
+createMeetButton.addEventListener("click", createMeet);
+loadMeets();
 audioInputSelect.addEventListener("change", onAudioInputChange);
 if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
   navigator.mediaDevices.addEventListener("devicechange", populateAudioInputs);

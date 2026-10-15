@@ -151,6 +151,23 @@ CLIP_DELETE_SUFFIX = "/delete"
 QUERY_KEY_VIEW = "view"
 VIEW_TRASH = "trash"
 ROUTE_UTTERANCES = "/api/utterances"
+# Meets: GET lists meets and the active one; POST creates a meet and makes it active.
+ROUTE_MEETS = "/api/meets"
+MEET_ACTIVATE_SUFFIX = "/activate"  # POST /api/meets/<id>/activate (id 0 = no active meet)
+MEET_ASSIGN_SUFFIX = "/assign"  # POST /api/meets/<id>/assign with {"clip_ids": [...]}
+NO_MEET_ID = 0
+REQUEST_KEY_MEET_NAME = "name"
+REQUEST_KEY_MEET_START_DATE = "start_date"
+REQUEST_KEY_CLIP_IDS = "clip_ids"
+RESPONSE_KEY_MEETS = "meets"
+RESPONSE_KEY_ACTIVE_MEET_ID = "active_meet_id"
+RESPONSE_KEY_MEET_ID = "meet_id"
+RESPONSE_KEY_COUNT = "count"
+MAX_MEET_NAME_CHARS = 100
+MEET_START_DATE_FORMAT = "%Y-%m-%d"
+SETTING_ACTIVE_MEET_ID = "active_meet_id"
+# Recordings of a meet go in recordings/<start date>_<name>/<day>/ (name made file-safe).
+MEET_FOLDER_FORMAT = "{start_date}_{slug}"
 ROUTE_EXPORT = "/api/export"
 ROUTE_TRANSCRIPT_TEXT = "/api/transcript.txt"
 
