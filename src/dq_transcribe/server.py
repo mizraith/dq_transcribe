@@ -30,6 +30,7 @@ from dq_transcribe import constants
 from dq_transcribe.database import Database
 from dq_transcribe.dq_store import DqError, DqStore, load_dq_codes
 from dq_transcribe.grouping import normalize_timestamp
+from dq_transcribe.slip_page import render_slips
 from dq_transcribe.meet_files import MeetFileError, read_meet_file
 from dq_transcribe.meet_files.store import MeetProgramStore
 from dq_transcribe.transcript import format_transcript_text
@@ -175,6 +176,9 @@ def build_web_config() -> dict[str, Any]:
         "urlKey": constants.REQUEST_KEY_URL,
         "filenameQueryKey": constants.QUERY_KEY_FILENAME,
         "meetFileFormatLabels": constants.MEET_FILE_FORMAT_LABELS,
+        "slipsRoute": constants.ROUTE_SLIPS,
+        "idsQueryKey": constants.QUERY_KEY_IDS,
+        "eventQueryKey": constants.QUERY_KEY_EVENT,
         "noMeetId": constants.NO_MEET_ID,
         "officialsKey": constants.REQUEST_KEY_OFFICIALS,
         "rosterRoles": list(constants.MEET_ROSTER_ROLES),
@@ -355,6 +359,10 @@ class RequestHandler(BaseHTTPRequestHandler):
                     constants.RESPONSE_KEY_ACTIVE_MEET_ID: database.get_active_meet_id(),
                 },
             )
+        elif path == constants.ROUTE_SLIPS:
+            self._send_slips(parse_qs(url.query))
+        elif path.startswith(constants.ROUTE_FONTS):
+            self._send_font(path[len(constants.ROUTE_FONTS):])
         elif (match := _MEET_PROGRAM_PATTERN.match(path)) is not None:
             self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_PROGRAM: self.server.program_store.summary(int(match.group(1)))})
         elif path == constants.ROUTE_EXPORT:
@@ -557,6 +565,31 @@ class RequestHandler(BaseHTTPRequestHandler):
         meet_id = self.server.database.create_meet(name.strip(), str(start_date))
         LOGGER.info("Created meet %d: %s (%s)", meet_id, name.strip(), start_date)
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id})
+
+    def _send_slips(self, query: dict[str, list[str]]) -> None:
+        """Send printable slips: ``?ids=3,4`` for those DQs, or ``?event=12`` for an event of the active meet."""
+        meet_id = self.server.database.get_active_meet_id()
+        dqs = self.server.dq_store.list_dqs(meet_id)
+        wanted_ids = {int(part) for value in query.get(constants.QUERY_KEY_IDS, []) for part in value.split(",") if part.strip().isdigit()}
+        event = (query.get(constants.QUERY_KEY_EVENT) or [""])[0].strip()
+        if wanted_ids:
+            dqs = [dq for dq in self.server.dq_store.list_dqs(None) if dq["id"] in wanted_ids]
+            title = "DQ slips"
+        elif event:
+            dqs = [dq for dq in dqs if (dq["event"] or "") == event and dq["state"] != constants.DQ_STATE_DECLINED]
+            title = f"DQ slips, event {event}"
+        else:
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "Say which DQs: ?ids=3,4 or ?event=12")
+            return
+        self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_slips(dqs, title))
+
+    def _send_font(self, filename: str) -> None:
+        """Send a bundled font file (only plain file names inside web/fonts/)."""
+        font_path = _WEB_DIRECTORY / constants.FONTS_DIRECTORY_NAME / filename
+        if "/" in filename or filename.startswith(".") or not font_path.is_file():
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such font")
+            return
+        self._send_bytes(HTTPStatus.OK, constants.FONT_CONTENT_TYPE, font_path.read_bytes())
 
     def _handle_meet_file(self, meet_id: int, query: str) -> None:
         """Load a Meet Manager file for a meet.

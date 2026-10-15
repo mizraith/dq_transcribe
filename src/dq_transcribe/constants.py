@@ -284,6 +284,16 @@ APP_PAGE_FILENAME = "app.html"
 APP_SCRIPT_FILENAME = "app.js"
 DQ_SCRIPT_FILENAME = "dq_view.js"
 MEET_SCRIPT_FILENAME = "meet_view.js"
+SLIP_PAGE_FILENAME = "dq_slip.html"
+# Printable DQ slips: GET /slips?ids=3,4 (those DQs) or /slips?event=12 (an event of the active meet).
+ROUTE_SLIPS = "/slips"
+QUERY_KEY_IDS = "ids"
+QUERY_KEY_EVENT = "event"
+# Bundled fonts (web/fonts/), served at /fonts/<file>. The slip's names use an OFL script font.
+ROUTE_FONTS = "/fonts/"
+FONTS_DIRECTORY_NAME = "fonts"
+SLIP_FONT_FILENAME = "dancing-script-latin-600-normal.woff2"
+FONT_CONTENT_TYPE = "font/woff2"
 CAPTURE_WORKLET_FILENAME = "capture_worklet.js"
 MIC_TEST_RECORD_SECONDS = 5
 

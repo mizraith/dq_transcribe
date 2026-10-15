@@ -529,6 +529,7 @@ function buildDqEditor(dq) {
 
   // Save comes last and stands out: it is the action that ends an edit.
   const actions = makeElement("div", "dq-save-bar");
+  actions.append(makeButton("dq-print", "\ud83d\udda8 Print slip", () => openSlips(CONFIG.idsQueryKey, dq.id)));
   actions.append(makeButton("dq-save", "Save changes", () => saveDq(dq, editor)));
   editor.append(actions);
   return editor;
@@ -544,6 +545,11 @@ function fillRoleFromRoster(editor) {
       role.value = entry.role;
     }
   });
+}
+
+/** Open printable slips in a new tab (``key`` is the ids or event query key). */
+function openSlips(key, value) {
+  window.open(CONFIG.slipsRoute + "?" + key + "=" + encodeURIComponent(value), "_blank");
 }
 
 /** The editor's fields and infractions as a request body. */
