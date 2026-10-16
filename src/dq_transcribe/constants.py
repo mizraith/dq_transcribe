@@ -221,6 +221,9 @@ ROUTE_NOTIFY_EVENT = "/api/events/notify"  # POST {"event", "by", "include_not_r
 RESPONSE_KEY_NOTIFIED = "notified"
 # Fields a DQ needs before the coach can be notified ("infraction" = at least one).
 DQ_REQUIRED_FIELDS = ("event", "heat", "lane", "swimmer", "club", "official", "referee")
+# A referee can make a call at any time (rare): when the calling official's role is one of
+# these, the DQ needs no separate referee. The chief judge is always optional (big meets only).
+REFEREE_ROLES = ("Deck Referee", "Meet Referee")
 DQ_REQUIRED_INFRACTION = "infraction"
 # What the DQ list shows and filters by: the stored state, with "accepted" split
 # by whether the required information is filled in.
@@ -522,8 +525,7 @@ AUTO_DQ_MAX_REFINE_WAIT_SECONDS = 45
 # DQ field -> roster roles to take it from, in order, when the meet has exactly one such official.
 AUTO_DQ_ROSTER_FIELDS = {
     "referee": ("Deck Referee", "Meet Referee"),
-    "chief_judge": ("Chief Judge",),
-}
+}  # the chief judge is optional (signs at big meets only), so it is never guessed
 ROUTE_AUTO_DQS = "/api/auto-dqs"  # GET {"enabled"}; POST {"enabled": true|false}
 
 # Printed DQ summary of one event for the Meet Manager operator (offered at Notify event).

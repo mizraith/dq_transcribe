@@ -141,6 +141,13 @@ def _render_section(section: str, rows: list[dict[str, str]], marks: dict[str, s
     return "".join(parts)
 
 
+def slip_referee(dq: dict[str, Any]) -> str | None:
+    """The referee written on the slip: the DQ's referee, or the official when a referee made the call."""
+    if dq.get("referee"):
+        return dq["referee"]
+    return dq.get("official") if dq.get("official_role") in constants.REFEREE_ROLES else None
+
+
 def render_slip(dq: dict[str, Any], code_rows: list[dict[str, str]], revision: str, printed_at: datetime) -> str:
     """One filled-in slip as HTML."""
     sections = _section_rows(code_rows)
@@ -162,7 +169,7 @@ def render_slip(dq: dict[str, Any], code_rows: list[dict[str, str]], revision: s
     parts += [
         f'<div class="row" style="margin-top:0.15in"><span>JUDGE:</span>{_blank(dq.get("official"), "full name")}'
         f'<span>CJ:{_blank(initials(dq.get("chief_judge")), "name")}</span></div>',
-        f'<div class="row"><span>REFEREE:</span>{_blank(dq.get("referee"), "full name")}</div>',
+        f'<div class="row"><span>REFEREE:</span>{_blank(slip_referee(dq), "full name")}</div>',
         f'<div class="row"><span>NOTIFIED:</span>{_blank("")}<span>SWIMMER</span>{_blank(notified_text, "wide")}<span>COACH</span></div>',
         f'<div class="footer"><span>{_escape(revision_label(revision))} · printed {_escape(printed_at.strftime(PRINTED_FORMAT))} by {constants.APP_NAME}</span>'
         f'<span class="copy">{_escape(COPY_LABEL.upper())}</span></div>',

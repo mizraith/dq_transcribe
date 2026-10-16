@@ -8,7 +8,7 @@ from pathlib import Path
 
 from dq_transcribe import constants
 from dq_transcribe.database import Database, utc_now_iso
-from dq_transcribe.dq_store import DqError, DqStore, load_dq_codes, number_sort_key
+from dq_transcribe.dq_store import DqError, DqStore, load_dq_codes, missing_fields, number_sort_key
 
 
 class DqStoreTests(unittest.TestCase):
@@ -53,6 +53,12 @@ class DqStoreTests(unittest.TestCase):
         self.assertEqual(self.store.candidates(None), [])
         dq = self.store.list_dqs(None)[0]
         self.assertEqual((dq["state"], dq["source"], len(dq["evidence"])), (constants.DQ_STATE_ACCEPTED, constants.DQ_SOURCE_AUTO, 2))
+
+    def test_a_referee_call_needs_no_other_referee(self) -> None:
+        dq = {"event": "3", "heat": "1", "lane": "4", "swimmer": "Pat", "club": "PASA", "official": "Sam Ref",
+              "official_role": "Deck Referee", "referee": None, "infractions": [{"description": "False start"}]}
+        self.assertEqual(missing_fields(dq), [])
+        self.assertEqual(missing_fields({**dq, "official_role": "Stroke & Turn Judge"}), ["referee"])
 
     def test_sorted_by_event_heat_lane_with_letter_suffixes(self) -> None:
         for event, lane in (("10", "1"), ("2b", "4"), ("2", "5"), (None, "3"), ("2", "2")):

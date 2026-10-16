@@ -117,7 +117,7 @@ class AutoDqTests(unittest.TestCase):
         self.auto.run_once()
         dq = self.store.list_dqs(self.meet_id)[0]
         self.assertEqual(dq["referee"], "Lee Ref")
-        self.assertIsNone(dq["chief_judge"])  # two chief judges: left for the admin
+        self.assertIsNone(dq["chief_judge"])  # optional (big meets only): never guessed
 
     def test_roster_guesses_fall_back_to_meet_referee(self) -> None:
         self.assertEqual(roster_guesses([{"name": "Pat", "role": "Meet Referee"}]), {"referee": "Pat"})

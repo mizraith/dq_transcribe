@@ -9,7 +9,8 @@ call (``DqStore.candidates``):
   slip codes, phases and the audio evidence. It starts as Accepted when the
   referee's acknowledgment was heard, otherwise as Called. The swimmer and club
   are filled from the meet file (``DqStore.create_dq`` does that), and the
-  referee and chief judge from the roster when the meet has exactly one of each;
+  referee from the roster when the meet has exactly one (the chief judge is
+  optional and left blank);
 * **adds later calls on the same swimmer** (same event, heat and lane) to that
   DQ instead of making another: calls come in pieces many seconds apart (IM,
   longer races) and are sometimes repeated (``DqStore.add_call``);
@@ -100,8 +101,8 @@ def roster_guesses(officials: list[dict[str, str]]) -> dict[str, str]:
     """DQ fields that can be filled from the roster: the role's only official.
 
     The referee is the Deck Referee (or the Meet Referee if there is no Deck
-    Referee); the chief judge is the Chief Judge. Nothing is guessed when the
-    roster has two or more people in that role.
+    Referee). Nothing is guessed when the roster has two or more people in that
+    role. The chief judge is optional (signs at big meets only) and never guessed.
     """
     by_role: dict[str, list[str]] = {}
     for official in officials:

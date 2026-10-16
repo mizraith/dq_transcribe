@@ -848,9 +848,20 @@ def _event_label(event: dict[str, Any] | None) -> str | None:
     return " ".join(part for part in parts if part) or event["description"]
 
 
+def referee_made_the_call(dq: dict[str, Any]) -> bool:
+    """True when the calling official is a referee (rare; the referee signs as the official)."""
+    return bool(dq.get("official")) and dq.get("official_role") in constants.REFEREE_ROLES
+
+
 def missing_fields(dq: dict[str, Any]) -> list[str]:
-    """Required fields a DQ still lacks (``"infraction"`` if it has none)."""
+    """Required fields a DQ still lacks (``"infraction"`` if it has none).
+
+    A call made by a referee (``official_role`` is a referee role) needs no other
+    referee: the referee can make a call at any time. The chief judge is never required.
+    """
     missing = [name for name in constants.DQ_REQUIRED_FIELDS if not dq.get(name)]
+    if referee_made_the_call(dq) and "referee" in missing:
+        missing.remove("referee")
     if not dq.get("infractions"):
         missing.append(constants.DQ_REQUIRED_INFRACTION)
     return missing

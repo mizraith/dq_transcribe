@@ -88,6 +88,8 @@ OFFICIALS = (
 )
 JUDGES = [name for name, role in OFFICIALS if role == "Stroke & Turn Judge"]
 CHIEF_JUDGE, DECK_REFEREE, MEET_REFEREE = "Lee Chief", "Sam Deckref", "Jo Meetref"
+REFEREE_CALL_EVENT = 13  # one DQ here was called by the deck referee (rare, shown once)
+CHIEF_JUDGE_SIGNS_EVERY = 7  # about one DQ in seven carries the chief judge's initials
 NOTIFIED_BY = ("Chief Judge", "Admin Official", "Printed slip")
 
 
@@ -348,7 +350,9 @@ def create_demo_meet(database: Database, recordings_directory: Path, replace: bo
             payload = {
                 "event": str(number), "heat": str(heat), "lane": str(lane), "accepted": not just_called,
                 "official": None if incomplete or just_called else JUDGES[(number + position) % len(JUDGES)],
-                "official_role": "Stroke & Turn Judge", "chief_judge": CHIEF_JUDGE,
+                "official_role": "Stroke & Turn Judge",
+                # The chief judge is optional and rarely signs (big meets only): only now and then here.
+                "chief_judge": CHIEF_JUDGE if position % CHIEF_JUDGE_SIGNS_EVERY == CHIEF_JUDGE_SIGNS_EVERY - 1 else None,
                 "referee": None if just_called or number > LAST_WAITING_EVENT else DECK_REFEREE,
                 "relay_leg": detail if infraction.detail_kind == "swimmer" else None,
                 "notes": DEMO_NOTE,
@@ -361,6 +365,9 @@ def create_demo_meet(database: Database, recordings_directory: Path, replace: bo
                 "evidence": [{"clip_id": clip_id, "utterance_id": utterance_id, "start_seconds": 0.0, "end_seconds": 2.5,
                               "role": constants.EVIDENCE_ROLE_CALL}],
             }
+            if number == REFEREE_CALL_EVENT and position == 0:
+                # Rare: the referee made the call. No other referee is needed for the DQ to be complete.
+                payload.update({"official": DECK_REFEREE, "official_role": "Deck Referee", "referee": None})
             dq_id = store.create_dq(payload, meet_id)
             if position == declined_index and number <= LAST_WAITING_EVENT:
                 store.change_state(dq_id, constants.DQ_STATE_DECLINED, DECK_REFEREE, note="Not clear enough: benefit of the doubt to the swimmer",
