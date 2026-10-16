@@ -5,6 +5,37 @@ within each section.
 
 ## Decisions
 
+- **2026-10-16: printouts, rotation schedule, demo meet, guide hints.**
+  - Printouts (`reports.py`, `web/print.css`, plain HTML so the browser's Print works):
+    `/print/session` (one session, one page: name, roles, team/job, club, zone, years,
+    check), `/print/meet` (every session, compact, sessions flow one after another, no page
+    per session), `/teams/display` (team cards plus rotation table; big type on screen for
+    phone photos, one printed page). In print every row stays on one line; sessions over
+    `PRINT_DENSE_ROW_COUNT` (40) rows use smaller type. Checked with the demo: a session of
+    up to about 50 officials prints on 1 page; 75 spills to 2. No member IDs on any printout.
+  - New session field "Estimated length" (`estimated_minutes`, default 240). The team
+    page lists a row per 30-minute slot over that length: time, team at S (start end),
+    team at T (turn end).
+  - Rotation modes (owner, 2026-10-16), choice "Ends: Fixed / Rotating" on the Teams screen
+    (`rotation_mode`, per session, default fixed):
+    - 4 teams fixed: (1, 3), (2, 4), repeat. 4 teams rotating: (1, 3), (2, 4), (3, 1),
+      (4, 2) ("1 bumps 4 and 3 bumps 2").
+    - 3 teams rotating: (1, 2), (3, 1), (2, 3) (the rested team takes S, the S team walks
+      down and bumps T, the T team rests). 3 teams fixed: (1, 2), (3, 2), (1, 3) (Team 3
+      relieves Team 1, then Team 2, then rests).
+    - **Open question:** the owner wrote "#1: 1/3 remain at start end entire time, 2/4 at
+      turn end", but his earlier example was "8:00 1 3 / 8:30 2 4" (S, T) and #2 says
+      "1/3 begin". Implemented as the example (1 and 2 at S, 3 and 4 at T). If he means 1 and
+      3 both at S, change the 4-team fixed pattern in `teams.rotation_pairs` to (1, 2), (3, 4).
+  - Demo meet (`demo.py`, `/demo`): a separate SQLite file (`~/.officials_signin/demo.db`),
+    picked per browser by the cookie `officials_signin_demo=1`; the real meet and the
+    roster that dq_transcribe fetches (no cookie) are never touched. The user picks judges,
+    trainees, sessions and head officials; names and clubs (`DMOA`...) are made up.
+    Everyone works the first session, about 85% each later one, one judge is left "needs
+    admin". A purple banner shows demo mode, with New demo and Back to the real meet.
+  - Live guide, from the owner's tablet scans: sharpness threshold 30 (sharp 42-116,
+    blurry 2-27 there), screen must cover 15% of the frame, and an upright phone that runs
+    off the top or bottom gets "Turn the phone sideways so the whole screen fits".
 - **2026-10-15 (late): Edit, full-resolution photo, name check.** Owner: names are used
   to credit officials after the meet, so they must be right, and a mistaken "Sign in" must
   be fixable. Every signed-in row has **Edit** (name, years, roles, trainee); renaming
@@ -130,6 +161,12 @@ within each section.
   will be slower).
 
 ## Open items
+
+- Rotation #1 orientation (see the 2026-10-16 decision): confirm with the owner.
+- Mirrored card reads are slow (about 29 s at 4x CPU throttle against 5-7 s otherwise):
+  look at the mirror path in `card_scanner.js readCapture`.
+- The tablet's diagnostics folder holds frames with the owner's card and member ID:
+  asked whether to delete it, no answer yet.
 
 - **Test on the tablet:** camera permission, front vs back camera, scan speed and
   accuracy in pool lighting. Ask the owner before starting the server there.

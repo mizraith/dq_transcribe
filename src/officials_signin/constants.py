@@ -60,18 +60,29 @@ SIGNIN_REMOVE_SUFFIX = "/remove"
 SIGNIN_EDIT_SUFFIX = "/edit"  # POST /api/signins/<id>/edit: fix name, years, roles, trainee
 KEY_MERGED = "merged"  # how many duplicate official records an edit merged away
 ROUTE_ROSTER = "/roster.json"
+# Printable pages (server-rendered HTML with a print stylesheet).
+# Session summaries with more rows than this print in smaller type (still one page).
+PRINT_DENSE_ROW_COUNT = 40
+ROUTE_PRINT_SESSION = "/print/session"  # ?session_id= (default: active session)
+ROUTE_PRINT_MEET = "/print/meet"  # every session of the active meet, compact
+ROUTE_TEAM_DISPLAY = "/teams/display"  # ?session_id=: big-screen teams + rotation, prints on one page
+ROUTE_PRINT_STYLESHEET = "/print.css"
+PRINT_STYLESHEET_FILENAME = "print.css"
 ROUTE_ROSTER_DOWNLOAD = "/roster-download.json"
 
 # Content types.
 HTML_CONTENT_TYPE = "text/html; charset=utf-8"
 JAVASCRIPT_CONTENT_TYPE = "text/javascript; charset=utf-8"
 JSON_CONTENT_TYPE = "application/json"
+CSS_CONTENT_TYPE = "text/css; charset=utf-8"
 BINARY_CONTENT_TYPE = "application/octet-stream"
 WASM_CONTENT_TYPE = "application/wasm"
 CONTENT_TYPE_HEADER = "Content-Type"
 CONTENT_LENGTH_HEADER = "Content-Length"
 CONTENT_DISPOSITION_HEADER = "Content-Disposition"
 CACHE_CONTROL_HEADER = "Cache-Control"
+COOKIE_HEADER = "Cookie"
+SET_COOKIE_HEADER = "Set-Cookie"
 NO_CACHE = "no-store"
 # The OCR engine files never change between commits, so the browser may keep them.
 VENDOR_CACHE = "max-age=86400"
@@ -240,9 +251,12 @@ GUIDE_MIN_SCREEN_SHARE = 0.45
 # The screen must stay this far (share of the frame) from every frame edge.
 GUIDE_EDGE_MARGIN_SHARE = 0.01
 # Sharpness score (contrast-normalised Laplacian energy) needed to capture. Measured on
-# test photos: sharp 17-50, slight blur 12-14, blur ~5, heavy blur ~1. The
-# diagnostics log the scores so it can be tuned on the tablet.
-GUIDE_MIN_SHARPNESS = 10.0
+# the tablet's rear camera (2026-10-15): sharp frames 42-116, blurry ones 2-27 (blurry
+# captures at 12-21 could not be read).
+GUIDE_MIN_SHARPNESS = 30.0
+# The screen must fill at least this share of the view (a small bright patch that is
+# not the phone once went green on the tablet).
+GUIDE_MIN_SCREEN_AREA_SHARE = 0.15
 # Mean brightness change between checks (0-255) above which the phone is "moving".
 GUIDE_MAX_MOTION = 6.0
 # Text-direction test (column change energy / row change energy) above which the
@@ -267,6 +281,7 @@ OCR_UPRIGHT_SCREEN_WIDTH = 1100  # name capitals ~22 px (Tesseract reads best at
 OCR_MAX_UPSCALE = 2.0
 GUIDE_STATE_NO_SCREEN = "no_screen"
 GUIDE_STATE_EDGE = "edge"
+GUIDE_STATE_TURN_SIDEWAYS = "turn_sideways"  # upright phone running off the top or bottom
 GUIDE_STATE_SMALL = "small"
 GUIDE_STATE_BLURRY = "blurry"
 GUIDE_STATE_MOVING = "moving"
@@ -276,6 +291,7 @@ GUIDE_STATE_RETRY = "retry"
 GUIDE_MESSAGES = {
     GUIDE_STATE_NO_SCREEN: "Show the phone's Membership card to the camera",
     GUIDE_STATE_EDGE: "Move back a little: the whole screen must be in view",
+    GUIDE_STATE_TURN_SIDEWAYS: "Turn the phone sideways so the whole screen fits",
     GUIDE_STATE_SMALL: "Move the phone closer",
     GUIDE_STATE_BLURRY: "Hold still: focusing",
     GUIDE_STATE_MOVING: "Hold still",
@@ -286,6 +302,7 @@ GUIDE_MESSAGES = {
 GUIDE_COLOURS = {
     GUIDE_STATE_NO_SCREEN: "#dc2626",
     GUIDE_STATE_EDGE: "#f59e0b",
+    GUIDE_STATE_TURN_SIDEWAYS: "#f59e0b",
     GUIDE_STATE_SMALL: "#f59e0b",
     GUIDE_STATE_BLURRY: "#f59e0b",
     GUIDE_STATE_MOVING: "#f59e0b",
@@ -419,6 +436,28 @@ TEAM_NAME_FORMAT = "Team {number}"
 TEAM_COUNT_CHOICES = (4, 3)
 MIN_TEAMS_FOR_BREAKS = 3
 ROTATION_MINUTES = 30
+# Rotation schedule (owner's example, 4 teams: 8:00 S=1 T=3, 8:30 S=2 T=4, ...): the
+# team coming on takes the end of the team going off. Sessions run this long unless
+# the admin sets an "estimated length" in Meet setup.
+DEFAULT_SESSION_MINUTES = 240
+MAX_SESSION_MINUTES = 12 * 60
+SESSION_LENGTH_STEP_MINUTES = 30
+KEY_ESTIMATED_MINUTES = "estimated_minutes"
+# How teams share the ends (owner, 2026-10-15). Fixed: each team always works the same
+# end. Rotating: a team coming back on works the other end from last time.
+ROTATION_FIXED_ENDS = "fixed"
+ROTATION_ROTATING_ENDS = "rotating"
+ROTATION_MODES = (ROTATION_FIXED_ENDS, ROTATION_ROTATING_ENDS)
+ROTATION_MODE_LABELS = {ROTATION_FIXED_ENDS: "Fixed ends", ROTATION_ROTATING_ENDS: "Rotating ends"}
+DEFAULT_ROTATION_MODE = ROTATION_FIXED_ENDS
+KEY_ROTATION_MODE = "rotation_mode"
+MINUTES_PER_HOUR = 60
+HOURS_PER_HALF_DAY = 12
+MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR
+KEY_ROTATION_SCHEDULE = "rotation_schedule"
+KEY_TIME = "time"
+KEY_START_END_TEAM = "start_team"
+KEY_TURN_END_TEAM = "turn_team"
 # Officials left over after equal teams get these jobs, most senior first
 # (suggestions: the admin picks who really does them).
 ASSIGNMENT_ACJ = "Assistant Chief Judge"
@@ -465,7 +504,7 @@ LANE_PATTERN_SEPARATOR = "-"
 LANE_PATTERN_ENDS_SEPARATOR = " / "
 ROUTE_TEAMS = "/api/teams"  # GET: the team view for the active session
 ROUTE_TEAMS_BUILD = "/api/teams/build"  # POST: build (or rebuild) teams automatically
-ROUTE_TEAMS_SETTINGS = "/api/teams/settings"  # POST: lanes, 15 m on every team (no rebuild)
+ROUTE_TEAMS_SETTINGS = "/api/teams/settings"  # POST: lanes, rotation mode, 15 m on every team (no rebuild)
 SIGNIN_TEAM_SUFFIX = "/team"  # POST /api/signins/<id>/team: move, lead, mentor
 
 # --- Settings table keys -------------------------------------------------------
@@ -481,3 +520,59 @@ OCR_TEXTS_PER_REQUEST_LIMIT = 20
 OCR_TEXT_MAX_LENGTH = 20_000
 TIME_OF_DAY_PATTERN = r"^\d{2}:\d{2}$"
 DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
+
+# --- Demo mode -----------------------------------------------------------------
+# A separate database full of made-up officials for trying the whole workflow
+# (sign-in list, exceptions, teams, printouts) without touching the real meet. It is
+# switched on per browser with a cookie; dq_transcribe's roster fetch never sends it,
+# so it always gets the real roster.
+DEMO_DATABASE_FILENAME = "demo.db"
+DEMO_DATABASE_PATH = DATA_DIRECTORY / DEMO_DATABASE_FILENAME
+DEMO_COOKIE_NAME = "officials_signin_demo"
+DEMO_COOKIE_ON = "1"
+ROUTE_DEMO = "/demo"  # GET: the demo setup page
+ROUTE_DEMO_START = "/api/demo/start"  # POST {judges, trainees, sessions, head officials}: fresh demo meet
+ROUTE_DEMO_EXIT = "/api/demo/exit"  # POST: back to the real meet
+DEMO_PAGE_FILENAME = "demo.html"
+KEY_DEMO = "demo"
+KEY_TRAINEES_COUNT = "trainees"
+KEY_SESSIONS_COUNT = "session_count"
+KEY_JUDGES_COUNT = "judge_count"
+KEY_HEAD_OFFICIALS = "head_officials"
+DEMO_DEFAULT_JUDGES = 13
+DEMO_DEFAULT_SESSIONS = 3
+DEMO_DEFAULT_TRAINEES = 2
+DEMO_MAX_JUDGES = 60
+DEMO_MAX_TRAINEES = 10
+DEMO_MAX_SESSIONS = 5
+DEMO_MEET_NAME = "Demo Invitational"
+# Chance that an official signs in to a later session (everyone works the first one).
+DEMO_ATTENDANCE_SHARE = 0.85
+# Sessions of a typical weekend meet: (day offset from the first day, type, start time).
+DEMO_SESSION_PLAN = (
+    (0, "PM", "13:00"),
+    (1, "Prelims", "08:00"),
+    (1, "Finals", "17:00"),
+    (2, "Prelims", "08:00"),
+    (2, "Finals", "17:00"),
+)
+# Head officials added when "head officials" is ticked.
+DEMO_SPECIAL_ROLES = ("Meet Referee", "Deck Referee", "Starter", "Chief Judge", "Admin Official")
+DEMO_MAX_YEARS_CERTIFIED = 30
+DEMO_UNKNOWN_YEARS_SHARE = 0.1
+DEMO_NEEDS_ADMIN_COUNT = 1  # sign-ins left "card not checked" so the admin queue has something
+DEMO_LSC_CODES = ("PC", "SN", "CC")
+DEMO_CLUB_CODES = ("DMOA", "DMOB", "DMOC", "DMOD", "DMOE")
+DEMO_FIRST_NAMES = (
+    "Avery", "Blake", "Casey", "Dana", "Emery", "Finley", "Gray", "Harper", "Indy", "Jordan", "Kai", "Logan",
+    "Morgan", "Noel", "Oakley", "Parker", "Quinn", "Riley", "Sage", "Taylor", "Uma", "Val", "Wren", "Xan",
+    "Yael", "Zion", "Alex", "Brook", "Cameron", "Devon", "Ellis", "Frankie", "Hayden", "Jamie", "Kendall", "Lane",
+)
+DEMO_LAST_NAMES = (
+    "Abbott", "Barnes", "Castillo", "Delgado", "Ellison", "Fischer", "Garrison", "Holloway", "Ibarra", "Jensen",
+    "Kowalski", "Lindqvist", "Moreno", "Nakamura", "Okafor", "Petrov", "Quintero", "Ramsey", "Sorensen", "Tanaka",
+    "Ulrich", "Vasquez", "Whitaker", "Yamada", "Zimmerman", "Ashford", "Brennan", "Calloway", "Draper", "Everly",
+)
+# Some officials go by a nickname, printed in quotes on the card: Mark "Red" Byer.
+DEMO_NICKNAMES = ("Red", "Skip", "Doc", "Ace", "Scout", "Sunny")
+DEMO_NICKNAME_SHARE = 0.15

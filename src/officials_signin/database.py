@@ -90,6 +90,8 @@ _ADDED_COLUMNS = {
         "team_count": "INTEGER",
         "fifteen_meter_on_teams": "INTEGER NOT NULL DEFAULT 0",
         "teams_built_at": "TEXT",
+        "estimated_minutes": "INTEGER",
+        "rotation_mode": "TEXT",
     },
     "signins": {
         "assignment": "TEXT",
@@ -226,6 +228,7 @@ class Database:
         start_time: str | None,
         session_type: str | None = None,
         officials_meeting_time: str | None = None,
+        estimated_minutes: int | None = None,
     ) -> int:
         """Add a session to the active meet; it becomes active if none is.
 
@@ -236,6 +239,7 @@ class Database:
             session_type: For example ``Prelims`` (see ``constants.SESSION_TYPES``) or
                 the admin's own text; None if not given.
             officials_meeting_time: ``HH:MM`` or None.
+            estimated_minutes: Expected length (for the rotation schedule), or None.
 
         Returns:
             The new session's ID.
@@ -248,9 +252,9 @@ class Database:
             if meet_id is None:
                 raise SigninError("Create a meet first")
             cursor = connection.execute(
-                "INSERT INTO sessions (meet_id, name, date, start_time, session_type, officials_meeting_time) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (meet_id, name, session_date, start_time, session_type, officials_meeting_time),
+                "INSERT INTO sessions (meet_id, name, date, start_time, session_type, officials_meeting_time, "
+                "estimated_minutes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (meet_id, name, session_date, start_time, session_type, officials_meeting_time, estimated_minutes),
             )
             session_id = int(cursor.lastrowid)
             if self._get_setting_id(connection, constants.SETTING_ACTIVE_SESSION_ID) is None:
@@ -265,6 +269,7 @@ class Database:
         start_time: str | None,
         session_type: str | None,
         officials_meeting_time: str | None,
+        estimated_minutes: int | None = None,
     ) -> None:
         """Change a session of the active meet (sign-ins are kept).
 
@@ -276,9 +281,10 @@ class Database:
         with self._connect() as connection:
             meet_id = self._get_setting_id(connection, constants.SETTING_ACTIVE_MEET_ID)
             cursor = connection.execute(
-                "UPDATE sessions SET name = ?, date = ?, start_time = ?, session_type = ?, officials_meeting_time = ? "
-                "WHERE id = ? AND meet_id = ?",
-                (name, session_date, start_time, session_type, officials_meeting_time, session_id, meet_id),
+                "UPDATE sessions SET name = ?, date = ?, start_time = ?, session_type = ?, officials_meeting_time = ?, "
+                "estimated_minutes = ? WHERE id = ? AND meet_id = ?",
+                (name, session_date, start_time, session_type, officials_meeting_time, estimated_minutes,
+                 session_id, meet_id),
             )
             if cursor.rowcount == 0:
                 raise SigninError("That session is not part of the active meet")
@@ -350,7 +356,7 @@ class Database:
             sessions = [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT s.id, s.name, s.date, s.start_time, s.session_type, s.officials_meeting_time, "
+                    "SELECT s.id, s.name, s.date, s.start_time, s.session_type, s.officials_meeting_time, s.estimated_minutes, "
                     "(SELECT COUNT(*) FROM signins WHERE session_id = s.id) AS signin_count "
                     "FROM sessions s WHERE s.meet_id = ? ORDER BY s.date, s.start_time, s.id",
                     (meet_id,),
@@ -732,6 +738,7 @@ class Database:
         lanes: int | None = None,
         team_count: int | None = None,
         fifteen_meter_on_teams: bool | None = None,
+        rotation_mode: str | None = None,
     ) -> None:
         """Store team-builder settings for a session (None leaves a value as it is).
 
@@ -741,6 +748,7 @@ class Database:
             "lanes": lanes,
             "team_count": team_count,
             "fifteen_meter_on_teams": None if fifteen_meter_on_teams is None else int(fifteen_meter_on_teams),
+            "rotation_mode": rotation_mode,
         }
         with self._connect() as connection:
             for column, value in changes.items():

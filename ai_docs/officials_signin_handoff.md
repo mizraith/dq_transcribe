@@ -200,8 +200,13 @@ Also done (2026-10-15): session type and officials meeting time, delete session,
 team builder (rules in `ai_docs/officials_signin_memory.md`), camera diagnostics,
 self-restart of the sign-in server on code changes.
 
+Also done (2026-10-16): Edit button with duplicate merge, full-resolution photo for
+card reads, live guide with sideways hint, printouts (session, meet, team page),
+estimated session length with a rotation schedule, fixed / rotating ends, demo meet
+(`/demo`).
+
 Next:
-1. Review the owner's camera diagnostics from the tablet and tune card reading.
-   Ask before starting anything there.
-2. Owner feedback on the Teams screen.
+1. Owner feedback on the printouts, the rotation modes and the demo (see the open
+   items in `ai_docs/officials_signin_memory.md`).
+2. Faster mirrored card reads. Ask before starting anything on the tablet.
 3. Keep `ai_docs/officials_signin_memory.md` and this file current before each pause.

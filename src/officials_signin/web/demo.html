@@ -1,0 +1,83 @@
+<!doctype html>
+<!--
+  Demo setup page: builds a fresh demo meet full of made-up officials (in a separate
+  demo database) and switches this browser to it, so the whole workflow can be tried
+  without touching the real meet.
+
+  This file is a string.Template: dollar-brace placeholders are filled in by
+  officials_signin.server.render_demo_page, so never use a literal dollar sign here
+  (so no JavaScript template literals either).
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Officials Sign-In demo</title>
+  <style>
+    :root { --ink: #1f2430; --muted: #5b6270; --line: #d7dbe2; --accent: #7c3aed; --bad: #b91c1c; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; font-size: 18px; color: var(--ink); background: #f5f3ff; margin: 0; padding: 1.5rem; }
+    .card { max-width: 36rem; margin: 0 auto; background: #fff; border: 2px solid var(--accent); border-radius: 1rem; padding: 1.4rem; }
+    h1 { margin: 0 0 0.4rem; font-size: 1.5rem; }
+    p { color: var(--muted); margin: 0.3rem 0 1rem; }
+    label { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.6rem 0; border-top: 1px solid var(--line); }
+    input[type=number] { font: inherit; width: 6rem; padding: 0.5rem; border: 1px solid var(--line); border-radius: 0.5rem; text-align: right; }
+    input[type=checkbox] { width: 1.6rem; height: 1.6rem; }
+    .actions { display: flex; gap: 0.8rem; margin-top: 1.2rem; flex-wrap: wrap; }
+    button { font: inherit; min-height: 3.2rem; padding: 0.6rem 1.2rem; border-radius: 0.6rem; border: 1px solid var(--accent); cursor: pointer; }
+    #start { background: var(--accent); color: #fff; font-weight: 700; flex: 1; }
+    #exit { background: #fff; color: var(--accent); }
+    #message { margin-top: 0.8rem; color: var(--bad); font-weight: 700; min-height: 1.4rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Demo meet</h1>
+    <p>Builds a practice meet full of made-up officials, already signed in to each session (a few skip a
+      session; one needs the admin). Use it to try the sign-in list, Teams and the printouts.
+      The real meet is not touched. Starting again replaces the demo.</p>
+    <label>Stroke &amp; turn judges<input id="judges" type="number" min="0" max="${max_judges}" value="${default_judges}"></label>
+    <label>Trainees (shadow a mentor)<input id="trainees" type="number" min="0" max="${max_trainees}" value="${default_trainees}"></label>
+    <label>Sessions<input id="sessions" type="number" min="1" max="${max_sessions}" value="${default_sessions}"></label>
+    <label>Add head officials (referees, starter, chief judge, admin)<input id="head" type="checkbox" checked></label>
+    <div class="actions">
+      <button id="start" type="button">Start demo</button>
+      <button id="exit" type="button">Back to the real meet</button>
+    </div>
+    <div id="message"></div>
+  </div>
+  <script>
+    "use strict";
+    function whole(id) { return Math.round(Number(document.getElementById(id).value)); }
+    async function post(route, body) {
+      const response = await fetch(route, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        credentials: "same-origin",
+      });
+      const reply = await response.json();
+      if (!response.ok) { throw new Error(reply["${key_error}"] || "Something went wrong"); }
+      return reply;
+    }
+    document.getElementById("start").addEventListener("click", async function () {
+      const body = {};
+      body["${key_judges}"] = whole("judges");
+      body["${key_trainees}"] = whole("trainees");
+      body["${key_sessions}"] = whole("sessions");
+      body["${key_head_officials}"] = document.getElementById("head").checked;
+      document.getElementById("message").textContent = "Building the demo…";
+      try {
+        await post("${start_route}", body);
+        window.location.href = "${home_route}";
+      } catch (error) {
+        document.getElementById("message").textContent = error.message;
+      }
+    });
+    document.getElementById("exit").addEventListener("click", async function () {
+      await post("${exit_route}", {});
+      window.location.href = "${home_route}";
+    });
+  </script>
+</body>
+</html>

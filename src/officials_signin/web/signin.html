@@ -68,6 +68,8 @@
     .row-actions { display: flex; gap: 0.4rem; }
     .row-actions button { min-height: 2.6rem; padding: 0.3rem 0.8rem; }
     .roster-links a { display: inline-block; margin-right: 1rem; padding: 0.4rem 0; }
+    .roster-links .button-link { margin: 0 0.4rem 0.5rem 0; padding: 0.5rem 0.9rem; }
+    .roster-heading { margin-top: 0.8rem !important; }
 
     /* Overlays: camera and sign-in sheet. */
     .overlay { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.75); display: flex; align-items: center; justify-content: center; z-index: 5; padding: 1rem; }
@@ -98,7 +100,7 @@
     .check-line.warn { color: var(--warn); }
     .setup-grid { display: grid; gap: 0.5rem; align-items: end; }
     .setup-grid.session-detail-grid { grid-template-columns: 1.4fr 1.3fr 1fr 1.1fr; }
-    .setup-grid.session-name-grid { grid-template-columns: 1fr auto; margin-top: 0.5rem; }
+    .setup-grid.session-name-grid { grid-template-columns: 1fr 10rem auto; margin-top: 0.5rem; }
     .setup-grid.meet-grid { grid-template-columns: 2fr 1.3fr; }
     @media (max-width: 640px) { .setup-grid.session-detail-grid, .setup-grid.session-name-grid, .setup-grid.meet-grid { grid-template-columns: 1fr; } }
     .setup-grid select { font: inherit; padding: 0.6rem; border: 1px solid var(--line); border-radius: 0.5rem; background: #fff; color: var(--ink); }
@@ -138,6 +140,12 @@
     .diagnostics-option { font-size: 0.9rem; color: var(--muted); min-height: 2.4rem; }
     .name-hint { display: block; margin-top: 0.3rem; font-size: 0.85rem; font-weight: 700; color: var(--warn); }
     #sheet-name.check { border: 2px solid #f59e0b; background: var(--warn-soft); font-weight: 700; }
+    .button-link { display: inline-flex; align-items: center; min-height: 3rem; padding: 0.5rem 1rem; border-radius: 0.6rem; border: 1px solid var(--accent); color: var(--accent); font-weight: 700; text-decoration: none; background: #fff; }
+    .teams-print-actions { margin: 0.2rem 0 0.4rem; }
+    #demo-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; padding: 0.5rem 1rem; background: #7c3aed; color: #fff; font-size: 1rem; }
+    #demo-banner a { color: #fff; font-weight: 700; }
+    #demo-banner button { min-height: 2.4rem; padding: 0.2rem 0.9rem; margin-left: auto; }
+    .demo-link { color: #9ca3af; font-size: 0.9rem; }
     #meeting-time { color: #fcd34d; font-weight: 700; white-space: nowrap; }
     .setup-grid label { display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); gap: 0.2rem; }
     .meet-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem; margin-bottom: 0.4rem; }
@@ -155,6 +163,11 @@
   </style>
 </head>
 <body>
+  <div id="demo-banner" hidden>
+    <strong>DEMO MEET</strong> · made-up officials, nothing here is real
+    <a id="demo-new" href="#">New demo</a>
+    <button id="demo-exit" type="button">Exit demo</button>
+  </div>
   <header>
     <h1>${app_title}</h1>
     <span id="meet-name"></span>
@@ -184,9 +197,14 @@
         <div id="signins"></div>
       </div>
       <div class="panel roster-links">
-        <h2>Roster for dq_transcribe</h2>
+        <h2>Print</h2>
+        <a id="print-session-link" class="button-link" href="#" target="_blank">Session summary</a>
+        <a id="print-meet-link" class="button-link" href="#" target="_blank">Meet summary</a>
+        <a id="team-display-link" class="button-link" href="#" target="_blank">Team page</a>
+        <h2 class="roster-heading">Roster for dq_transcribe</h2>
         <a id="roster-link" href="#" target="_blank">View roster.json</a>
         <a id="roster-download-link" href="#">Download</a>
+        <a id="demo-link" class="demo-link" href="#">Try the demo meet</a>
       </div>
     </section>
   </div>
@@ -274,6 +292,7 @@
         </div>
         <div class="setup-grid session-name-grid">
           <label>Session name<input id="session-name" type="text" autocomplete="off"></label>
+          <label>Estimated length (hours)<input id="session-length" type="number" inputmode="decimal" min="0.5" max="12" step="0.5"></label>
           <button id="session-save" class="go" type="button">Add session</button>
         </div>
         <div id="session-edit-actions" class="edit-actions" hidden>
@@ -310,6 +329,7 @@
         </div>
         <div class="setup-grid session-name-grid">
           <label>Session name<input id="first-session-name" type="text" autocomplete="off"></label>
+          <label>Estimated length (hours)<input id="first-session-length" type="number" inputmode="decimal" min="0.5" max="12" step="0.5"></label>
         </div>
         <div class="sheet-actions">
           <button id="new-meet-cancel" type="button">Keep the current meet</button>
@@ -331,9 +351,13 @@
       <div class="teams-controls">
         <div><span class="sheet-label">Lanes</span><div id="teams-lanes" class="chips"></div></div>
         <div><span class="sheet-label">Teams</span><div id="teams-layouts" class="chips"></div></div>
+        <div><span class="sheet-label">Ends</span><div id="teams-rotation-modes" class="chips"></div></div>
         <label class="check-option"><input id="teams-fifteen" type="checkbox"> Include 15 m on every team</label>
       </div>
       <div id="teams-rotation" class="rotation"></div>
+      <div class="teams-print-actions">
+        <a id="teams-display-link" class="button-link" href="#" target="_blank">Team page (full screen / print)</a>
+      </div>
       <div id="teams-alerts"></div>
       <div id="teams-grid" class="teams-grid"></div>
       <div class="sheet-actions">

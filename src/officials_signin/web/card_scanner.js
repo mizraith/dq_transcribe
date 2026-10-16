@@ -361,8 +361,9 @@ window.CardScanner = (function () {
     const coveredHeight = rows * size;
     const edgeX = Math.max(1, Math.round(coveredWidth * GUIDE.edgeMarginShare));
     const edgeY = Math.max(1, Math.round(coveredHeight * GUIDE.edgeMarginShare));
-    screen.touchesEdge = screen.left < edgeX || screen.top < edgeY
-      || screen.left + screen.width > coveredWidth - edgeX || screen.top + screen.height > coveredHeight - edgeY;
+    screen.touchesTopOrBottom = screen.top < edgeY || screen.top + screen.height > coveredHeight - edgeY;
+    screen.touchesSide = screen.left < edgeX || screen.left + screen.width > coveredWidth - edgeX;
+    screen.touchesEdge = screen.touchesTopOrBottom || screen.touchesSide;
     return screen;
   }
 
@@ -392,10 +393,15 @@ window.CardScanner = (function () {
     if (!screen.found) { return { state: STATES.noScreen, screen: screen, sharpness: 0, motion: moved }; }
     const score = sharpness(frame, screen);
     const longSide = Math.max(screen.width, screen.height);
+    const upright = screen.height > screen.width;
     let state = STATES.good;
-    if (screen.touchesEdge) {
+    if (upright && screen.touchesTopOrBottom) {
+      // An upright phone close enough to read rarely fits a wide camera view.
+      state = STATES.turnSideways;
+    } else if (screen.touchesEdge) {
       state = STATES.edge;
-    } else if (longSide < Math.min(frame.width, frame.height) * GUIDE.minScreenShare) {
+    } else if (longSide < Math.min(frame.width, frame.height) * GUIDE.minScreenShare
+      || screen.width * screen.height < frame.width * frame.height * GUIDE.minScreenAreaShare) {
       state = STATES.small;
     } else if (moved > GUIDE.maxMotion) {
       state = STATES.moving;

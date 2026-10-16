@@ -289,24 +289,121 @@ def jurisdiction_summary(lane_count: int, jurisdiction_judges: int) -> dict[str,
     }
 
 
-def rotation_description(team_count: int) -> str:
-    """How the teams take turns on deck, in words."""
+def rotation_description(team_count: int, mode: str = constants.DEFAULT_ROTATION_MODE) -> str:
+    """How the teams take turns on deck, in words (S = start end, T = turn end)."""
     minutes = constants.ROTATION_MINUTES
+    rotating = mode == constants.ROTATION_ROTATING_ENDS
     if team_count >= 4:
+        ends = (
+            "teams switch ends each time they come back on" if rotating
+            else "Teams 1 and 2 always at S, Teams 3 and 4 always at T"
+        )
         return (
-            f"Team 1 + Team 2 on deck, then Team 3 + Team 4; switch every {minutes} min "
+            f"Team 1 (S) + Team 3 (T), then Team 2 (S) + Team 4 (T); {ends}; switch every {minutes} min "
             f"({minutes} on / {minutes} off)."
         )
     if team_count == 3:
+        if rotating:
+            return (
+                f"Teams 1 (S) and 2 (T) start; every {minutes} min the rested team takes the start end, the "
+                f"start team walks down to the turn end and the turn team rests ({2 * minutes} on / {minutes} off)."
+            )
         return (
-            f"Team 1 + Team 2, then Team 2 + Team 3, then Team 3 + Team 1; switch every {minutes} min "
-            f"({2 * minutes} on / {minutes} off)."
+            f"Team 1 always at S, Team 2 always at T; every {minutes} min Team 3 relieves one of them "
+            f"(Team 1, then Team 2), then rests ({2 * minutes} on / {minutes} off)."
         )
     if team_count == 2:
-        return "Both teams on deck; take breaks when you can."
+        return "Both teams on deck (Team 1 at S, Team 2 at T); take breaks when you can."
     if team_count == 1:
         return "One team on deck; take breaks when you can."
     return "No stroke & turn judges signed in yet."
+
+
+def rotation_pairs(
+    team_count: int, slot_count: int, mode: str = constants.DEFAULT_ROTATION_MODE
+) -> list[tuple[int, int | None]]:
+    """Which team works the start end and the turn end in each rotation slot.
+
+    The owner's four schemes (S, T per 30-minute slot):
+
+    - 4 teams, fixed ends: (1, 3), (2, 4), (1, 3), (2, 4), ...
+    - 4 teams, rotating ends: (1, 3), (2, 4), (3, 1), (4, 2), ... (a team coming back
+      works the other end).
+    - 3 teams, rotating ends: (1, 2), (3, 1), (2, 3), ... (the rested team takes the start
+      end, the start team walks down and bumps the turn team, who rests).
+    - 3 teams, fixed ends: (1, 2), (3, 2), (1, 3), ... (Team 1 always at S, Team 2 always at
+      T; Team 3 relieves Team 1, then Team 2, then rests).
+
+    With more than 4 teams the fixed 4-team pattern is extended. 2 teams: (1, 2) every
+    slot. 1 team: (1, None).
+
+    Args:
+        team_count: Number of teams with members.
+        slot_count: Number of rotation slots.
+        mode: ``constants.ROTATION_FIXED_ENDS`` or ``constants.ROTATION_ROTATING_ENDS``.
+
+    Returns:
+        ``(start end team, turn end team)`` numbers per slot.
+    """
+    if team_count <= 0 or slot_count <= 0:
+        return []
+    if team_count == 1:
+        return [(1, None)] * slot_count
+    if team_count == 2:
+        return [(1, 2)] * slot_count
+    rotating = mode == constants.ROTATION_ROTATING_ENDS
+    if team_count == 3:
+        cycle = [(1, 2), (3, 1), (2, 3)] if rotating else [(1, 2), (3, 2), (1, 3)]
+        return [cycle[slot % len(cycle)] for slot in range(slot_count)]
+    if team_count == 4 and rotating:
+        cycle = [(1, 3), (2, 4), (3, 1), (4, 2)]
+        return [cycle[slot % len(cycle)] for slot in range(slot_count)]
+    half = team_count // 2
+    return [(slot % half + 1, half + slot % half + 1) for slot in range(slot_count)]
+
+
+def rotation_schedule(
+    team_count: int,
+    start_time: str | None,
+    total_minutes: int | None,
+    mode: str = constants.DEFAULT_ROTATION_MODE,
+) -> list[dict[str, Any]]:
+    """The rotation table: one row per 30-minute slot over the session.
+
+    Args:
+        team_count: Number of teams with members.
+        start_time: Session start ``HH:MM`` (rows are labelled from it), or None for
+            "+0:00", "+0:30", ... offsets.
+        total_minutes: Estimated session length (default ``constants.DEFAULT_SESSION_MINUTES``).
+        mode: Fixed or rotating ends (see ``rotation_pairs``).
+
+    Returns:
+        Rows of ``{"time": "1:00 PM", "start_team": "Team 1", "turn_team": "Team 3"}``.
+    """
+    minutes = total_minutes or constants.DEFAULT_SESSION_MINUTES
+    slot_count = max(1, -(-minutes // constants.ROTATION_MINUTES))
+    rows = []
+    for slot, (start_end, turn_end) in enumerate(rotation_pairs(team_count, slot_count, mode)):
+        offset = slot * constants.ROTATION_MINUTES
+        rows.append({
+            constants.KEY_TIME: format_slot_time(start_time, offset),
+            constants.KEY_START_END_TEAM: team_name(start_end),
+            constants.KEY_TURN_END_TEAM: None if turn_end is None else team_name(turn_end),
+        })
+    return rows
+
+
+def format_slot_time(start_time: str | None, offset_minutes: int) -> str:
+    """``("13:00", 30)`` -> ``"1:30 PM"``; without a start time, ``"+0:30"``."""
+    per_hour = constants.MINUTES_PER_HOUR
+    if not start_time:
+        return f"+{offset_minutes // per_hour}:{offset_minutes % per_hour:02d}"
+    hours, minutes = (int(part) for part in start_time.split(":"))
+    total = (hours * per_hour + minutes + offset_minutes) % constants.MINUTES_PER_DAY
+    hour = total // per_hour
+    display_hour = hour % constants.HOURS_PER_HALF_DAY or constants.HOURS_PER_HALF_DAY
+    suffix = "AM" if hour < constants.HOURS_PER_HALF_DAY else "PM"
+    return f"{display_hour}:{total % per_hour:02d} {suffix}"
 
 
 def is_team_judge(signin: dict[str, Any]) -> bool:
@@ -392,6 +489,8 @@ def build_team_view(signins: list[dict[str, Any]], session: dict[str, Any]) -> d
         })
     extras = [member(signin) for signin in team_judges if signin[constants.KEY_TEAM] is None and signin[constants.KEY_ASSIGNMENT]]
     unplaced = [member(signin) for signin in team_judges if signin[constants.KEY_TEAM] is None and not signin[constants.KEY_ASSIGNMENT]]
+    active_teams = len([team for team in teams if team[constants.KEY_MEMBERS]])
+    rotation_mode = session.get(constants.KEY_ROTATION_MODE) or constants.DEFAULT_ROTATION_MODE
     unpaired_trainees = [
         {constants.KEY_ID: signin[constants.KEY_ID], constants.KEY_NAME: signin[constants.KEY_NAME]}
         for signin in signins
@@ -413,6 +512,12 @@ def build_team_view(signins: list[dict[str, Any]], session: dict[str, Any]) -> d
         constants.KEY_EXTRAS: extras,
         constants.KEY_UNPLACED: unplaced,
         constants.KEY_UNPAIRED_TRAINEES: unpaired_trainees,
-        constants.KEY_ROTATION: rotation_description(len([team for team in teams if team[constants.KEY_MEMBERS]])),
+        constants.KEY_ROTATION_MODE: rotation_mode,
+        constants.KEY_ROTATION: rotation_description(active_teams, rotation_mode),
+        constants.KEY_ROTATION_SCHEDULE: rotation_schedule(
+            active_teams, session.get(constants.KEY_START_TIME), session.get(constants.KEY_ESTIMATED_MINUTES),
+            rotation_mode,
+        ),
+        constants.KEY_ESTIMATED_MINUTES: session.get(constants.KEY_ESTIMATED_MINUTES) or constants.DEFAULT_SESSION_MINUTES,
         constants.KEY_EXTRA_ASSIGNMENTS: list(constants.EXTRA_ASSIGNMENTS),
     }

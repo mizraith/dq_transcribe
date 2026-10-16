@@ -17,6 +17,8 @@ import json
 import logging
 import re
 import string
+import threading
+from http.cookies import SimpleCookie
 from datetime import date
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,6 +29,8 @@ from urllib.parse import parse_qs, urlsplit
 from officials_signin import constants
 from officials_signin.card_reader import CardReading, check_card, read_card
 from officials_signin.database import Database, SigninError, Validation, not_checked_validation
+from officials_signin.demo import build_demo
+from officials_signin.reports import render_meet_summary, render_session_summary, render_team_display
 from officials_signin.roster import build_roster, roster_download_filename
 from officials_signin.teams import (
     assign_mentors,
@@ -85,6 +89,11 @@ def build_web_config() -> dict[str, Any]:
             "removeSuffix": constants.SIGNIN_REMOVE_SUFFIX,
             "editSuffix": constants.SIGNIN_EDIT_SUFFIX,
             "roster": constants.ROUTE_ROSTER,
+            "printSession": constants.ROUTE_PRINT_SESSION,
+            "printMeet": constants.ROUTE_PRINT_MEET,
+            "teamDisplay": constants.ROUTE_TEAM_DISPLAY,
+            "demo": constants.ROUTE_DEMO,
+            "demoExit": constants.ROUTE_DEMO_EXIT,
             "diagnostics": constants.ROUTE_DIAGNOSTICS,
             "teams": constants.ROUTE_TEAMS,
             "teamsBuild": constants.ROUTE_TEAMS_BUILD,
@@ -101,8 +110,15 @@ def build_web_config() -> dict[str, Any]:
             "startTime": constants.KEY_START_TIME,
             "sessionType": constants.KEY_SESSION_TYPE,
             "meetingTime": constants.KEY_OFFICIALS_MEETING_TIME,
+            "estimatedMinutes": constants.KEY_ESTIMATED_MINUTES,
+            "rotationSchedule": constants.KEY_ROTATION_SCHEDULE,
+            "rotationMode": constants.KEY_ROTATION_MODE,
+            "time": constants.KEY_TIME,
+            "startTeam": constants.KEY_START_END_TEAM,
+            "turnTeam": constants.KEY_TURN_END_TEAM,
             "signinCount": constants.KEY_SIGNIN_COUNT,
             "merged": constants.KEY_MERGED,
+            "demo": constants.KEY_DEMO,
             "meet": constants.KEY_MEET,
             "sessions": constants.KEY_SESSIONS,
             "activeSessionId": constants.KEY_ACTIVE_SESSION_ID,
@@ -161,6 +177,7 @@ def build_web_config() -> dict[str, Any]:
         "cardFields": [[name, constants.CARD_FIELD_LABELS[name]] for name in constants.CARD_REQUIRED_FIELDS],
         "roles": list(constants.ROSTER_ROLES),
         "teamPoolRole": constants.TEAM_POOL_ROLE,
+        "rotationModes": [[mode, constants.ROTATION_MODE_LABELS[mode]] for mode in constants.ROTATION_MODES],
         "assignmentFifteenMeter": constants.ASSIGNMENT_FIFTEEN_METER,
         "assignmentAcj": constants.ASSIGNMENT_ACJ,
         "sessionTypes": list(constants.SESSION_TYPES),
@@ -168,6 +185,9 @@ def build_web_config() -> dict[str, Any]:
         "sessionLetterTypes": list(constants.SESSION_LETTER_TYPES),
         "sessionLetterPrefix": constants.SESSION_LETTER_PREFIX,
         "meetingMinutesBeforeStart": constants.OFFICIALS_MEETING_MINUTES_BEFORE_START,
+        "defaultSessionMinutes": constants.DEFAULT_SESSION_MINUTES,
+        "sessionLengthStepMinutes": constants.SESSION_LENGTH_STEP_MINUTES,
+        "maxSessionMinutes": constants.MAX_SESSION_MINUTES,
         "defaultRole": constants.DEFAULT_ROLE,
         "validationMethods": {
             "camera": constants.VALIDATION_CAMERA,
@@ -189,6 +209,7 @@ def build_web_config() -> dict[str, Any]:
                 "intervalMilliseconds": constants.GUIDE_INTERVAL_MILLISECONDS,
                 "goodChecksToCapture": constants.GUIDE_GOOD_CHECKS_TO_CAPTURE,
                 "minScreenShare": constants.GUIDE_MIN_SCREEN_SHARE,
+                "minScreenAreaShare": constants.GUIDE_MIN_SCREEN_AREA_SHARE,
                 "edgeMarginShare": constants.GUIDE_EDGE_MARGIN_SHARE,
                 "minSharpness": constants.GUIDE_MIN_SHARPNESS,
                 "maxMotion": constants.GUIDE_MAX_MOTION,
@@ -208,6 +229,7 @@ def build_web_config() -> dict[str, Any]:
                 "states": {
                     "noScreen": constants.GUIDE_STATE_NO_SCREEN,
                     "edge": constants.GUIDE_STATE_EDGE,
+                    "turnSideways": constants.GUIDE_STATE_TURN_SIDEWAYS,
                     "small": constants.GUIDE_STATE_SMALL,
                     "blurry": constants.GUIDE_STATE_BLURRY,
                     "moving": constants.GUIDE_STATE_MOVING,
@@ -267,6 +289,29 @@ def render_page() -> bytes:
     )
 
 
+def render_demo_page() -> bytes:
+    """Render the demo setup page."""
+    return _render(
+        constants.DEMO_PAGE_FILENAME,
+        {
+            "start_route": constants.ROUTE_DEMO_START,
+            "exit_route": constants.ROUTE_DEMO_EXIT,
+            "key_judges": constants.KEY_JUDGES_COUNT,
+            "key_trainees": constants.KEY_TRAINEES_COUNT,
+            "key_sessions": constants.KEY_SESSIONS_COUNT,
+            "key_head_officials": constants.KEY_HEAD_OFFICIALS,
+            "key_error": constants.KEY_ERROR,
+            "default_judges": str(constants.DEMO_DEFAULT_JUDGES),
+            "default_trainees": str(constants.DEMO_DEFAULT_TRAINEES),
+            "default_sessions": str(constants.DEMO_DEFAULT_SESSIONS),
+            "max_judges": str(constants.DEMO_MAX_JUDGES),
+            "max_trainees": str(constants.DEMO_MAX_TRAINEES),
+            "max_sessions": str(constants.DEMO_MAX_SESSIONS),
+            "home_route": constants.ROUTE_HOME,
+        },
+    )
+
+
 def render_script(filename: str) -> bytes:
     """Render a page script, embedding the shared settings as ``${config}``."""
     return _render(filename, {"config": json.dumps(build_web_config())})
@@ -300,7 +345,8 @@ class SigninServer(ThreadingHTTPServer):
     """HTTP server that holds the database.
 
     Attributes:
-        database: Officials, meets, sessions and sign-ins.
+        database: Officials, meets, sessions and sign-ins (the real meet).
+        demo_database_path: Where the demo meet is kept (see ``demo.py``).
         diagnostics_directory: Where camera diagnostics are saved (when switched on).
     """
 
@@ -309,6 +355,7 @@ class SigninServer(ThreadingHTTPServer):
         server_address: tuple[str, int],
         database: Database,
         diagnostics_directory: Path = constants.DIAGNOSTICS_DIRECTORY,
+        demo_database_path: Path = constants.DEMO_DATABASE_PATH,
     ) -> None:
         """Create the server.
 
@@ -316,16 +363,40 @@ class SigninServer(ThreadingHTTPServer):
             server_address: ``(host, port)`` to bind. Use port 0 to let the OS choose.
             database: Storage (already initialized).
             diagnostics_directory: Where camera diagnostics are saved.
+            demo_database_path: Separate database used by browsers in demo mode.
         """
         self.database = database
         self.diagnostics_directory = diagnostics_directory
+        self.demo_database_path = demo_database_path
+        self.demo_database: Database | None = None
+        self.demo_lock = threading.Lock()
         super().__init__(server_address, RequestHandler)
+
+    def get_demo_database(self) -> Database:
+        """The demo database (created empty on first use)."""
+        with self.demo_lock:
+            if self.demo_database is None:
+                self.demo_database = Database(self.demo_database_path)
+                self.demo_database.initialize()
+            return self.demo_database
 
 
 class RequestHandler(BaseHTTPRequestHandler):
     """Serves the page and the JSON API."""
 
     server: SigninServer
+
+    @property
+    def in_demo(self) -> bool:
+        """True when this browser has switched to the demo meet (a cookie)."""
+        cookie = SimpleCookie(self.headers.get(constants.COOKIE_HEADER, ""))
+        morsel = cookie.get(constants.DEMO_COOKIE_NAME)
+        return morsel is not None and morsel.value == constants.DEMO_COOKIE_ON
+
+    @property
+    def database(self) -> Database:
+        """The real meet's database, or the demo one for a browser in demo mode."""
+        return self.server.get_demo_database() if self.in_demo else self.server.database
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 (signature from the base class)
         """Log the request line only through ``logging`` (bodies, with personal data, are never logged)."""
@@ -337,7 +408,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         """Serve the page, scripts, OCR engine files, state and the roster."""
         url = urlsplit(self.path)
         path = url.path
-        database = self.server.database
+        database = self.database
 
         if path == constants.ROUTE_HOME:
             self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_page())
@@ -350,9 +421,20 @@ class RequestHandler(BaseHTTPRequestHandler):
         elif path.startswith(constants.ROUTE_VENDOR_PREFIX):
             self._send_vendor_file(path)
         elif path == constants.ROUTE_STATE:
-            self._send_json(HTTPStatus.OK, database.get_state())
+            state = database.get_state()
+            state[constants.KEY_DEMO] = self.in_demo
+            self._send_json(HTTPStatus.OK, state)
+        elif path == constants.ROUTE_DEMO:
+            self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_demo_page())
         elif path == constants.ROUTE_TEAMS:
             self._send_team_view()
+        elif path in (constants.ROUTE_PRINT_SESSION, constants.ROUTE_TEAM_DISPLAY):
+            self._send_session_page(url.query, team_display=path == constants.ROUTE_TEAM_DISPLAY)
+        elif path == constants.ROUTE_PRINT_MEET:
+            self._send_meet_summary()
+        elif path == constants.ROUTE_PRINT_STYLESHEET:
+            stylesheet = (_WEB_DIRECTORY / constants.PRINT_STYLESHEET_FILENAME).read_bytes()
+            self._send_bytes(HTTPStatus.OK, constants.CSS_CONTENT_TYPE, stylesheet)
         elif path == constants.ROUTE_OFFICIALS:
             self._send_json(HTTPStatus.OK, {constants.KEY_OFFICIALS: database.list_officials(date.today())})
         elif path in (constants.ROUTE_ROSTER, constants.ROUTE_ROSTER_DOWNLOAD):
@@ -371,7 +453,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _send_roster(self, query: str, download: bool) -> None:
         """Send the roster for ``?session_id=`` or, by default, the active session."""
-        database = self.server.database
+        database = self.database
         requested = parse_qs(query).get(constants.KEY_SESSION_ID, [])
         if requested and requested[0].isdigit():
             session_id: int | None = int(requested[0])
@@ -400,7 +482,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             elif path == constants.ROUTE_SESSIONS:
                 self._handle_add_session(payload)
             elif (match := _SESSION_DELETE_PATTERN.match(path)) is not None:
-                deleted = self.server.database.delete_session(int(match.group(1)))
+                deleted = self.database.delete_session(int(match.group(1)))
                 LOGGER.info("Deleted a session and its %d sign-in(s)", deleted)
                 self._send_json(HTTPStatus.OK, {constants.KEY_SIGNIN_COUNT: deleted})
             elif (match := _SESSION_PATTERN.match(path)) is not None:
@@ -411,6 +493,10 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_card_reading(payload)
             elif path == constants.ROUTE_SIGNINS:
                 self._handle_sign_in(payload)
+            elif path == constants.ROUTE_DEMO_START:
+                self._handle_demo_start(payload)
+            elif path == constants.ROUTE_DEMO_EXIT:
+                self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=False))
             elif path == constants.ROUTE_DIAGNOSTICS:
                 self._handle_diagnostics(payload)
             elif path == constants.ROUTE_TEAMS_BUILD:
@@ -434,12 +520,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         start_date = str(payload.get(constants.KEY_START_DATE, ""))
         if not name or not _DATE_PATTERN.match(start_date):
             raise SigninError("A meet needs a name and a start date")
-        meet_id = self.server.database.create_meet(name, start_date)
+        meet_id = self.database.create_meet(name, start_date)
         self._send_json(HTTPStatus.OK, {constants.KEY_ID: meet_id})
 
     @staticmethod
-    def _session_fields(payload: dict[str, Any]) -> tuple[str, str, str | None, str | None, str | None]:
-        """Validate the session form: name, date, start time, type and officials meeting time.
+    def _session_fields(payload: dict[str, Any]) -> tuple[str, str, str | None, str | None, str | None, int | None]:
+        """Validate the session form: name, date, start time, type, officials meeting time and length.
 
         Raises:
             SigninError: With a message for the admin when something is wrong.
@@ -454,16 +540,21 @@ class RequestHandler(BaseHTTPRequestHandler):
             if value is not None and not _TIME_PATTERN.match(str(value)):
                 raise SigninError(f"{label} must look like 13:00")
         session_type = str(payload.get(constants.KEY_SESSION_TYPE) or "").strip()[: constants.SESSION_TYPE_MAX_LENGTH]
-        return name, session_date, start_time, session_type or None, meeting_time
+        estimated = payload.get(constants.KEY_ESTIMATED_MINUTES)
+        if estimated is not None and (
+            not isinstance(estimated, int) or not 0 < estimated <= constants.MAX_SESSION_MINUTES
+        ):
+            raise SigninError("Estimated length must be between 30 minutes and 12 hours")
+        return name, session_date, start_time, session_type or None, meeting_time, estimated
 
     def _handle_add_session(self, payload: dict[str, Any]) -> None:
         """Add a session to the active meet."""
-        session_id = self.server.database.add_session(*self._session_fields(payload))
+        session_id = self.database.add_session(*self._session_fields(payload))
         self._send_json(HTTPStatus.OK, {constants.KEY_ID: session_id})
 
     def _handle_update_session(self, session_id: int, payload: dict[str, Any]) -> None:
         """Change a session of the active meet."""
-        self.server.database.update_session(session_id, *self._session_fields(payload))
+        self.database.update_session(session_id, *self._session_fields(payload))
         self._send_json(HTTPStatus.OK, {constants.KEY_OK: True})
 
     def _handle_active_session(self, payload: dict[str, Any]) -> None:
@@ -471,14 +562,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         session_id = payload.get(constants.KEY_SESSION_ID)
         if not isinstance(session_id, int):
             raise SigninError("Pick a session")
-        self.server.database.set_active_session(session_id)
+        self.database.set_active_session(session_id)
         self._send_json(HTTPStatus.OK, {constants.KEY_OK: True})
 
     def _active_session_date(self) -> date:
         """Date of the active session (today if none), for checking card dates."""
-        state = self.server.database.get_state()
+        state = self.database.get_state()
         session_id = state[constants.KEY_ACTIVE_SESSION_ID]
-        session = None if session_id is None else self.server.database.get_session(session_id)
+        session = None if session_id is None else self.database.get_session(session_id)
         return date.today() if session is None else date.fromisoformat(session[constants.KEY_DATE])
 
     def _handle_card_reading(self, payload: dict[str, Any]) -> None:
@@ -489,8 +580,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         texts = [text[: constants.OCR_TEXT_MAX_LENGTH] for text in texts[-constants.OCR_TEXTS_PER_REQUEST_LIMIT:]]
         reading = read_card(texts)
         result = check_card(reading, self._active_session_date())
-        official_id = self.server.database.find_official_for_card(reading)
-        match = None if official_id is None else self.server.database.get_official(official_id, date.today())
+        official_id = self.database.find_official_for_card(reading)
+        match = None if official_id is None else self.database.get_official(official_id, date.today())
         card = reading.to_dict()
         # A date that looks expired but was read only once may be an OCR slip:
         # report "not complete" so the camera keeps reading to confirm it.
@@ -512,7 +603,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _handle_sign_in(self, payload: dict[str, Any]) -> None:
         """Sign an official in to the active session and any later sessions picked."""
-        database = self.server.database
+        database = self.database
         state = database.get_state()
         active_session_id = state[constants.KEY_ACTIVE_SESSION_ID]
         if active_session_id is None or state[constants.KEY_MEET] is None:
@@ -578,7 +669,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         name = payload.get(constants.KEY_NAME)
         if not isinstance(roles, list) or not isinstance(name, str):
             raise SigninError("Name and roles are needed")
-        merged = self.server.database.edit_signin(
+        merged = self.database.edit_signin(
             signin_id, name, years, [str(role) for role in roles], bool(payload.get(constants.KEY_TRAINEE)), date.today()
         )
         LOGGER.info("Edited sign-in %d (%d duplicate record(s) merged)", signin_id, merged)
@@ -586,7 +677,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _handle_signin_action(self, signin_id: int, action: str) -> None:
         """Validate a sign-in by eye, or remove it."""
-        database = self.server.database
+        database = self.database
         if action == constants.SIGNIN_VALIDATE_SUFFIX:
             found = database.validate_signin_visually(signin_id)
         else:
@@ -595,6 +686,81 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json_error(HTTPStatus.NOT_FOUND, "Sign-in not found")
             return
         self._send_json(HTTPStatus.OK, {constants.KEY_OK: True})
+
+    # --- Demo mode ------------------------------------------------------------------
+
+    @staticmethod
+    def _demo_cookie(on: bool) -> str:
+        """Set-Cookie value that switches this browser into (or out of) demo mode."""
+        if on:
+            return f"{constants.DEMO_COOKIE_NAME}={constants.DEMO_COOKIE_ON}; Path=/; SameSite=Strict"
+        return f"{constants.DEMO_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Strict"
+
+    def _handle_demo_start(self, payload: dict[str, Any]) -> None:
+        """Build a fresh demo meet and switch this browser to it."""
+        limits = {
+            constants.KEY_JUDGES_COUNT: (0, constants.DEMO_MAX_JUDGES),
+            constants.KEY_TRAINEES_COUNT: (0, constants.DEMO_MAX_TRAINEES),
+            constants.KEY_SESSIONS_COUNT: (1, constants.DEMO_MAX_SESSIONS),
+        }
+        values = {}
+        for key, (low, high) in limits.items():
+            value = payload.get(key)
+            if not isinstance(value, int) or not low <= value <= high:
+                raise SigninError(f"{key.replace('_', ' ')} must be {low} to {high}")
+            values[key] = value
+        with self.server.demo_lock:
+            self.server.demo_database = build_demo(
+                self.server.demo_database_path,
+                values[constants.KEY_JUDGES_COUNT],
+                values[constants.KEY_TRAINEES_COUNT],
+                values[constants.KEY_SESSIONS_COUNT],
+                bool(payload.get(constants.KEY_HEAD_OFFICIALS, True)),
+                date.today(),
+            )
+        LOGGER.info("Started a demo meet")
+        self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=True))
+
+    # --- Printable pages ------------------------------------------------------------
+
+    def _session_from_query(self, query: str) -> dict[str, Any] | None:
+        """The session named by ``?session_id=`` (of the active meet), or the active session."""
+        state = self.database.get_state()
+        requested = parse_qs(query).get(constants.KEY_SESSION_ID, [])
+        session_id = int(requested[0]) if requested and requested[0].isdigit() else state[constants.KEY_ACTIVE_SESSION_ID]
+        if session_id is None:
+            return None
+        session = self.database.get_session(session_id)
+        if session is None or state[constants.KEY_MEET] is None or session["meet_id"] != state[constants.KEY_MEET][constants.KEY_ID]:
+            return None
+        return session
+
+    def _send_session_page(self, query: str, team_display: bool) -> None:
+        """Session summary, or the team display, for one session."""
+        session = self._session_from_query(query)
+        if session is None:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such session in the active meet")
+            return
+        meet = self.database.get_state()[constants.KEY_MEET]
+        signins = self.database.list_signins(session[constants.KEY_ID])
+        if team_display:
+            body = render_team_display(meet, session, build_team_view(signins, session), len(signins))
+        else:
+            body = render_session_summary(meet, session, signins)
+        self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, body)
+
+    def _send_meet_summary(self) -> None:
+        """Every session of the active meet on as few pages as possible."""
+        database = self.database
+        state = database.get_state()
+        if state[constants.KEY_MEET] is None:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No meet yet")
+            return
+        sessions = [
+            (database.get_session(session[constants.KEY_ID]), database.list_signins(session[constants.KEY_ID]))
+            for session in state[constants.KEY_SESSIONS]
+        ]
+        self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_meet_summary(state[constants.KEY_MEET], sessions))
 
     # --- Camera diagnostics -------------------------------------------------------
 
@@ -635,8 +801,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         Raises:
             SigninError: If no session is chosen.
         """
-        session_id = self.server.database.get_state()[constants.KEY_ACTIVE_SESSION_ID]
-        session = None if session_id is None else self.server.database.get_session(session_id)
+        session_id = self.database.get_state()[constants.KEY_ACTIVE_SESSION_ID]
+        session = None if session_id is None else self.database.get_session(session_id)
         if session is None:
             raise SigninError("Choose a session first")
         return session
@@ -644,7 +810,7 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _team_view(self) -> dict[str, Any]:
         """The Teams screen for the active session."""
         session = self._active_session()
-        return build_team_view(self.server.database.list_signins(session[constants.KEY_ID]), session)
+        return build_team_view(self.database.list_signins(session[constants.KEY_ID]), session)
 
     def _send_team_view(self) -> None:
         """GET /api/teams."""
@@ -664,15 +830,19 @@ class RequestHandler(BaseHTTPRequestHandler):
         return lanes
 
     def _handle_team_settings(self, payload: dict[str, Any]) -> None:
-        """Change lanes or "15 m on every team" while keeping the teams and hand changes."""
-        database = self.server.database
+        """Change lanes, rotation (fixed or rotating ends) or "15 m on every team", keeping the teams."""
+        database = self.database
         session = self._active_session()
         session_id = session[constants.KEY_ID]
         fifteen = payload.get(constants.KEY_FIFTEEN_METER_ON_TEAMS)
+        rotation_mode = payload.get(constants.KEY_ROTATION_MODE)
+        if rotation_mode is not None and rotation_mode not in constants.ROTATION_MODES:
+            raise SigninError("Unknown rotation")
         database.save_team_settings(
             session_id,
             lanes=self._lanes_from(payload),
             fifteen_meter_on_teams=None if fifteen is None else bool(fifteen),
+            rotation_mode=rotation_mode,
         )
         if fifteen is not None:
             for signin_id, assignment in fifteen_meter_changes(database.list_signins(session_id), bool(fifteen)).items():
@@ -681,7 +851,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _handle_build_teams(self, payload: dict[str, Any]) -> None:
         """Build (or rebuild) the teams automatically, replacing any hand changes."""
-        database = self.server.database
+        database = self.database
         session = self._active_session()
         session_id = session[constants.KEY_ID]
         team_count = payload.get(constants.KEY_TEAM_COUNT)
@@ -714,7 +884,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _handle_signin_team(self, signin_id: int, payload: dict[str, Any]) -> None:
         """Move one official (team or extra job), set a Team Lead, or change a mentor."""
-        database = self.server.database
+        database = self.database
         session = self._active_session()
         signins = {signin[constants.KEY_ID]: signin for signin in database.list_signins(session[constants.KEY_ID])}
         if signin_id not in signins:
@@ -784,20 +954,23 @@ class RequestHandler(BaseHTTPRequestHandler):
         body: bytes,
         download_filename: str | None = None,
         cache: str = constants.NO_CACHE,
+        cookie: str | None = None,
     ) -> None:
-        """Send a complete response."""
+        """Send a complete response (optionally setting a cookie)."""
         self.send_response(status)
         self.send_header(constants.CONTENT_TYPE_HEADER, content_type)
         self.send_header(constants.CONTENT_LENGTH_HEADER, str(len(body)))
         self.send_header(constants.CACHE_CONTROL_HEADER, cache)
+        if cookie is not None:
+            self.send_header(constants.SET_COOKIE_HEADER, cookie)
         if download_filename is not None:
             self.send_header(constants.CONTENT_DISPOSITION_HEADER, f'attachment; filename="{download_filename}"')
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
-        """Send a JSON response."""
-        self._send_bytes(status, constants.JSON_CONTENT_TYPE, json.dumps(payload).encode("utf-8"))
+    def _send_json(self, status: HTTPStatus, payload: dict[str, Any], cookie: str | None = None) -> None:
+        """Send a JSON response (optionally setting a cookie)."""
+        self._send_bytes(status, constants.JSON_CONTENT_TYPE, json.dumps(payload).encode("utf-8"), cookie=cookie)
 
     def _send_json_error(self, status: HTTPStatus, message: str) -> None:
         """Send ``{"error": message}`` with an error status."""

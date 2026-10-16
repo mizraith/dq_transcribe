@@ -132,6 +132,7 @@ function describeOfficial(official) {
 async function refresh() {
   const state = await getJson(ROUTES.state);
   pageState = {
+    demo: Boolean(state[KEYS.demo]),
     meet: state[KEYS.meet],
     sessions: state[KEYS.sessions],
     activeSessionId: state[KEYS.activeSessionId],
@@ -164,6 +165,14 @@ function drawHeader() {
   meetingTime.hidden = !(session && session[KEYS.meetingTime]);
   meetingTime.textContent = meetingTime.hidden ? "" : "Officials Meeting: " + formatTime12(session[KEYS.meetingTime]);
   signinsTitle.textContent = session ? "Signed in: " + session[KEYS.name] : "Signed in";
+  element("demo-banner").hidden = !pageState.demo;
+  element("demo-link").hidden = pageState.demo;
+  element("demo-link").href = ROUTES.demo;
+  element("demo-new").href = ROUTES.demo;
+  const sessionQuery = "?" + KEYS.sessionId + "=" + pageState.activeSessionId;
+  element("print-session-link").href = ROUTES.printSession + sessionQuery;
+  element("print-meet-link").href = ROUTES.printMeet;
+  element("team-display-link").href = ROUTES.teamDisplay + sessionQuery;
   element("roster-link").href = ROUTES.roster;
   element("roster-download-link").href = ROUTES.rosterDownload;
 }
@@ -311,6 +320,7 @@ const SESSION_FIELD_DATE = "date";
 const SESSION_FIELD_TIME = "time";
 const SESSION_FIELD_MEETING = "meeting";
 const SESSION_FIELD_NAME = "name";
+const SESSION_FIELD_LENGTH = "length";
 let editingSessionId = null;
 
 /** One field of a session form. */
@@ -400,6 +410,7 @@ function resetSessionForm(form) {
   select.value = "";
   delete select.dataset.chosen;
   sessionField(form, SESSION_FIELD_TYPE_OTHER).hidden = true;
+  sessionField(form, SESSION_FIELD_LENGTH).value = String(CONFIG.defaultSessionMinutes / MINUTES_PER_HOUR);
 }
 
 /** Build the type drop-down: a blank choice, the usual types, then "Other…". */
@@ -449,6 +460,10 @@ function sessionBody(form) {
   body[KEYS.startTime] = sessionField(form, SESSION_FIELD_TIME).value || null;
   body[KEYS.sessionType] = sessionType || null;
   body[KEYS.meetingTime] = sessionField(form, SESSION_FIELD_MEETING).value || null;
+  const hours = Number(sessionField(form, SESSION_FIELD_LENGTH).value);
+  body[KEYS.estimatedMinutes] = hours > 0
+    ? Math.round(hours * MINUTES_PER_HOUR / CONFIG.sessionLengthStepMinutes) * CONFIG.sessionLengthStepMinutes
+    : null;
   return body;
 }
 
@@ -463,6 +478,7 @@ function describeSession(session) {
   const parts = [session[KEYS.date]];
   if (session[KEYS.startTime]) { parts.push("starts " + formatTime12(session[KEYS.startTime])); }
   if (session[KEYS.meetingTime]) { parts.push("officials meeting " + formatTime12(session[KEYS.meetingTime])); }
+  parts.push("~" + ((session[KEYS.estimatedMinutes] || CONFIG.defaultSessionMinutes) / MINUTES_PER_HOUR) + " h");
   parts.push(session[KEYS.signinCount] + " signed in");
   return parts.join(" · ");
 }
@@ -515,6 +531,8 @@ function editSession(session) {
   sessionField(ADD_FORM, SESSION_FIELD_MEETING).value = session[KEYS.meetingTime] || "";
   sessionField(ADD_FORM, SESSION_FIELD_MEETING).dataset.typed = "1";
   sessionField(ADD_FORM, SESSION_FIELD_NAME).value = session[KEYS.name];
+  sessionField(ADD_FORM, SESSION_FIELD_LENGTH).value = String(
+    (session[KEYS.estimatedMinutes] || CONFIG.defaultSessionMinutes) / MINUTES_PER_HOUR);
   sessionField(ADD_FORM, SESSION_FIELD_NAME).dataset.typed = "1";
   showSessionFormMode();
   drawSetupSessions();
@@ -769,8 +787,20 @@ function drawTeams() {
     chip.classList.toggle("on", count === view[KEYS.teamCount]);
     layouts.appendChild(chip);
   });
+  const modes = element("teams-rotation-modes");
+  modes.replaceChildren();
+  CONFIG.rotationModes.forEach(function (pair) {
+    const chip = makeButton(pair[1], "chip", function () {
+      const body = {};
+      body[KEYS.rotationMode] = pair[0];
+      teamsRequest(ROUTES.teamsSettings, body);
+    });
+    chip.classList.toggle("on", view[KEYS.rotationMode] === pair[0]);
+    modes.appendChild(chip);
+  });
   element("teams-fifteen").checked = view[KEYS.fifteenMeterOnTeams];
   element("teams-rotation").textContent = view[KEYS.rotation];
+  element("teams-display-link").href = ROUTES.teamDisplay + "?" + KEYS.sessionId + "=" + pageState.activeSessionId;
   // Alerts
   const alerts = element("teams-alerts");
   alerts.replaceChildren();
@@ -1183,6 +1213,10 @@ sheetName.addEventListener("input", function () { markNameForChecking(false); })
 element("sheet-cancel").addEventListener("click", function () { sheetOverlay.hidden = true; });
 element("sheet-submit").addEventListener("click", submitSheet);
 element("setup-button").addEventListener("click", function () { openSetup(false); });
+element("demo-exit").addEventListener("click", async function () {
+  await postJson(ROUTES.demoExit, {});
+  window.location.reload();
+});
 element("teams-button").addEventListener("click", openTeams);
 element("teams-close").addEventListener("click", closeTeams);
 element("teams-rebuild").addEventListener("click", rebuildTeams);
@@ -1219,6 +1253,8 @@ element("session-delete-keep").addEventListener("click", function () { element("
 element("session-delete-confirm").addEventListener("click", deleteSession);
 wireSessionForm(ADD_FORM);
 wireSessionForm(FIRST_FORM);
+resetSessionForm(ADD_FORM);
+resetSessionForm(FIRST_FORM);
 // The first session follows the meet's start date until it is changed.
 element("new-meet-date").addEventListener("change", function () {
   sessionField(FIRST_FORM, SESSION_FIELD_DATE).value = element("new-meet-date").value;
