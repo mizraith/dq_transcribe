@@ -226,6 +226,7 @@ def build_web_config() -> dict[str, Any]:
         "suiteApps": [dict(app) for app in constants.SUITE_APPS],
         "homeAppKey": constants.HOME_APP_KEY,
         "meetsMenuLabel": constants.MEETS_MENU_LABEL,
+        "suiteReports": [dict(report) for report in constants.SUITE_REPORTS],
         "officialsAppKey": constants.OFFICIALS_APP_KEY,
         "coachesAppKey": constants.COACHES_APP_KEY,
         "deskChannelName": constants.DESK_CHANNEL_NAME,

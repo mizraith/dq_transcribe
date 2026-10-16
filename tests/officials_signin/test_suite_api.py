@@ -129,6 +129,12 @@ class SuiteApiTests(unittest.TestCase):
         # The launcher's apps come from constants.SUITE_APPS (in the page config).
         for app in constants.SUITE_APPS:
             self.assertIn(json.dumps(app).encode(), script)
+        # The main page's Reports pop-up lists every whole-meet report, and each one prints.
+        for report in constants.SUITE_REPORTS:
+            self.assertIn(json.dumps(report).encode(), script)
+            status, page, _ = self.request("GET", report["route"])
+            self.assertEqual(status, 200, report["route"])
+            self.assertIn(b"Candy Meet", page)
 
 
 if __name__ == "__main__":

@@ -51,6 +51,10 @@ hard way, the dated decisions log (newest first), facts and open items. Companio
 
 ## Decisions
 
+- **2026-10-16 (09:00): Reports pop-up.** Menu items say whose report they are ("Print
+  meet summary - officials" / "- coaches"). The main page's Current meet has
+  **Reports…**: a pop-up of whole-meet printouts from `constants.SUITE_REPORTS` (add a
+  report there and it appears); each opens in a new tab. The owner will add reports over time.
 - **2026-10-16 (08:40): Admin Assistant suite, main page at `/`.**
   - The owner made **Admin Assistant** the suite: a main page (launcher + meets) with
     sub-apps **DQ Transcribe**, **Officials Sign-In**, **Coaches Sign-In** (room for more).

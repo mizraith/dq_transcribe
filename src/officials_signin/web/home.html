@@ -6,7 +6,7 @@
     a session drop-down. Choosing a meet or session here makes it current for every app.
   - Apps: one button per app (DQ Transcribe, Officials Sign-In, Coaches Sign-In), each
     opening in its own tab; room for more.
-  - Meets: the current meet with its sessions and Meet setup, every meet (open, archive,
+  - Meets: the current meet with its sessions, Reports… (whole-meet printouts) and Meet setup, every meet (open, archive,
     restore, delete), a new meet, and the demo meet. All meet setup happens here.
 
   Styles are shared (desk.css). Scripts: desk_shared.js (shared helpers, top bar, tab
@@ -57,6 +57,7 @@
         <h2>Current meet</h2>
         <div id="current-meet"></div>
         <div class="panel-actions">
+          <button id="current-reports" type="button">Reports…</button>
           <button id="current-setup" class="primary" type="button">Meet setup</button>
         </div>
       </div>
@@ -135,6 +136,18 @@
         <button id="setup-cancel" type="button">Cancel</button>
         <button id="setup-save" class="go" type="button">Save</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Reports: whole-meet printouts for the current meet (constants.SUITE_REPORTS); each
+       opens in a new tab with its own Print button. -->
+  <div class="overlay" id="reports-overlay" hidden>
+    <div class="sheet">
+      <button class="sheet-close" type="button" data-closes="reports-close" aria-label="Close">✕</button>
+      <h2>Reports</h2>
+      <p id="reports-meet" class="signin-detail"></p>
+      <div id="reports-list" class="report-list"></div>
+      <div class="sheet-actions"><button id="reports-close" type="button">Close</button></div>
     </div>
   </div>
 

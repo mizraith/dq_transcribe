@@ -71,9 +71,11 @@ function drawCurrentMeet() {
   if (!pageState.meet) {
     box.textContent = "No meet yet. Start one with + New meet (or try the demo meet).";
     element("current-setup").textContent = "New meet";
+    element("current-reports").hidden = true;
     return;
   }
   element("current-setup").textContent = "Meet setup";
+  element("current-reports").hidden = false;
   const title = document.createElement("div");
   title.className = "current-meet-title";
   title.textContent = pageState.meet[KEYS.name] + (pageState.demo ? " (demo)" : "");
@@ -112,8 +114,34 @@ function drawCurrentMeet() {
   box.appendChild(table);
 }
 
+/** The Reports pop-up: one link per whole-meet report (CONFIG.suiteReports), each in a new tab. */
+function openReports() {
+  element("reports-meet").textContent = pageState.meet ? pageState.meet[KEYS.name] + " · all sessions" : "";
+  const list = element("reports-list");
+  list.replaceChildren();
+  CONFIG.suiteReports.forEach(function (report) {
+    const link = document.createElement("a");
+    link.className = "report-card";
+    link.href = report.route;
+    link.target = "_blank";
+    link.dataset.report = report.key;
+    const title = document.createElement("span");
+    title.className = "app-title";
+    title.textContent = report.title;
+    const description = document.createElement("span");
+    description.className = "app-description";
+    description.textContent = report.description;
+    link.append(title, description);
+    link.addEventListener("click", function () { element("reports-overlay").hidden = true; });
+    list.appendChild(link);
+  });
+  element("reports-overlay").hidden = false;
+}
+
 // --- Wiring --------------------------------------------------------------------------
 
+element("current-reports").addEventListener("click", openReports);
+element("reports-close").addEventListener("click", function () { element("reports-overlay").hidden = true; });
 element("current-setup").addEventListener("click", function () { openSetup(pageState.meet === null); });
 element("menu-setup").addEventListener("click", function () { openSetup(pageState.meet === null); });
 element("menu-new-meet").addEventListener("click", newMeetFromOverview);

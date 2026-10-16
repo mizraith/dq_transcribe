@@ -760,3 +760,13 @@ DEMO_LAST_NAMES = (
 # Some officials go by a nickname, printed in quotes on the card: Pat "Skip" Sample.
 DEMO_NICKNAMES = ("Red", "Skip", "Doc", "Ace", "Scout", "Sunny")
 DEMO_NICKNAME_SHARE = 0.15
+
+# --- Meet reports (main page, Current meet > Reports...) ---------------------------------
+# Whole-meet printouts for the current meet, listed in the main page's Reports pop-up
+# (owner, 2026-10-16). Add a report here (title, one line, route) and it appears there.
+SUITE_REPORTS = (
+    {"key": "officials_meet", "title": "Meet summary - officials",
+     "description": "Every session's officials: roles, club, years and card checks.", "route": ROUTE_PRINT_MEET},
+    {"key": "coaches_meet", "title": "Meet summary - coaches",
+     "description": "Every session's coaches, with the head coaches marked.", "route": ROUTE_COACHES_PRINT_MEET},
+)
