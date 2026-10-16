@@ -1,5 +1,5 @@
 /**
- * dq_transcribe web app.
+ * DQ Transcribe web app (package dq_transcribe), a sub-app of the Admin Assistant.
  *
  * Listens to the microphone, cuts speech into clips (starting when sound
  * appears and ending after a stretch of quiet), uploads each clip to the local
@@ -35,14 +35,16 @@ const trashViewButton = document.getElementById("trash-view-button");
 const transcriptViewButton = document.getElementById("transcript-view-button");
 const dqViewButton = document.getElementById("dq-view-button");
 const viewTitle = document.getElementById("view-title");
-const meetSelect = document.getElementById("meet-select");
-const newMeetButton = document.getElementById("new-meet-button");
-const newMeetForm = document.getElementById("new-meet-form");
-const meetNameInput = document.getElementById("meet-name");
-const meetDateInput = document.getElementById("meet-date");
-const createMeetButton = document.getElementById("create-meet-button");
-const cancelMeetButton = document.getElementById("cancel-meet-button");
-const editMeetButton = document.getElementById("edit-meet-button");
+const meetSelect = document.getElementById("meet-select"); // in the menu, only while the main page is not running
+const offlineMeets = document.getElementById("offline-meets");
+const menuButton = document.getElementById("menu-button");
+const mainMenu = document.getElementById("main-menu");
+const suiteSubmenuToggle = document.getElementById("suite-submenu-toggle");
+const suiteSubmenu = document.getElementById("suite-submenu");
+const suiteMeetName = document.getElementById("suite-meet-name");
+const sessionPicker = document.getElementById("session-picker");
+const sessionSelect = document.getElementById("session-select");
+const captureTarget = document.getElementById("capture-target");
 const startInput = document.getElementById("start-dbfs");
 const endInput = document.getElementById("end-dbfs");
 const hangInput = document.getElementById("hang-seconds");
@@ -650,6 +652,8 @@ async function startCapturing() {
     clipChunks = null;
     loudChunkCount = 0;
     capturing = true;
+    recordingTarget = currentTarget(); // fixed until Stop, whatever the display shows meanwhile
+    renderCaptureTarget();
     await acquireWakeLock();
     setStatus("Capturing. Waiting for audio...");
   } catch (error) {
@@ -670,6 +674,8 @@ async function stopCapturing() {
     finishClip(CONFIG.chunkSize / audioContext.sampleRate);
   }
   capturing = false;
+  recordingTarget = null; // stopping ends the recording target
+  renderCaptureTarget();
   await releaseWakeLock();
   if (!monitoring) {
     await closeAudio();
@@ -851,18 +857,18 @@ async function loadMeets() {
     const active = data[CONFIG.meetsKey].find((meet) => meet.id === activeId);
     activeMeet = active || null;
     activeMeetName = active ? active.name : "";
-    editMeetButton.hidden = activeMeet === null || !newMeetForm.hidden;
     updateViewButtons();
+    renderSuiteHeader();
   } catch (error) {
     // Server restarting: try again on the next refresh.
   }
 }
 
-/** Switch the active meet (new recordings are filed under it). */
+/** Switch the displayed meet from the menu's picker (only while the main page is not running). */
 async function onMeetChange() {
   try {
     await fetch(CONFIG.meetsRoute + "/" + meetSelect.value + CONFIG.meetActivateSuffix, { method: "POST" });
-    setStatus(meetSelect.value === String(CONFIG.noMeetId) ? "No active meet." : "Now recording into: " + meetSelect.options[meetSelect.selectedIndex].text);
+    setStatus(meetSelect.value === String(CONFIG.noMeetId) ? "No meet." : "Showing " + meetSelect.options[meetSelect.selectedIndex].text);
   } catch (error) {
     setStatus("Could not switch meets: " + error.message);
   }
@@ -871,104 +877,9 @@ async function onMeetChange() {
   refreshClips();
 }
 
-/** Show or hide the "new meet" form. */
-function showNewMeetForm(visible) {
-  newMeetForm.hidden = !visible;
-  newMeetButton.hidden = visible;
-  editMeetButton.hidden = visible || activeMeet === null;
-  if (visible) {
-    meetDateInput.value = meetDateInput.value || todayIsoDate();
-    meetNameInput.focus();
-  }
-}
-
-// Create a meet from its meet sheet (the buttons are wired up in startApp).
-const sheetSource = document.getElementById("sheet-source");
-const sheetCreateButton = document.getElementById("sheet-create-button");
-const sheetFileButton = document.getElementById("sheet-file-button");
-const sheetFile = document.getElementById("sheet-file");
-const WEB_ADDRESS_START = /^https?:\/\//i;
-const WHITESPACE = /\s/;
-
-/** True if the pasted text is a single web address (not the sheet's text). */
-function isWebAddress(text) {
-  return WEB_ADDRESS_START.test(text) && !WHITESPACE.test(text);
-}
-
-/**
- * Create a meet from its meet sheet: a picked file, or the web address or text
- * pasted in the box. The meet becomes active and Meet setup opens to review it.
- */
-async function createMeetFromSheet(file) {
-  const pasted = sheetSource.value.trim();
-  if (!file && !pasted) {
-    notify("Paste the meet sheet's web address or text, or pick its file.", "error");
-    return;
-  }
-  sheetCreateButton.disabled = true;
-  sheetCreateButton.textContent = "Reading the meet sheet\u2026";
-  try {
-    let response;
-    if (file) {
-      response = await fetch(CONFIG.meetFromSheetRoute + "?" + CONFIG.filenameQueryKey + "=" + encodeURIComponent(file.name), {
-        method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file,
-      });
-    } else {
-      const body = {};
-      body[isWebAddress(pasted) ? CONFIG.urlKey : CONFIG.sheetTextKey] = pasted;
-      response = await fetch(CONFIG.meetFromSheetRoute, { method: "POST", headers: { "Content-Type": CONFIG.jsonMediaType }, body: JSON.stringify(body) });
-    }
-    const reply = await response.json();
-    if (!response.ok) {
-      throw new Error(reply.error || "server answered " + response.status);
-    }
-    const sheet = reply[CONFIG.sheetKey];
-    const found = [sheet.events + " events"];
-    if (sheet.entries) {
-      found.push(sheet.entries + " swimmers seeded"); // from a Meet Manager file or heat sheet
-    }
-    found.push(sheet.sessions.length + " session(s)", sheet.officials.length + " official(s)");
-    notify("\u2713 Created " + sheet.name + ": " + found.join(", ") + (sheet.missing.length ? ". Not on the sheet: " + sheet.missing.join("; ") : ""));
-    sheetSource.value = "";
-    showNewMeetForm(false);
-    lastClipsSignature = "";
-    await loadMeets();
-    openMeetSetup();
-  } catch (error) {
-    notify("Could not read the meet sheet: " + error.message, "error");
-  }
-  sheetCreateButton.disabled = false;
-  sheetCreateButton.textContent = "Create from meet sheet";
-}
-
-/** Create a meet from the form and make it the active meet. */
-async function createMeet() {
-  const body = {};
-  body[CONFIG.meetNameKey] = meetNameInput.value.trim();
-  body[CONFIG.meetStartDateKey] = meetDateInput.value;
-  if (!body[CONFIG.meetNameKey]) {
-    setStatus("Give the meet a name.");
-    return;
-  }
-  try {
-    const response = await fetch(CONFIG.meetsRoute, {
-      method: "POST",
-      headers: { "Content-Type": CONFIG.jsonMediaType },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      throw new Error((await response.json()).error || "server answered " + response.status);
-    }
-    setStatus("Created meet " + body[CONFIG.meetNameKey] + "; new recordings are filed under it.");
-    meetNameInput.value = "";
-    showNewMeetForm(false);
-  } catch (error) {
-    setStatus("Could not create the meet: " + error.message);
-  }
-  lastClipsSignature = "";
-  await loadMeets();
-  refreshClips();
-}
+// Meets are created and set up on the Admin Assistant main page (port 8010); DQ follows its
+// current meet (see "Admin Assistant suite" below). DQ's own meet data (Meet Manager file,
+// coach page, officials) is under the menu's "DQ meet setup".
 
 // --- Uploading --------------------------------------------------------------
 
@@ -982,7 +893,8 @@ function showQueue() {
 
 /** Add a clip to the upload queue and start sending. */
 function enqueueUpload(wavBuffer, info) {
-  uploadQueue.push({ wavBuffer: wavBuffer, info: info, attempts: 0 });
+  // The clip goes to the meet and session fixed when capturing started, even if it uploads later.
+  uploadQueue.push({ wavBuffer: wavBuffer, info: info, attempts: 0, target: recordingTarget });
   showQueue();
   pumpUploads();
 }
@@ -991,7 +903,7 @@ function enqueueUpload(wavBuffer, info) {
 async function uploadClip(item) {
   const headers = { "Content-Type": CONFIG.wavMediaType };
   headers[CONFIG.captureInfoHeader] = JSON.stringify(item.info);
-  const response = await fetch(CONFIG.clipsRoute, {
+  const response = await fetch(CONFIG.clipsRoute + recordingTargetQuery(item.target), {
     method: "POST",
     headers: headers,
     body: new Blob([item.wavBuffer], { type: CONFIG.wavMediaType }),
@@ -1590,6 +1502,229 @@ async function refreshTranscript() {
   }
 }
 
+// --- Admin Assistant suite ------------------------------------------------------------
+//
+// The current meet and session belong to the Admin Assistant main page (the Officials
+// Sign-In server, port 8010) and every app follows them: this page polls it, links its
+// meet to a DQ meet (created quietly on first use) and shows that meet. Changing the
+// session here moves every app. The exception: while capturing, recording stays on the
+// meet and session it started with (recordingTarget), whatever is displayed.
+// If the main page is not running, DQ keeps working on its own meet, picked in the menu.
+
+let suiteState = null; // the last /api/suite/current reply (null: not reached yet)
+let suiteSignature = ""; // version + demo: redraw only when it changes
+let suiteReachable = null; // true, false, or null before the first try
+let recordingTarget = null; // {meetId, meetName, sessionId, sessionName} while capturing
+
+/** Fetch from the main page's server (cross-origin; the demo cookie must go along). */
+async function suiteFetch(url, body) {
+  const options = { credentials: "include", cache: "no-store" };
+  if (body !== undefined) {
+    Object.assign(options, { method: "POST", headers: { "Content-Type": CONFIG.jsonMediaType }, body: JSON.stringify(body) });
+  }
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    throw new Error("main page answered " + response.status);
+  }
+  return response.json();
+}
+
+/** Look at the main page's current meet and session; follow it when it changed. */
+async function pollSuite() {
+  let reply;
+  try {
+    reply = await suiteFetch(CONFIG.suiteCurrentUrl);
+  } catch (error) {
+    if (suiteReachable !== false) {
+      suiteReachable = false;
+      renderSuiteHeader();
+    }
+    return;
+  }
+  const signature = reply.version + "|" + reply.demo;
+  const wasReachable = suiteReachable;
+  suiteReachable = true;
+  if (signature === suiteSignature && wasReachable) {
+    return;
+  }
+  suiteSignature = signature;
+  suiteState = reply;
+  await followSuiteMeet();
+  renderSuiteHeader();
+}
+
+/** Show the DQ meet for the main page's current meet (DQ's DEMO MEET in demo). */
+async function followSuiteMeet() {
+  const body = {};
+  if (suiteState.demo) {
+    body[CONFIG.demoKey] = true;
+  } else if (suiteState.meet) {
+    body[CONFIG.suiteMeetIdKey] = suiteState.meet.id;
+    body[CONFIG.meetNameKey] = suiteState.meet.name;
+    body[CONFIG.meetStartDateKey] = suiteState.meet.start_date;
+  } else {
+    return; // no meet yet on the main page: keep showing what DQ shows
+  }
+  const previousMeetId = activeMeet ? activeMeet.id : null;
+  try {
+    await postJson(CONFIG.suiteLinkRoute, body);
+  } catch (error) {
+    setStatus("Could not open the main page's meet here: " + error.message);
+    return;
+  }
+  await loadMeets();
+  if ((activeMeet ? activeMeet.id : null) !== previousMeetId) {
+    if (currentView === "meet") {
+      openMeetSetup(); // the setup page shows the new meet
+    } else {
+      expandedDqId = null;
+      forceRefresh();
+    }
+  }
+}
+
+/** The main page's current session, or null. */
+function suiteSession() {
+  if (!suiteState || !suiteReachable) {
+    return null;
+  }
+  return suiteState.sessions.find((session) => session.id === suiteState.active_session_id) || null;
+}
+
+/** "Candy Meet · Friday PM": what is displayed, which is also what Start capturing would record to. */
+function currentTarget() {
+  const session = suiteSession();
+  return {
+    meetId: activeMeet ? activeMeet.id : null,
+    meetName: activeMeet ? activeMeet.name : "no meet",
+    sessionId: session ? session.id : null,
+    sessionName: session ? session.name : "",
+  };
+}
+
+/** "Candy Meet · Friday PM" (or just the meet). */
+function targetLabel(target) {
+  return target.meetName + (target.sessionName ? " · " + target.sessionName : "");
+}
+
+/** The query that files an uploaded clip under its recording target. */
+function recordingTargetQuery(target) {
+  if (!target || target.meetId === null) {
+    return ""; // the server files it under the displayed meet
+  }
+  const parts = [CONFIG.meetIdQueryKey + "=" + target.meetId];
+  if (target.sessionId !== null) {
+    parts.push(CONFIG.sessionIdQueryKey + "=" + target.sessionId, CONFIG.sessionNameQueryKey + "=" + encodeURIComponent(target.sessionName));
+  }
+  return "?" + parts.join("&");
+}
+
+/** Top bar: the meet's name and the session drop-down (or the offline note). */
+function renderSuiteHeader() {
+  const offline = suiteReachable === false;
+  offlineMeets.hidden = !offline;
+  suiteMeetName.classList.toggle("offline", offline);
+  let name = activeMeet ? activeMeet.name : "No meet";
+  if (offline) {
+    name += " (main page not running)";
+  } else if (suiteState && !suiteState.meet && !suiteState.demo) {
+    name = "No meet: open one on the main page";
+  }
+  suiteMeetName.textContent = name;
+  const sessions = !offline && suiteState ? suiteState.sessions : [];
+  sessionPicker.hidden = sessions.length === 0;
+  if (sessions.length) {
+    const options = sessions.map((session) => new Option(session.name, String(session.id)));
+    sessionSelect.replaceChildren(...options);
+    sessionSelect.value = String(suiteState.active_session_id);
+  }
+  renderCaptureTarget();
+}
+
+/** The Audio Capture panel's first line: where Start capturing records, or where it is recording. */
+function renderCaptureTarget() {
+  if (recordingTarget) {
+    captureTarget.className = "recording";
+    captureTarget.replaceChildren(makeElement("strong", "", "Capturing to " + targetLabel(recordingTarget)));
+    const showing = currentTarget();
+    if (showing.meetId !== recordingTarget.meetId || showing.sessionId !== recordingTarget.sessionId) {
+      captureTarget.append(makeElement("span", "differs", "Showing " + targetLabel(showing) + ". Recording continues to the meet and session above until Stop."));
+    }
+    return;
+  }
+  captureTarget.className = "";
+  captureTarget.replaceChildren(document.createTextNode("Start capturing records to:"), makeElement("strong", "", targetLabel(currentTarget())));
+}
+
+/** Change the session for every app (from the top bar's drop-down). */
+async function onSessionChange() {
+  const body = {};
+  body.session_id = Number(sessionSelect.value);
+  try {
+    suiteState = await suiteFetch(CONFIG.suiteSelectUrl, body);
+    suiteSignature = suiteState.version + "|" + suiteState.demo;
+  } catch (error) {
+    notify("Could not change the session: " + error.message, "error");
+  }
+  renderSuiteHeader();
+}
+
+/** Open (or switch to) another app's tab without reloading it. */
+function openApp(tabName, url) {
+  const tab = window.open("", tabName);
+  if (!tab) {
+    window.location.href = url; // pop-ups blocked: go there in this tab
+    return;
+  }
+  if (tab.location.href === "about:blank") {
+    tab.location.href = url;
+  }
+  tab.focus();
+}
+
+/** Show or hide the ☰ menu. */
+function toggleMenu(open) {
+  const show = open === undefined ? mainMenu.hidden : open;
+  mainMenu.hidden = !show;
+  menuButton.setAttribute("aria-expanded", show ? "true" : "false");
+}
+
+/** Wire up the top bar and the menu, and start following the main page. */
+function startSuite() {
+  window.name = CONFIG.windowName; // the main page's launcher switches to this tab instead of reloading it
+  for (const app of CONFIG.suiteApps) {
+    const item = makeButton("menu-item" + (app.tab === CONFIG.windowName ? " current" : ""), app.label, () => {
+      toggleMenu(false);
+      if (app.tab !== CONFIG.windowName) {
+        openApp(app.tab, app.url);
+      }
+    });
+    suiteSubmenu.append(item);
+  }
+  const mainPage = CONFIG.suiteApps[0];
+  document.getElementById("menu-main-page").addEventListener("click", () => { toggleMenu(false); openApp(mainPage.tab, mainPage.url); });
+  document.getElementById("menu-dq-setup").addEventListener("click", () => { toggleMenu(false); openMeetSetup(); });
+  menuButton.addEventListener("click", () => toggleMenu());
+  suiteSubmenuToggle.addEventListener("click", () => {
+    suiteSubmenu.hidden = !suiteSubmenu.hidden;
+    suiteSubmenuToggle.setAttribute("aria-expanded", suiteSubmenu.hidden ? "false" : "true");
+  });
+  mainMenu.addEventListener("click", (event) => {
+    if (event.target.closest("a")) {
+      toggleMenu(false); // a download or the mic test page
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (!mainMenu.hidden && !mainMenu.contains(event.target) && event.target !== menuButton) {
+      toggleMenu(false); // a tap outside closes the menu
+    }
+  });
+  sessionSelect.addEventListener("change", onSessionChange);
+  renderSuiteHeader();
+  pollSuite();
+  setInterval(pollSuite, CONFIG.suitePollMs);
+}
+
 // --- Start up ---------------------------------------------------------------
 
 /** Wire up the page; runs once every script (including dq_view.js) has loaded. */
@@ -1599,18 +1734,7 @@ function startApp() {
   transcriptViewButton.addEventListener("click", () => setView("transcript"));
   dqViewButton.addEventListener("click", () => setView("dqs"));
   meetSelect.addEventListener("change", onMeetChange);
-  newMeetButton.addEventListener("click", () => showNewMeetForm(true));
-  cancelMeetButton.addEventListener("click", () => showNewMeetForm(false));
-  createMeetButton.addEventListener("click", createMeet);
-  sheetCreateButton.addEventListener("click", () => createMeetFromSheet(null));
-  sheetFileButton.addEventListener("click", () => sheetFile.click());
-  sheetFile.addEventListener("change", () => {
-    if (sheetFile.files.length) {
-      createMeetFromSheet(sheetFile.files[0]);
-      sheetFile.value = "";
-    }
-  });
-  editMeetButton.addEventListener("click", openMeetSetup);
+  startSuite();
   loadMeets();
   audioInputSelect.addEventListener("change", onAudioInputChange);
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {

@@ -450,7 +450,14 @@ function renderMeetView() {
   dateInput.value = meetDraft.start_date;
   dateInput.addEventListener("input", () => { meetDraft.start_date = dateInput.value; markMeetDirty(); });
   dateLabel.append(dateInput);
-  details.append(nameLabel, dateLabel, buildAutoDqsSwitch());
+  if (activeMeet.suite_meet_id) {
+    // A meet of the Admin Assistant: its name and first day are set on the main page.
+    nameInput.readOnly = true;
+    dateInput.readOnly = true;
+    details.append(nameLabel, dateLabel, makeElement("p", "note", "The name and first day come from the Admin Assistant main page (change them there)."), buildAutoDqsSwitch());
+  } else {
+    details.append(nameLabel, dateLabel, buildAutoDqsSwitch());
+  }
   page.append(details);
   page.append(buildCoachPageCard());
   page.append(buildMeetFileCard());

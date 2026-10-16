@@ -171,7 +171,7 @@ def render_slip(dq: dict[str, Any], code_rows: list[dict[str, str]], revision: s
         f'<span>CJ:{_blank(initials(dq.get("chief_judge")), "name")}</span></div>',
         f'<div class="row"><span>REFEREE:</span>{_blank(slip_referee(dq), "full name")}</div>',
         f'<div class="row"><span>NOTIFIED:</span>{_blank("")}<span>SWIMMER</span>{_blank(notified_text, "wide")}<span>COACH</span></div>',
-        f'<div class="footer"><span>{_escape(revision_label(revision))} · printed {_escape(printed_at.strftime(PRINTED_FORMAT))} by {constants.APP_NAME}</span>'
+        f'<div class="footer"><span>{_escape(revision_label(revision))} · printed {_escape(printed_at.strftime(PRINTED_FORMAT))} by {constants.APP_DISPLAY_NAME}</span>'
         f'<span class="copy">{_escape(COPY_LABEL.upper())}</span></div>',
         "</section>",
     ]

@@ -174,7 +174,7 @@ def build_meet_archive(
     with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("README.txt", README_TEXT.format(
             meet_name=meet["name"], start_date=meet["start_date"], made_at=datetime.now().strftime(LOCAL_TIME_FORMAT),
-            app=constants.APP_NAME, dq_count=len(dqs), clip_count=len(clips),
+            app=constants.APP_DISPLAY_NAME, dq_count=len(dqs), clip_count=len(clips),
             timezone=datetime.now().astimezone().tzname(),
         ))
         archive.writestr("dqs.csv", _csv_text(DQ_COLUMNS, _dq_rows(dqs)))

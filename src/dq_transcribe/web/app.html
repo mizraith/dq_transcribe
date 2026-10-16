@@ -1,9 +1,12 @@
 <!doctype html>
 <!--
-  Main page for dq_transcribe. Left column: controls and meta information
-  (audio input, level check, start/stop with a blinking REC light, meter,
-  settings, trash, downloads). Main area: the transcript grouped into
-  call/response conversations.
+  DQ Transcribe, a sub-app of the Admin Assistant. Top bar (same look as the
+  other Admin Assistant apps): the menu, the app name, the current meet and its
+  session drop-down (shared by every app, from the main page on port 8010), and
+  the views (Transcript, DQs, Trash). The menu holds the downloads, DQ's own
+  occasional items and the other apps. Left column: audio capture (what it
+  records to, input, level check, start/stop, meter, settings). Main area: the
+  transcript grouped into call/response conversations, or the DQ list.
 
   This file is a string.Template: dollar-brace placeholders are filled in by
   dq_transcribe.server.render_app_page, so never use a literal dollar sign here.
@@ -13,15 +16,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>dq_transcribe</title>
+  <title>DQ Transcribe</title>
   <style>
-    :root { --tabs-bottom: 2.5rem; --idle: #8a8f98; --rec: #e11d2e; --go: #15803d; --ink: #1f2430; --paper: #f4f5f7; --card: #ffffff; --line: #d7dbe2; }
+    :root { --header-height: 3.6rem; --tabs-bottom: 0rem; --idle: #8a8f98; --rec: #e11d2e; --go: #15803d; --ink: #1f2430; --paper: #f4f5f7; --card: #ffffff; --line: #d7dbe2; }
     body { font-family: system-ui, sans-serif; font-size: 18px; color: var(--ink); background: var(--paper); margin: 0; }
     h1 { font-size: 1.2rem; margin: 0 0 0.6rem; }
 
     /* Two columns: controls on the left (about a quarter), transcript on the right.
        Each column scrolls on its own so the controls never scroll away. */
-    #layout { display: grid; grid-template-columns: minmax(17rem, 25%) 1fr; height: 100vh; }
+    #layout { display: grid; grid-template-columns: minmax(17rem, 25%) 1fr; height: calc(100vh - var(--header-height)); }
     #controls { overflow-y: auto; padding: 0.8rem; border-right: 1px solid var(--line); background: #eceef2; }
     #transcript { overflow-y: auto; padding: 0.8rem 1rem; }
     @media (max-width: 760px) {
@@ -240,9 +243,31 @@
     .confirm-bar button { font-size: 0.95rem; padding: 0.35rem 0.8rem; }
     button.danger { color: #fff; background: var(--rec); border: 0; border-radius: 0.3rem; }
     /* Folder tabs: the active tab joins the page below it; the others sit behind. */
-    #view-tabs { position: sticky; top: -0.8rem; z-index: 3; display: flex; align-items: flex-end; gap: 0.25rem; margin: -0.8rem -1rem 0.7rem; padding: 0.5rem 1rem 0; background: #e3e6eb; border-bottom: 1px solid #9aa1ac; }
-    .view-tab { position: relative; top: 1px; font-size: 1.02rem; font-weight: 600; padding: 0.55rem 1.4rem; min-height: 2.7rem; border: 1px solid #b8bec8; border-bottom: 0; border-radius: 0.6rem 0.6rem 0 0; background: #d3d7de; color: #4b5260; }
-    .view-tab.active { background: var(--paper); color: var(--ink); border-color: #9aa1ac; font-weight: 700; padding-top: 0.7rem; box-shadow: inset 0 3px 0 var(--go); }
+    /* Top bar, as on the other Admin Assistant pages (Officials Sign-In's desk.css): menu, name, meet, session, views. */
+    #app-header { display: flex; align-items: center; gap: 0.6rem; height: var(--header-height); box-sizing: border-box; padding: 0 1rem; background: #111827; color: #fff; overflow: hidden; }
+    #app-header h1 { font-size: 1.1rem; margin: 0 0.4rem 0 0; white-space: nowrap; }
+    #suite-meet-name { font-weight: 600; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    #suite-meet-name.offline { color: #fcd34d; }
+    .menu-button { font-size: 1.4rem; min-width: 3rem; min-height: 2.6rem; padding: 0 0.7rem; border-radius: 0.6rem; border: 1px solid #4b5563; background: transparent; color: #e5e7eb; }
+    .session-picker select { min-height: 2.6rem; padding: 0.3rem 2rem 0.3rem 0.8rem; border-radius: 1.3rem; background: #fff; color: #111827; font-weight: 700; border: 0; max-width: 16rem; font-size: 1rem; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    #view-tabs { display: flex; gap: 0.35rem; margin-left: auto; }
+    .view-tab { font-size: 1rem; font-weight: 600; padding: 0 1.1rem; min-height: 2.6rem; border: 1px solid #4b5563; border-radius: 0.6rem; background: transparent; color: #e5e7eb; white-space: nowrap; }
+    .view-tab.active { background: #fff; color: #111827; border-color: #fff; font-weight: 700; }
+    .main-menu { position: fixed; top: calc(var(--header-height) - 0.2rem); left: 0.6rem; z-index: 20; display: flex; flex-direction: column; min-width: 18rem; max-height: calc(100vh - 5rem); overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-radius: 0.8rem; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25); padding: 0.4rem; }
+    .main-menu .menu-item { display: block; width: 100%; text-align: left; border: 0; border-radius: 0.5rem; background: none; min-height: 3rem; padding: 0.7rem 0.9rem; color: var(--ink); text-decoration: none; font: inherit; font-size: 1rem; box-sizing: border-box; cursor: pointer; }
+    .main-menu .menu-item:hover { background: #dbeafe; }
+    .main-menu .menu-heading { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: #555b66; padding: 0.6rem 0.9rem 0.1rem; border-top: 1px solid var(--line); margin-top: 0.3rem; }
+    .main-menu .submenu-toggle { font-weight: 700; border-top: 1px solid var(--line); border-radius: 0; margin-top: 0.3rem; }
+    .main-menu .submenu { display: flex; flex-direction: column; padding-left: 1rem; }
+    .main-menu .submenu .current { font-weight: 700; color: #1d4ed8; }
+    .main-menu .offline-meets { padding: 0.4rem 0.9rem 0.7rem; font-size: 0.9rem; color: #92400e; }
+    .main-menu .offline-meets select { display: block; width: 100%; margin-top: 0.3rem; font-size: 1rem; padding: 0.45rem; }
+    /* What the capture records to (fixed while recording, even if the display moves to another meet). */
+    #capture-target { font-size: 0.85rem; margin: 0 0 0.45rem; padding: 0.35rem 0.5rem; border-radius: 0.4rem; background: #eef2ff; color: #1e3a8a; }
+    #capture-target strong { display: block; font-size: 0.95rem; }
+    #capture-target.recording { background: #fee2e2; color: #991b1b; }
+    #capture-target .differs { display: block; margin-top: 0.25rem; font-weight: 700; color: #b45309; }
     #sheet-source { display: block; width: 100%; box-sizing: border-box; font: inherit; font-size: 0.9rem; padding: 0.4rem; border: 1px solid var(--line); border-radius: 0.4rem; resize: vertical; }
     .link-button { display: inline-block; margin-top: 0.35rem; padding: 0.2rem 0; border: 0; background: none; color: #1d4ed8; font-size: 0.85rem; text-decoration: underline; cursor: pointer; }
     /* Left column: compact, so everything fits on the tablet without scrolling. */
@@ -296,33 +321,39 @@
   </style>
 </head>
 <body>
+<header id="app-header">
+  <button id="menu-button" class="menu-button" type="button" aria-label="Menu" aria-expanded="false" aria-controls="main-menu">&#9776;</button>
+  <h1>DQ Transcribe</h1>
+  <span id="suite-meet-name"></span>
+  <label class="session-picker" id="session-picker" hidden>
+    <span class="visually-hidden">Session</span>
+    <select id="session-select" title="Current session (every Admin Assistant app)"></select>
+  </label>
+  <nav id="view-tabs" aria-label="Views">
+    <button id="transcript-view-button" class="view-tab active" type="button">Transcript</button>
+    <button id="dq-view-button" class="view-tab" type="button">DQs</button>
+    <button id="trash-view-button" class="view-tab" type="button">&#128465; Trash</button>
+  </nav>
+</header>
+<nav id="main-menu" class="main-menu" hidden>
+  <button id="menu-main-page" class="menu-item" type="button">Meets &amp; Main Page</button>
+  <div class="menu-heading">Downloads</div>
+  <a class="menu-item" href="${transcript_route}" download>Transcript (text)</a>
+  <a class="menu-item" href="${export_route}" download>All data (JSON)</a>
+  <div class="menu-heading">DQ Transcribe</div>
+  <button id="menu-dq-setup" class="menu-item" type="button">DQ meet setup (meet file, coach page, officials)&hellip;</button>
+  <a class="menu-item" href="${mic_test_route}" target="_blank">Mic test page</a>
+  <div id="offline-meets" class="offline-meets" hidden>
+    The main page is not running. Pick the meet here:
+    <select id="meet-select" aria-label="Meet (main page not running)"></select>
+  </div>
+  <button id="suite-submenu-toggle" class="menu-item submenu-toggle" type="button" aria-expanded="false">Admin Assistant &rsaquo;</button>
+  <div id="suite-submenu" class="submenu" hidden></div>
+</nav>
 <div id="layout">
 <aside id="controls">
-  <h1>dq_transcribe</h1>
-
-  <section id="meet-panel" class="panel">
-    <h2>Meet</h2>
-    <select id="meet-select" aria-label="Active meet"></select>
-    <p class="hint">New recordings are filed under this meet.</p>
-    <button id="edit-meet-button" class="wide" type="button" hidden>Meet setup: officials &amp; meet file</button>
-    <button id="new-meet-button" class="link-button" type="button">+ New meet</button>
-    <div id="new-meet-form" hidden>
-      <label for="sheet-source">From the meet sheet or Meet Manager file</label>
-      <textarea id="sheet-source" rows="2" placeholder="Paste the meet sheet's web address (a Google Doc link works) or its text"></textarea>
-      <button id="sheet-create-button" class="wide primary" type="button">Create from meet sheet</button>
-      <button id="sheet-file-button" class="link-button" type="button">or pick a file: meet sheet (PDF, Word), Hy-Tek backup (.zip) or heat sheet (PDF, HTML)</button>
-      <input id="sheet-file" type="file" hidden>
-      <p class="hint">Or type the name and first day:</p>
-      <label for="meet-name">Meet name</label>
-      <input id="meet-name" type="text" maxlength="100" placeholder="Candy Meet">
-      <label for="meet-date">First day</label>
-      <input id="meet-date" type="date">
-      <button id="create-meet-button" class="wide" type="button">Create and use this meet</button>
-      <button id="cancel-meet-button" class="wide" type="button">Cancel</button>
-    </div>
-  </section>
-
   <section id="capture-panel" class="panel" data-state="idle">
+    <p id="capture-target"></p>
     <div id="rec-row">
       <span id="rec-dot"></span>
       <span id="rec-label">Not capturing</span>
@@ -351,21 +382,9 @@
     </details>
   </section>
 
-  <section class="panel">
-    <h2>Downloads</h2>
-    <a href="${transcript_route}" download>Transcript (text)</a>
-    <a href="${export_route}" download>All data (JSON)</a>
-    <a href="${mic_test_route}">Mic test page</a>
-  </section>
 </aside>
 
 <main id="transcript">
-  <!-- The views as tabs across the top of the main area (always in reach on a tablet). -->
-  <nav id="view-tabs" aria-label="Views">
-    <button id="transcript-view-button" class="view-tab active" type="button">Transcript</button>
-    <button id="dq-view-button" class="view-tab" type="button">DQs</button>
-    <button id="trash-view-button" class="view-tab" type="button">&#128465; Trash</button>
-  </nav>
   <h2 id="view-title">Transcript</h2>
   <div id="clips"></div>
 </main>

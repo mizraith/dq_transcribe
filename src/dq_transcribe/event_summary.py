@@ -111,5 +111,5 @@ def render_event_summary(meet_name: str, event: str, dqs: list[dict[str, Any]], 
         overturned=overturned_html,
         pending=pending_html,
         printed=_escape((printed_at or datetime.now()).strftime(PRINTED_FORMAT)),
-        app_name=_escape(constants.APP_NAME),
+        app_name=_escape(constants.APP_DISPLAY_NAME),
     ).encode("utf-8")

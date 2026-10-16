@@ -130,7 +130,7 @@ def main() -> None:
     # The training meet ships with the app: create it once, in the background (it takes a few seconds).
     threading.Thread(target=_ensure_training_meet, args=(database,), daemon=True).start()
     address = f"http://{constants.SERVER_DISPLAY_HOST}:{constants.SERVER_PORT}{constants.ROUTE_HOME}"
-    print(f"{constants.APP_NAME} running. Open {address} in Chrome. Press Ctrl+C to stop.")
+    print(f"{constants.APP_DISPLAY_NAME} running. Open {address} in Chrome. Press Ctrl+C to stop.")
     try:
         web_server.serve_forever()
     except KeyboardInterrupt:
