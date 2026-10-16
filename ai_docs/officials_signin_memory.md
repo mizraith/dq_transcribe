@@ -5,6 +5,30 @@ within each section.
 
 ## Decisions
 
+- **2026-10-16 (01:00): LSC instead of zone, linked desk tabs, today's Candy Meet.**
+  - **LSC, not zone** (owner: only Pacific Swimming splits into zones; other LSCs don't).
+    `constants.LSC_NAMES` holds all 59 LSCs (USA Swimming's LSC & Zones map PDF; ME and NE
+    complete it); `DEFAULT_LSC_CODE = "PC"` (Pacific Swimming, this desk). Both sign-in
+    sheets have an **LSC drop-down** (pre-set from the card, else PC) and an editable
+    **Club** box, for when the OCR fails; the sheet's choice wins over the card. Lists
+    read "PASA · Pacific Swimming". Printouts: **Club right after Name** (to help look
+    people up), LSC column instead of Zone; the roster file gains `lsc` (zone kept).
+  - **Separate tabs, kept in step**: "Coach sign-in" opens the coaches page in its own
+    named tab (`coaches_signin`; the officials tab is `officials_signin`), reused on the
+    next click. Both use the same server and data. Changing the meet, session or demo in
+    one tab tells the other at once (`BroadcastChannel`, `desk_shared.js`
+    `Desk.announceChange` / `Desk.followChanges`); each also refreshes when shown and
+    every 20 s while in view. Checked in a browser: ~0.1-0.2 s both ways.
+  - **Start-up tabs** (`admin_assistant`), left to right: Officials Sign-In, Coaches
+    Sign-In, dq_transcribe, then the coaches' DQ view (dq_transcribe's coach page,
+    http://localhost:8020, when switched on). `start_signin.sh` opens the first two.
+  - **Today's meet set up on the tablet** (owner's request): "All Treats No Tricks Candy
+    Meet Block Party" (from dq_transcribe's loaded Meet Manager file: one session, 26
+    events, 78 heats), session "Friday PM" 2026-10-16, starts 16:45, officials meeting
+    15:45, ~3 h; it is the open meet. The two test meets ("Test 2", "Test Party") are
+    still listed; archive them from Meets when convenient.
+  - Shared web code now: `desk.css` (styles), `card_camera.js` (camera window),
+    `desk_shared.js` (LSC drop-down, club label, tab sync), `card_scanner.js` (OCR).
 - **2026-10-16 (00:50): Coaches Sign-In built here** (the owner asked for it; the separate
   chat in `ai_docs/coaches_signin_handoff.md` was not used).
   - `/coaches` ("Coach sign-in" button on the officials top bar, and in its ☰ menu; the
@@ -270,11 +294,15 @@ within each section.
 
 - The tablet's diagnostics folder holds frames with the owner's card: keep it as test
   data (owner, 2026-10-16), never copy it into the repo.
+- Coach card: which coach-only items must be current (Safety Training for Swim Coaches,
+  CPR, ...)? Needs a coach card screenshot (member ID covered).
+- Should demo / the Candy Meet session length be confirmed (3 h guessed from 78 heats)?
+- Ask whether "top of the team = Team Lead" is wanted (today the star is separate).
 - GitHub may keep the old (rewritten) commits reachable by their IDs for a while; GitHub
   Support can purge them if the owner wants.
 
-- **Test on the tablet:** camera permission, front vs back camera, scan speed and
-  accuracy in pool lighting. Ask the owner before starting the server there.
+- Test at the pool: scan speed and accuracy in pool lighting, the linked tabs on the
+  tablet's Chrome, drag and drop with a finger (only simulated in desktop Chrome).
 - Certifications tab: could it give years certified or position certifications?
   Ask for a screenshot.
 - `pyproject.toml` does not list the package data for `officials_signin` (not needed

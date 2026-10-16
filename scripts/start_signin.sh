@@ -4,7 +4,8 @@
 #   1. Keeps the tablet awake (Termux only: termux-wake-lock).
 #   2. Updates the code from GitHub (fast-forward only; never overwrites local work).
 #   3. (Re)starts the sign-in server, so it always runs the latest code.
-#   4. Opens http://localhost:8010 in the browser.
+#   4. Opens two browser tabs: Officials Sign-In (http://localhost:8010) and Coaches
+#      Sign-In (http://localhost:8010/coaches). Both use the same server and data.
 #
 # It never starts, stops or restarts dq_transcribe, its whisper servers or the
 # device agent: the two apps are independent.
@@ -28,6 +29,9 @@ REPO_DIRECTORY="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null |
 DATA_DIRECTORY="$HOME/.officials_signin"
 SERVER_LOG="$DATA_DIRECTORY/server.log"
 APP_URL="http://localhost:8010"
+COACHES_URL="$APP_URL/coaches"
+# Android can drop a second "open this URL" that arrives while Chrome is still busy.
+BROWSER_SETTLE_SECONDS=3
 SERVER_MODULE="officials_signin"
 SERVER_PATTERN="python[0-9.]* -m $SERVER_MODULE"
 SERVER_STARTUP_TIMEOUT_SECONDS=30  # generous: whisper servers may be loading models at the same time
@@ -69,13 +73,15 @@ PYTHON
   done
 }
 
+# Open one address in a browser tab (Termux, macOS or Linux); fails when none can.
 open_browser() {
+  local url="$1"
   if command -v termux-open-url >/dev/null; then
-    termux-open-url "$APP_URL"
+    termux-open-url "$url"
   elif [ "$(uname)" = "Darwin" ]; then
-    open -a "Google Chrome" "$APP_URL" 2>/dev/null || open "$APP_URL"
+    open -a "Google Chrome" "$url" 2>/dev/null || open "$url"
   elif command -v xdg-open >/dev/null; then
-    xdg-open "$APP_URL" >/dev/null 2>&1
+    xdg-open "$url" >/dev/null 2>&1
   else
     return 1
   fi
@@ -106,10 +112,12 @@ start_server() {
     exit 1
   fi
 
-  if open_browser; then
+  if open_browser "$APP_URL"; then
     say "opened $APP_URL"
+    sleep "$BROWSER_SETTLE_SECONDS"
+    open_browser "$COACHES_URL" && say "opened $COACHES_URL"
   else
-    say "open $APP_URL in Chrome"
+    say "open $APP_URL and $COACHES_URL in Chrome"
   fi
 }
 

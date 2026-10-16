@@ -111,10 +111,11 @@ function laterSessionsToday() {
   });
 }
 
+/** "PASA · Pacific Swimming · 3 yr certified" (club and LSC from the shared Desk helper). */
 function describeOfficial(official) {
   const parts = [];
-  if (official[KEYS.club]) { parts.push((official[KEYS.lsc] ? official[KEYS.lsc] + "-" : "") + official[KEYS.club]); }
-  if (official[KEYS.zone]) { parts.push(official[KEYS.zone] + " zone"); }
+  const club = window.Desk.describeClub(official);
+  if (club) { parts.push(club); }
   if (official[KEYS.yearsCertified] !== null && official[KEYS.yearsCertified] !== undefined) {
     parts.push(official[KEYS.yearsCertified] + " yr certified");
   }
@@ -165,6 +166,9 @@ function drawHeader() {
   element("coaches-link").href = ROUTES.coaches;
   element("coaches-button").hidden = !CONFIG.coachesPage;
   element("coaches-button").href = ROUTES.coaches;
+  // The coaches page opens in its own tab (the same one each time).
+  element("coaches-button").target = CONFIG.coachesTabName;
+  element("coaches-link").target = CONFIG.coachesTabName;
   const sessionQuery = "?" + KEYS.sessionId + "=" + pageState.activeSessionId;
   element("print-session-link").href = ROUTES.printSession + sessionQuery;
   element("print-meet-link").href = ROUTES.printMeet;
@@ -295,6 +299,7 @@ async function chooseSession(sessionId) {
   try {
     await postJson(ROUTES.activeSession, body);
     await refresh();
+    window.Desk.announceChange();
   } catch (error) {
     showToast(error.message, true);
   }
@@ -575,6 +580,7 @@ async function deleteSavedRow() {
     row.tr.remove();
     setupRows = setupRows.filter(function (item) { return item !== row; });
     await refresh();
+    window.Desk.announceChange();
     showToast((row.name.value || "Session") + " deleted");
   } catch (error) {
     showToast(error.message, true);
@@ -630,6 +636,7 @@ async function saveSetup() {
     await postJson(ROUTES.meetSave, body);
     closeSetup();
     await refresh();
+    window.Desk.announceChange();
     showToast("✓ " + body[KEYS.name] + (isNew ? " created" : " saved"));
   } catch (error) {
     showToast(error.message, true);
@@ -1351,6 +1358,7 @@ async function openMeet(meetId) {
     await postJson(ROUTES.meetPrefix + meetId + ROUTES.meetOpenSuffix, {});
     meetsOverlay.hidden = true;
     await refresh();
+    window.Desk.announceChange();
     showToast("✓ " + (pageState.meet ? pageState.meet[KEYS.name] : "Meet") + " open");
   } catch (error) {
     showToast(error.message, true);
@@ -1362,6 +1370,7 @@ async function openDemo() {
     await postJson(ROUTES.demoOpen, {});
     meetsOverlay.hidden = true;
     await refresh();
+    window.Desk.announceChange();
   } catch (error) {
     showToast(error.message, true);
   }
@@ -1383,6 +1392,7 @@ async function resetDemo() {
     await postJson(ROUTES.demoReset, {});
     meetsOverlay.hidden = true;
     await refresh();
+    window.Desk.announceChange();
     showToast("✓ Demo meet reset");
   } catch (error) {
     showToast("Could not reset the demo meet: " + error.message, true);
@@ -1394,6 +1404,7 @@ async function newMeetFromOverview() {
   if (pageState.demo) {
     await postJson(ROUTES.demoExit, {});
     await refresh();
+    window.Desk.announceChange();
   }
   meetsOverlay.hidden = true;
   openSetup(true);
@@ -1446,8 +1457,9 @@ function openSheet(official, card, cardResult) {
   markNameForChecking(!official && Boolean(card && card[KEYS.cardName]));
   showSheetMode(false);
   sheetYears.value = official && official[KEYS.yearsCertified] !== null ? official[KEYS.yearsCertified] : "";
-  const clubSource = card || official;
-  sheetClub.textContent = clubSource ? describeOfficial(clubSource) : "";
+  // LSC and club: from the card, else what is stored; the admin can fix either.
+  window.Desk.fillLscSelect(element("sheet-lsc"), (card && card[KEYS.lsc]) || (official && official[KEYS.lsc]));
+  sheetClub.value = (card && card[KEYS.club]) || (official && official[KEYS.club]) || "";
   drawSheetCheck();
   drawSheetRoles();
   sheetTrainee.classList.toggle("on", sheet.trainee);
@@ -1509,6 +1521,8 @@ async function saveEdit() {
   body[KEYS.yearsCertified] = years === "" ? null : Math.round(Number(years));
   body[KEYS.roles] = sheet.roles;
   body[KEYS.trainee] = sheet.trainee;
+  body[KEYS.lsc] = element("sheet-lsc").value;
+  body[KEYS.club] = sheetClub.value.trim();
   try {
     const reply = await postJson(ROUTES.signinPrefix + sheet.editSigninId + ROUTES.editSuffix, body);
     sheetOverlay.hidden = true;
@@ -1566,6 +1580,8 @@ async function submitSheet() {
   body[KEYS.roles] = sheet.roles;
   body[KEYS.trainee] = sheet.trainee;
   body[KEYS.sessionIds] = [pageState.activeSessionId].concat(sheet.laterSessionIds);
+  body[KEYS.lsc] = element("sheet-lsc").value;
+  body[KEYS.club] = sheetClub.value.trim();
   if (sheet.card) { body[KEYS.card] = sheet.card; }
   try {
     const reply = await postJson(ROUTES.signins, body);
@@ -1640,6 +1656,7 @@ element("demo-reset-confirm").addEventListener("click", resetDemo);
 element("demo-reset").addEventListener("click", function () { openMeetOverview(true); });
 element("demo-exit").addEventListener("click", async function () {
   await postJson(ROUTES.demoExit, {});
+  window.Desk.announceChange();
   window.location.reload();
 });
 element("teams-button").addEventListener("click", askBeforeTeams);
@@ -1683,6 +1700,11 @@ element("row-delete-confirm").addEventListener("click", deleteSavedRow);
 document.querySelectorAll(".sheet-close").forEach(function (closeButton) {
   closeButton.addEventListener("click", function () { element(closeButton.dataset.closes).click(); });
 });
+
+// Name this tab, so the coaches page's "Officials sign-in" comes back to it.
+window.name = CONFIG.officialsTabName;
+// Stay on the same meet and session as the coaches tab (see desk_shared.js).
+window.Desk.followChanges(refresh);
 
 refresh().then(function () {
   // "Back to Teams" from the team page: open Teams straight away (and tidy the address).

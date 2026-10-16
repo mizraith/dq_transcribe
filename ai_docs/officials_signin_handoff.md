@@ -148,7 +148,7 @@ you own that file).
 ## Working in parallel with the dq_transcribe chat
 
 - **Only touch your own files:** `src/officials_signin/`, `tests/officials_signin/`,
-  `scripts/start_signin.sh`, `ai_docs/officials_signin_*.md`,
+  `scripts/start_signin.sh`, `scripts/start_admin_assistant.sh`, `ai_docs/officials_signin_*.md`,
   `ai_docs/officials_roster_format.md`, and device tasks named
   `device_tasks/signin_*.sh`. Do not edit dq_transcribe's code or docs. If
   something there must change, tell the owner and he will relay it.
@@ -208,7 +208,16 @@ estimated session length with a rotation schedule, fixed / rotating ends, demo m
 Also done (2026-10-16 night): Meets view, table-style Meet setup, demo reset, faster
 mirrored reads, the coaches page hook (`ai_docs/coaches_signin_handoff.md`).
 
+Also done (2026-10-16, to 01:00): archive/delete meets, meet zip, ☰ menu and session
+drop-down, drag-and-drop teams with Team Lead stars, jurisdiction box with flip,
+only checked S&T officials on teams (corner officials never), per-session demo,
+**Coaches Sign-In** (`/coaches`, built here, not by a separate chat), shared web code
+(`desk.css`, `card_camera.js`, `desk_shared.js`), LSC drop-down (59 LSCs) instead of
+zones, linked officials/coaches tabs, four start-up tabs, and today's Candy Meet set up
+on the tablet.
+
 Next:
-1. Owner feedback on Meets / Meet setup and the printouts.
-2. The coaches chat may ask for changes on this side (relayed by the owner).
+1. Owner feedback from the Candy Meet (Friday 2026-10-16): sign-in at the desk, teams,
+   printouts, coaches tab.
+2. Open items in `ai_docs/officials_signin_memory.md` (coach card requirements, etc.).
 3. Keep `ai_docs/officials_signin_memory.md` and this file current before each pause.

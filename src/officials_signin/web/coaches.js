@@ -90,12 +90,9 @@ function laterSessionsToday() {
   return pageState.sessions.slice(index + 1).filter(function (session) { return session[KEYS.date] === active[KEYS.date]; });
 }
 
-/** "PC-PASA · Pacific zone" for a coach. */
+/** "PASA · Pacific Swimming" for a coach (the shared Desk helper). */
 function describeCoach(coach) {
-  const parts = [];
-  if (coach[KEYS.club]) { parts.push((coach[KEYS.lsc] ? coach[KEYS.lsc] + "-" : "") + coach[KEYS.club]); }
-  if (coach[KEYS.zone]) { parts.push(coach[KEYS.zone] + " zone"); }
-  return parts.join(" · ");
+  return window.Desk.describeClub(coach);
 }
 
 // --- Loading and drawing ---------------------------------------------------------------
@@ -255,6 +252,7 @@ async function chooseSession(sessionId) {
   try {
     await postJson(ROUTES.activeSession, body);
     await refresh();
+    window.Desk.announceChange();
   } catch (error) {
     showToast(error.message, true);
   }
@@ -297,6 +295,7 @@ function openSheet(coach, card, cardResult) {
   element("sheet-name").classList.toggle("check", needsCheck);
   element("sheet-name-hint").hidden = !needsCheck;
   element("sheet-club").value = (card && card[KEYS.club]) || (coach && coach[KEYS.club]) || "";
+  window.Desk.fillLscSelect(element("sheet-lsc"), (card && card[KEYS.lsc]) || (coach && coach[KEYS.lsc]));
   drawHeadToggle();
   drawSheetCheck();
   element("sheet-submit").textContent = "Sign in";
@@ -324,6 +323,7 @@ function openEditSheet(coach) {
   element("sheet-name").classList.remove("check");
   element("sheet-name-hint").hidden = true;
   element("sheet-club").value = coach[KEYS.club] || "";
+  window.Desk.fillLscSelect(element("sheet-lsc"), coach[KEYS.lsc]);
   drawHeadToggle();
   element("sheet-check").textContent = "";
   element("sheet-submit").textContent = "Save changes";
@@ -360,6 +360,7 @@ async function submitSheet() {
   const body = {};
   body[KEYS.name] = element("sheet-name").value.trim();
   body[KEYS.club] = element("sheet-club").value.trim();
+  body[KEYS.lsc] = element("sheet-lsc").value;
   body[KEYS.headCoach] = sheet.headCoach;
   if (!body[KEYS.name]) { showToast("Enter the coach's name", true); return; }
   try {
@@ -413,11 +414,19 @@ element("sheet-cancel").addEventListener("click", function () { sheetOverlay.hid
 element("sheet-submit").addEventListener("click", submitSheet);
 element("demo-exit").addEventListener("click", async function () {
   await postJson(ROUTES.demoExit, {});
+  window.Desk.announceChange();
   window.location.reload();
 });
 document.querySelectorAll(".sheet-close").forEach(function (closeButton) {
   closeButton.addEventListener("click", function () { element(closeButton.dataset.closes).click(); });
 });
+
+// Name this tab and send "Officials sign-in" to the officials tab (same server, same data).
+window.name = CONFIG.coachesTabName;
+element("officials-button").target = CONFIG.officialsTabName;
+element("menu-officials").target = CONFIG.officialsTabName;
+// Stay on the same meet and session as the officials tab (see desk_shared.js).
+window.Desk.followChanges(refresh);
 
 refresh().then(function () {
   if (window.CardScanner) {

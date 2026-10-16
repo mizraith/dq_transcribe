@@ -71,7 +71,6 @@ _SIGNIN_ACTIONS = (
     constants.SIGNIN_VALIDATE_SUFFIX, constants.SIGNIN_REMOVE_SUFFIX, constants.SIGNIN_EDIT_SUFFIX,
     constants.COACH_HEAD_SUFFIX,
 )
-_CLUB_MAX_LENGTH = 12
 _ready_databases: set[str] = set()
 _ready_lock = threading.Lock()
 
@@ -165,7 +164,7 @@ def save_coach(
         SigninError: For a new coach without a name, or an unknown ID.
     """
     chosen_name = (name or (reading.name if reading else None) or "").strip()[: constants.NAME_MAX_LENGTH]
-    typed_club = (club or "").strip().upper()[:_CLUB_MAX_LENGTH] or None
+    typed_club = (club or "").strip().upper()[:constants.CLUB_MAX_LENGTH] or None
     now = utc_now_iso()
     card_json = None if reading is None else json.dumps(reading.to_dict())
     with database._connect() as connection:  # noqa: SLF001
@@ -202,6 +201,19 @@ def save_coach(
             ),
         )
     return coach_id
+
+
+def _lsc_and_club(payload: dict[str, Any]) -> tuple[str | None, str | None] | None:
+    """The LSC and club chosen on the sheet, or None when not sent (same rules as officials)."""
+    from officials_signin.server import lsc_and_club_from_payload  # the server imports this module lazily
+
+    return lsc_and_club_from_payload(payload)
+
+
+def set_coach_club(database: Database, coach_id: int, lsc: str | None, club: str | None) -> None:
+    """Store the LSC and club chosen on the sign-in sheet."""
+    with database._connect() as connection:  # noqa: SLF001
+        connection.execute("UPDATE coaches SET lsc = ?, club = ?, updated_at = ? WHERE id = ?", (lsc, club, utc_now_iso(), coach_id))
 
 
 def stored_coach_validation(database: Database, coach_id: int, meet_id: int, session_date: date) -> Validation | None:
@@ -313,7 +325,7 @@ def edit_signin(database: Database, signin_id: int, name: str, club: str | None,
     clean_name = name.strip()[: constants.NAME_MAX_LENGTH]
     if not clean_name:
         raise SigninError("A name is needed")
-    clean_club = (club or "").strip().upper()[:_CLUB_MAX_LENGTH] or None
+    clean_club = (club or "").strip().upper()[:constants.CLUB_MAX_LENGTH] or None
     with database._connect() as connection:  # noqa: SLF001
         row = connection.execute("SELECT coach_id FROM coach_signins WHERE id = ?", (signin_id,)).fetchone()
         if row is None:
@@ -394,6 +406,7 @@ def render_page() -> bytes:
         "script_route": constants.ROUTE_COACHES_SCRIPT,
         "card_scanner_route": constants.ROUTE_CARD_SCANNER_SCRIPT,
         "card_camera_route": constants.ROUTE_CARD_CAMERA_SCRIPT,
+        "desk_shared_route": constants.ROUTE_DESK_SHARED_SCRIPT,
         "engine_script_route": constants.OCR_ENGINE_PATH + constants.OCR_ENGINE_SCRIPT_FILENAME,
         "officials_route": constants.ROUTE_HOME,
     })
@@ -486,11 +499,10 @@ def _sign_in(database: Database, payload: dict[str, Any]) -> dict[str, Any]:
     if coach_id is None and reading is not None:
         coach_id = find_coach_for_card(database, reading)
     name = payload.get(constants.KEY_NAME)
-    club = payload.get(constants.KEY_CLUB)
-    coach_id = save_coach(
-        database, coach_id, name if isinstance(name, str) else None, club if isinstance(club, str) else None,
-        reading, meet[constants.KEY_ID],
-    )
+    coach_id = save_coach(database, coach_id, name if isinstance(name, str) else None, None, reading, meet[constants.KEY_ID])
+    chosen = _lsc_and_club(payload)
+    if chosen is not None:
+        set_coach_club(database, coach_id, *chosen)  # the admin's choice wins over the card
     validations: dict[int, Validation] = {}
     for session_id in session_ids:
         session_date = date.fromisoformat(sessions[session_id][constants.KEY_DATE])
@@ -581,6 +593,11 @@ def handle_post(handler: Any, path: str, payload: dict[str, Any]) -> bool:
         if not isinstance(name, str) or (club is not None and not isinstance(club, str)):
             raise SigninError("A name is needed")
         found = edit_signin(database, signin_id, name, club, bool(payload.get(constants.KEY_HEAD_COACH)))
+        chosen = _lsc_and_club(payload)
+        if found and chosen is not None:
+            with database._connect() as connection:  # noqa: SLF001
+                row = connection.execute("SELECT coach_id FROM coach_signins WHERE id = ?", (signin_id,)).fetchone()
+            set_coach_club(database, row["coach_id"], *chosen)
     if not found:
         handler._send_json_error(HTTPStatus.NOT_FOUND, "Sign-in not found")  # noqa: SLF001
         return True

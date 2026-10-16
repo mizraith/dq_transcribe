@@ -47,8 +47,8 @@ meet.json              The meet and its sessions' settings.
 Member IDs are not included in any of these files.
 """
 _CSV_COLUMNS = (
-    "Session", "Date", "Name", "Roles", "Trainee", "Team", "Job", "Team Lead", "Mentor",
-    "Club", "LSC", "Zone", "Years certified", "Checked",
+    "Session", "Date", "Name", "Club", "LSC", "Roles", "Trainee", "Team", "Job", "Team Lead", "Mentor",
+    "Years certified", "Checked",
 )
 
 
@@ -75,15 +75,14 @@ def _csv_rows(session: dict[str, Any], signins: list[dict[str, Any]]) -> list[li
             session[constants.KEY_NAME],
             session[constants.KEY_DATE],
             signin[constants.KEY_NAME],
+            signin[constants.KEY_CLUB] or "",
+            signin[constants.KEY_LSC] or "",
             ", ".join(signin[constants.KEY_ROLES]),
             "yes" if signin[constants.KEY_TRAINEE] else "",
             signin[constants.KEY_TEAM] or "",
             signin[constants.KEY_ASSIGNMENT] or "",
             "yes" if signin[constants.KEY_TEAM_LEAD] else "",
             names_by_id.get(signin[constants.KEY_MENTOR_SIGNIN_ID]) or "",
-            signin[constants.KEY_CLUB] or "",
-            signin[constants.KEY_LSC] or "",
-            signin[constants.KEY_ZONE] or "",
             "" if signin[constants.KEY_YEARS_CERTIFIED] is None else signin[constants.KEY_YEARS_CERTIFIED],
             check_text(signin),
         ])
@@ -95,13 +94,13 @@ def _coaches_csv(database: Database, sessions: list[dict[str, Any]]) -> str:
     ensure_tables(database)
     text = io.StringIO()
     writer = csv.writer(text)
-    writer.writerow(("Session", "Date", "Club", "LSC", "Name", "Head coach", "Checked"))
+    writer.writerow(("Session", "Date", "Name", "Club", "LSC", "Head coach", "Checked"))
     for session in sessions:
         coaches = list_coach_signins(database, session[constants.KEY_ID])
         for coach in sorted(coaches, key=lambda item: ((item[constants.KEY_CLUB] or "~"), item[constants.KEY_NAME].lower())):
             writer.writerow((
-                session[constants.KEY_NAME], session[constants.KEY_DATE], coach[constants.KEY_CLUB] or "",
-                coach[constants.KEY_LSC] or "", coach[constants.KEY_NAME],
+                session[constants.KEY_NAME], session[constants.KEY_DATE], coach[constants.KEY_NAME],
+                coach[constants.KEY_CLUB] or "", coach[constants.KEY_LSC] or "",
                 "yes" if coach[constants.KEY_HEAD_COACH] else "", check_text(coach),
             ))
     return text.getvalue()

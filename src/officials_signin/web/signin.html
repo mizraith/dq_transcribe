@@ -93,7 +93,16 @@
           <input id="sheet-years" type="number" inputmode="numeric" min="0">
         </label>
       </div>
-      <div id="sheet-club" class="signin-detail"></div>
+      <div class="sheet-grid club-grid">
+        <label>
+          <span class="sheet-label">LSC</span>
+          <select id="sheet-lsc"></select>
+        </label>
+        <label>
+          <span class="sheet-label">Club</span>
+          <input id="sheet-club" type="text" autocomplete="off" placeholder="e.g. PASA">
+        </label>
+      </div>
       <div id="sheet-check" class="check-line"></div>
       <span class="sheet-label">Working as</span>
       <div id="sheet-roles" class="chips"></div>
@@ -271,6 +280,7 @@
   <script src="${engine_script_route}"></script>
   <script src="${card_scanner_route}"></script>
   <script src="${card_camera_route}"></script>
+  <script src="${desk_shared_route}"></script>
   <script src="${script_route}"></script>
 </body>
 </html>

@@ -49,6 +49,7 @@ def build_roster(source: dict[str, Any], generated_at: datetime | None = None) -
                     constants.KEY_TEAM_LEAD: bool(signin.get(constants.KEY_TEAM_LEAD)),
                     constants.KEY_ASSIGNMENT: signin.get(constants.KEY_ASSIGNMENT),
                     constants.KEY_MENTOR: names.get(signin.get(constants.KEY_MENTOR_SIGNIN_ID)),
+                    constants.KEY_LSC: signin.get(constants.KEY_LSC),  # added within v1 (2026-10-16)
                 }
             )
     return {

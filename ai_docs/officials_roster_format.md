@@ -26,6 +26,7 @@ officials_signin side; any change bumps `version` and is recorded below.
       "name": "Pat Example",
       "role": "Stroke & Turn Judge",
       "club": "PASA",
+      "lsc": "PC",
       "zone": "Western",
       "years_certified": 6,
       "trainee": false,
@@ -50,7 +51,8 @@ officials_signin side; any change bumps `version` and is recorded below.
 | `name` | As read from the USA Swimming card (title case, nickname in quotes, e.g. `Pat "Skip" Sample`) or as typed. |
 | `role` | Exactly one of dq_transcribe's `MEET_ROSTER_ROLES`: "Stroke & Turn Judge", "Chief Judge", "Deck Referee", "Meet Referee", "Starter", "Relay Take-off Judge", "Admin Official". (officials_signin keeps an identical `ROSTER_ROLES`; a test fails if they drift.) |
 | `club` | Club code from the card (e.g. `PASA`), or `null`. |
-| `zone` | `Eastern`, `Southern`, `Central` or `Western`, worked out from the card's LSC code, or `null`. |
+| `lsc` | Optional (added within v1, 2026-10-16). Two-letter LSC code (Local Swimming Committee, e.g. `PC` = Pacific Swimming) from the card or picked on the sign-in sheet, or `null`. This is the field to use; the owner does not track zones. |
+| `zone` | `Eastern`, `Southern`, `Central` or `Western`, worked out from the LSC code, or `null`. Kept for compatibility; the sign-in app no longer shows it. |
 | `years_certified` | Whole number or `null` (typed once, then stored as a starting year so it ages automatically). |
 | `trainee` | `true` for a trainee, who must be paired with a certified official. |
 | `validated` | `true` once membership, background check and athlete protection training are confirmed current for the session date. |

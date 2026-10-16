@@ -40,12 +40,14 @@ PAGE_FILENAME = "signin.html"
 SCRIPT_FILENAME = "signin.js"
 CARD_SCANNER_SCRIPT_FILENAME = "card_scanner.js"
 CARD_CAMERA_SCRIPT_FILENAME = "card_camera.js"
+DESK_SHARED_SCRIPT_FILENAME = "desk_shared.js"
 
 # Routes.
 ROUTE_HOME = "/"
 ROUTE_SCRIPT = "/signin.js"
 ROUTE_CARD_SCANNER_SCRIPT = "/card_scanner.js"
 ROUTE_CARD_CAMERA_SCRIPT = "/card_camera.js"  # the camera window shared by the officials and coaches pages
+ROUTE_DESK_SHARED_SCRIPT = "/desk_shared.js"  # LSC drop-down and club label, shared by both pages
 ROUTE_VENDOR_PREFIX = "/vendor/"
 ROUTE_STATE = "/api/state"  # GET: active meet, sessions, sign-ins
 ROUTE_MEETS = "/api/meets"  # GET: every meet (Meet overview); POST: create a meet (and make it active)
@@ -442,6 +444,38 @@ LSC_CODES_BY_ZONE = {
 }
 ZONE_BY_LSC_CODE = {code: zone for zone, codes in LSC_CODES_BY_ZONE.items() for code in codes}
 
+# --- LSC names (Local Swimming Committees) ----------------------------------------
+# Shown instead of zones (owner, 2026-10-16: only Pacific Swimming splits into zones;
+# other LSCs do not, so the LSC is what matters). Codes and names from USA Swimming's
+# "Local Swimming Committees & Zones" map
+# (https://www.usaswimming.org/docs/default-source/governance/lsc-maps/lsc-zone-map.pdf,
+# checked 2026-10-16); Maine (ME) and New England (NE) complete the 59. The card shows
+# the code: "LSC & Club: PC - PASA".
+LSC_NAMES = {
+    "AD": "Adirondack Swimming", "AK": "Alaska Swimming", "AM": "Allegheny Mountain Swimming",
+    "AR": "Arkansas Swimming", "AZ": "Arizona Swimming", "BD": "Border Swimming",
+    "CA": "Southern California Swimming", "CC": "Central California Swimming", "CO": "Colorado Swimming",
+    "CT": "Connecticut Swimming", "FG": "Florida Gold Coast Swimming", "FL": "Florida Swimming",
+    "GA": "Georgia Swimming", "GU": "Gulf Swimming", "HI": "Hawaiian Swimming", "IA": "Iowa Swimming",
+    "IE": "Inland Empire Swimming", "IL": "Illinois Swimming", "IN": "Indiana Swimming",
+    "KY": "Kentucky Swimming", "LA": "Louisiana Swimming", "LE": "Lake Erie Swimming",
+    "MA": "Middle Atlantic Swimming", "MD": "Maryland Swimming", "ME": "Maine Swimming",
+    "MI": "Michigan Swimming", "MN": "Minnesota Swimming", "MR": "Metropolitan Swimming",
+    "MS": "Mississippi Swimming", "MT": "Montana Swimming", "MV": "Missouri Valley Swimming",
+    "MW": "Midwestern Swimming", "NC": "North Carolina Swimming", "ND": "North Dakota Swimming",
+    "NE": "New England Swimming", "NI": "Niagara Swimming", "NJ": "New Jersey Swimming",
+    "NM": "New Mexico Swimming", "NT": "North Texas Swimming", "OH": "Ohio Swimming",
+    "OK": "Oklahoma Swimming", "OR": "Oregon Swimming", "OZ": "Ozark Swimming", "PC": "Pacific Swimming",
+    "PN": "Pacific Northwest Swimming", "PV": "Potomac Valley Swimming", "SC": "South Carolina Swimming",
+    "SD": "South Dakota Swimming", "SE": "Southeastern Swimming", "SI": "San Diego-Imperial Swimming",
+    "SN": "Sierra Nevada Swimming", "SR": "Snake River Swimming", "ST": "South Texas Swimming",
+    "UT": "Utah Swimming", "VA": "Virginia Swimming", "WI": "Wisconsin Swimming",
+    "WT": "West Texas Swimming", "WV": "West Virginia Swimming", "WY": "Wyoming Swimming",
+}
+# The LSC this desk is in: pre-selected on the sign-in sheet when the card did not give one.
+DEFAULT_LSC_CODE = "PC"
+CLUB_MAX_LENGTH = 12
+
 # --- Sessions ---------------------------------------------------------------------
 # Choices for the session type drop-down; "Other…" lets the admin type their own.
 SESSION_TYPES = ("Timed Finals", "Prelims", "Finals", "AM", "PM", "A", "B", "C")
@@ -556,6 +590,15 @@ ROUTE_COACHES = "/coaches"  # GET: the coaches sign-in page
 ROUTE_COACHES_PREFIX = "/coaches/"  # GET: the coaches page's own files
 ROUTE_COACHES_API_PREFIX = "/api/coaches/"  # GET/POST: the coaches page's API
 COACHES_APP_TITLE = "Coaches Sign-In"
+# Each desk page names its browser tab, so "Coach sign-in" / "Officials sign-in" switch to
+# the tab already open instead of opening another (both use the same server and data).
+OFFICIALS_TAB_NAME = "officials_signin"
+COACHES_TAB_NAME = "coaches_signin"
+# The two desk tabs tell each other when the meet, session or demo changed (see
+# desk_shared.js); each also refreshes every so often while in view.
+DESK_CHANNEL_NAME = "officials_signin_desk"
+DESK_CHANGED_MESSAGE = "meet-or-session-changed"
+DESK_REFRESH_SECONDS = 20
 COACHES_PAGE_FILENAME = "coaches.html"
 COACHES_SCRIPT_FILENAME = "coaches.js"
 ROUTE_COACHES_SCRIPT = "/coaches/coaches.js"

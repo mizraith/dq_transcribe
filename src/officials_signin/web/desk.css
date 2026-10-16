@@ -91,6 +91,9 @@ header .header-button { background: transparent; color: #e5e7eb; border-color: #
 .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 .sheet-label { display: block; margin: 0.9rem 0 0.4rem; color: var(--muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.04em; }
 .sheet-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 0.6rem; }
+.sheet-grid.club-grid { grid-template-columns: 2fr 1fr; }
+.sheet-grid.name-only { grid-template-columns: 1fr; }
+.sheet-grid select, .sheet-grid input { width: 100%; }
 .check-line { margin-top: 0.4rem; font-weight: 600; }
 .check-line.ok { color: var(--go); }
 .check-line.warn { color: var(--warn); }

@@ -145,12 +145,13 @@ def _session_table(signins: list[dict[str, Any]], compact: bool) -> str:
     """The officials of one session as an HTML table, sorted by name."""
     names_by_id = {signin[constants.KEY_ID]: signin[constants.KEY_NAME] for signin in signins}
     ordered = sorted(signins, key=lambda signin: signin[constants.KEY_NAME].lower())
+    # Club right after the name, to help look people up (owner, 2026-10-16); LSC, not zone.
     if compact:
-        header = "<tr><th class='number'>#</th><th>Name</th><th>Role(s)</th><th>Team / job</th><th>Club</th></tr>"
+        header = "<tr><th class='number'>#</th><th>Name</th><th>Club</th><th>Role(s)</th><th>Team / job</th></tr>"
     else:
         header = (
-            "<tr><th class='number'>#</th><th>Name</th><th>Role(s)</th><th>Team / job</th>"
-            "<th>Club</th><th>Zone</th><th class='number'>Yrs</th><th>Check</th></tr>"
+            "<tr><th class='number'>#</th><th>Name</th><th>Club</th><th>Role(s)</th><th>Team / job</th>"
+            "<th>LSC</th><th class='number'>Yrs</th><th>Check</th></tr>"
         )
     rows = []
     for number, signin in enumerate(ordered, start=1):
@@ -160,15 +161,15 @@ def _session_table(signins: list[dict[str, Any]], compact: bool) -> str:
         cells = [
             f"<td class='number'>{number}</td>",
             f"<td>{escape(signin[constants.KEY_NAME])}</td>",
+            f"<td>{escape(signin[constants.KEY_CLUB] or _NO_VALUE)}</td>",
             f"<td>{escape(roles)}</td>",
             f"<td class='wrap'>{escape(placement_text(signin, names_by_id)) or _NO_VALUE}</td>",
-            f"<td>{escape(signin[constants.KEY_CLUB] or _NO_VALUE)}</td>",
         ]
         if not compact:
             years = signin[constants.KEY_YEARS_CERTIFIED]
             check = check_text(signin)
             cells += [
-                f"<td>{escape(signin[constants.KEY_ZONE] or _NO_VALUE)}</td>",
+                f"<td>{escape(signin[constants.KEY_LSC] or _NO_VALUE)}</td>",
                 f"<td class='number'>{_NO_VALUE if years is None else years}</td>",
                 f"<td class='{'' if signin[constants.KEY_VALIDATED] else 'needs'}'>{escape(check)}</td>",
             ]
@@ -317,21 +318,21 @@ def render_team_display(
 
 
 def _coaches_table(coaches: list[dict[str, Any]], compact: bool) -> str:
-    """Coaches of one session by club (head coaches first in each club), as a table."""
+    """Coaches of one session, sorted by club (head coaches first in each club), as a table."""
     ordered = sorted(
         coaches,
         key=lambda coach: ((coach[constants.KEY_CLUB] or "~").lower(), not coach[constants.KEY_HEAD_COACH],
                            coach[constants.KEY_NAME].lower()),
     )
-    header = "<tr><th>Club</th><th>Name</th><th>Head coach</th>" + ("" if compact else "<th>Check</th>") + "</tr>"
+    header = (
+        "<tr><th>Name</th><th>Club</th><th>LSC</th><th>Head coach</th>" + ("" if compact else "<th>Check</th>") + "</tr>"
+    )
     rows = []
     for coach in ordered:
-        club = coach[constants.KEY_CLUB] or _NO_VALUE
-        if coach[constants.KEY_LSC] and coach[constants.KEY_CLUB]:
-            club = f"{coach[constants.KEY_LSC]}-{coach[constants.KEY_CLUB]}"
         cells = [
-            f"<td>{escape(club)}</td>",
             f"<td>{escape(coach[constants.KEY_NAME])}</td>",
+            f"<td>{escape(coach[constants.KEY_CLUB] or _NO_VALUE)}</td>",
+            f"<td>{escape(coach[constants.KEY_LSC] or _NO_VALUE)}</td>",
             f"<td>{'★ Head coach' if coach[constants.KEY_HEAD_COACH] else ''}</td>",
         ]
         if not compact:
@@ -339,7 +340,7 @@ def _coaches_table(coaches: list[dict[str, Any]], compact: bool) -> str:
             cells.append(f"<td class='{needs}'>{escape(check_text(coach))}</td>")
         rows.append("<tr>" + "".join(cells) + "</tr>")
     if not rows:
-        rows.append("<tr><td colspan='4'>No coaches signed in.</td></tr>")
+        rows.append("<tr><td colspan='5'>No coaches signed in.</td></tr>")
     return f"<table class='{'compact' if compact else ''}'><thead>{header}</thead><tbody>{''.join(rows)}</tbody></table>"
 
 

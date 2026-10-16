@@ -32,6 +32,7 @@
   <script src="${engine_script_route}"></script>
   <script src="${card_scanner_route}"></script>
   <script src="${card_camera_route}"></script>
+  <script src="${desk_shared_route}"></script>
 </head>
 <body>
   <div id="demo-banner" hidden>
@@ -89,11 +90,17 @@
   <div class="overlay" id="sheet-overlay" hidden>
     <div class="sheet">
       <button class="sheet-close" type="button" data-closes="sheet-cancel" aria-label="Close">✕</button>
-      <div class="sheet-grid">
+      <div class="sheet-grid name-only">
         <label>
           <span class="sheet-label">Name</span>
           <input id="sheet-name" type="text" autocomplete="off">
           <span id="sheet-name-hint" class="name-hint" hidden>Read by the camera: check the spelling</span>
+        </label>
+      </div>
+      <div class="sheet-grid club-grid">
+        <label>
+          <span class="sheet-label">LSC</span>
+          <select id="sheet-lsc"></select>
         </label>
         <label>
           <span class="sheet-label">Club</span>

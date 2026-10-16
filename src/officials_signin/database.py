@@ -708,6 +708,23 @@ class Database:
             )
         return official_id
 
+    def set_official_club(self, official_id: int, lsc: str | None, club: str | None) -> None:
+        """Store the LSC and club chosen on the sign-in sheet (the admin's choice wins over the card's).
+
+        Args:
+            official_id: The official.
+            lsc: Two-letter LSC code (``constants.LSC_NAMES``), or None for none.
+            club: Club code as on the card (``PASA``), or None for none.
+        """
+        with self._connect() as connection:
+            connection.execute("UPDATE officials SET lsc = ?, club = ? WHERE id = ?", (lsc, club, official_id))
+
+    def official_for_signin(self, signin_id: int) -> int | None:
+        """The official a sign-in belongs to, or None."""
+        with self._connect() as connection:
+            row = connection.execute("SELECT official_id FROM signins WHERE id = ?", (signin_id,)).fetchone()
+        return None if row is None else int(row["official_id"])
+
     def stored_card_validation(self, official_id: int, meet_id: int, session_date: date) -> Validation | None:
         """Reuse a card check made earlier at the same meet, if it still passes.
 

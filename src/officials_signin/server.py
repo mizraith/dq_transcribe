@@ -219,6 +219,14 @@ def build_web_config() -> dict[str, Any]:
         "demoResetWarningSeconds": constants.DEMO_RESET_WARNING_SECONDS,
         "assignmentShortLabels": constants.ASSIGNMENT_SHORT_LABELS,
         "assignmentRelief": constants.ASSIGNMENT_RELIEF,
+        "officialsTabName": constants.OFFICIALS_TAB_NAME,
+        "coachesTabName": constants.COACHES_TAB_NAME,
+        "deskChannelName": constants.DESK_CHANNEL_NAME,
+        "deskChangedMessage": constants.DESK_CHANGED_MESSAGE,
+        "deskRefreshSeconds": constants.DESK_REFRESH_SECONDS,
+        "lscChoices": [[code, constants.LSC_NAMES[code]] for code in sorted(constants.LSC_NAMES, key=constants.LSC_NAMES.get)],
+        "lscNames": constants.LSC_NAMES,
+        "defaultLsc": constants.DEFAULT_LSC_CODE,
         "openQueryKey": constants.OPEN_QUERY_KEY,
         "openTeamsValue": constants.OPEN_TEAMS_VALUE,
         "coachesPage": _coaches_module() is not None,
@@ -362,6 +370,7 @@ def render_page() -> bytes:
             "script_route": constants.ROUTE_SCRIPT,
             "card_scanner_route": constants.ROUTE_CARD_SCANNER_SCRIPT,
             "card_camera_route": constants.ROUTE_CARD_CAMERA_SCRIPT,
+            "desk_shared_route": constants.ROUTE_DESK_SHARED_SCRIPT,
             "engine_script_route": constants.OCR_ENGINE_PATH + constants.OCR_ENGINE_SCRIPT_FILENAME,
         },
     )
@@ -410,6 +419,21 @@ def resolve_vendor_file(url_path: str) -> Path | None:
     if vendor_root not in candidate.parents or not candidate.is_file():
         return None
     return candidate
+
+
+def lsc_and_club_from_payload(payload: dict[str, Any]) -> tuple[str | None, str | None] | None:
+    """The LSC and club chosen on a sign-in sheet, or None when the sheet did not send them.
+
+    Raises:
+        SigninError: For an LSC code that is not one of USA Swimming's 59.
+    """
+    if constants.KEY_LSC not in payload and constants.KEY_CLUB not in payload:
+        return None
+    lsc = str(payload.get(constants.KEY_LSC) or "").strip().upper() or None
+    if lsc is not None and lsc not in constants.LSC_NAMES:
+        raise SigninError("Unknown LSC")
+    club = str(payload.get(constants.KEY_CLUB) or "").strip().upper()[: constants.CLUB_MAX_LENGTH] or None
+    return lsc, club
 
 
 def card_reading_from_payload(payload: Any) -> CardReading | None:
@@ -492,10 +516,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_page())
         elif path == constants.ROUTE_SCRIPT:
             self._send_bytes(HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.SCRIPT_FILENAME))
-        elif path == constants.ROUTE_CARD_CAMERA_SCRIPT:
-            self._send_bytes(
-                HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.CARD_CAMERA_SCRIPT_FILENAME)
+        elif path in (constants.ROUTE_CARD_CAMERA_SCRIPT, constants.ROUTE_DESK_SHARED_SCRIPT):
+            filename = (
+                constants.CARD_CAMERA_SCRIPT_FILENAME if path == constants.ROUTE_CARD_CAMERA_SCRIPT
+                else constants.DESK_SHARED_SCRIPT_FILENAME
             )
+            self._send_bytes(HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(filename))
         elif path == constants.ROUTE_CARD_SCANNER_SCRIPT:
             self._send_bytes(
                 HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.CARD_SCANNER_SCRIPT_FILENAME)
@@ -782,6 +808,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             date.today(),
         )
 
+        chosen_club = lsc_and_club_from_payload(payload)
+        if chosen_club is not None:
+            database.set_official_club(official_id, *chosen_club)
+
         validations: dict[int, Validation] = {}
         for session_id in session_ids:
             session_date = date.fromisoformat(sessions_by_id[session_id][constants.KEY_DATE])
@@ -817,6 +847,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         merged = self.database.edit_signin(
             signin_id, name, years, [str(role) for role in roles], bool(payload.get(constants.KEY_TRAINEE)), date.today()
         )
+        chosen_club = lsc_and_club_from_payload(payload)
+        official_id = self.database.official_for_signin(signin_id)
+        if chosen_club is not None and official_id is not None:
+            self.database.set_official_club(official_id, *chosen_club)
         LOGGER.info("Edited sign-in %d (%d duplicate record(s) merged)", signin_id, merged)
         self._send_json(HTTPStatus.OK, {constants.KEY_OK: True, constants.KEY_MERGED: merged})
 

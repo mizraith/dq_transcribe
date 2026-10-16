@@ -152,6 +152,37 @@ class CoachesServerTests(unittest.TestCase):
         coaches_csv = zipfile.ZipFile(io.BytesIO(body)).read("real-meet/coaches.csv").decode()
         self.assertIn("Avery Agegroup", coaches_csv)
 
+    def test_lsc_and_club_from_the_sheet(self) -> None:
+        status, reply = self.post(constants.ROUTE_COACHES_SIGNINS, {
+            constants.KEY_NAME: "Casey Coach", constants.KEY_CLUB: "tvsc", constants.KEY_LSC: "SN",
+        })
+        self.assertEqual(status, 200, reply)
+        coach = self.state()[constants.KEY_COACHES][0]
+        self.assertEqual((coach[constants.KEY_LSC], coach[constants.KEY_CLUB]), ("SN", "TVSC"))
+        status, _ = self.post(constants.ROUTE_COACHES_SIGNINS, {constants.KEY_NAME: "Bad", constants.KEY_LSC: "XX"})
+        self.assertEqual(status, 400)
+
+    def test_officials_sheet_lsc_and_club_win_over_the_card(self) -> None:
+        _, reading = self.post(constants.ROUTE_CARD_READING, {constants.KEY_TEXTS: [CLEAN_CARD_TEXT] * 2})
+        status, reply = self.post(constants.ROUTE_SIGNINS, {
+            constants.KEY_ROLES: [constants.TEAM_POOL_ROLE], constants.KEY_CARD: reading[constants.KEY_CARD],
+            constants.KEY_LSC: "SN", constants.KEY_CLUB: "TVSC",
+        })
+        self.assertEqual(status, 200, reply)
+        signin = self.database.list_signins(self.morning)[0]
+        self.assertEqual((signin[constants.KEY_LSC], signin[constants.KEY_CLUB]), ("SN", "TVSC"))
+        _, page, _ = self.request("GET", constants.ROUTE_PRINT_SESSION)
+        header = page[page.index(b"<thead>"):page.index(b"</thead>")]
+        self.assertLess(header.index(b"Name"), header.index(b"Club"))
+        self.assertLess(header.index(b"Club"), header.index(b"Role"))
+        self.assertIn(b"LSC", header)
+        self.assertNotIn(b"Zone", header)
+
+    def test_all_59_lscs(self) -> None:
+        self.assertEqual(len(constants.LSC_NAMES), 59)
+        self.assertEqual(constants.LSC_NAMES[constants.DEFAULT_LSC_CODE], "Pacific Swimming")
+        self.assertEqual(set(constants.LSC_NAMES), set(constants.ZONE_BY_LSC_CODE))
+
     def test_deleting_a_session_removes_its_coaches(self) -> None:
         self.sign_in_by_name("Casey Coach", "PASA")
         self.database.delete_session(self.morning)
