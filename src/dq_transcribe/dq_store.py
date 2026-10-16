@@ -25,6 +25,7 @@ import copy
 import json
 import re
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from dq_transcribe import constants
@@ -145,6 +146,10 @@ class DqStore:
             existing = {row["name"] for row in connection.execute("PRAGMA table_info(dq_infractions)")}
             if "code_options" not in existing:
                 connection.execute("ALTER TABLE dq_infractions ADD COLUMN code_options TEXT")
+            existing = {row["name"] for row in connection.execute("PRAGMA table_info(dqs)")}
+            for column, column_type in _ADDED_DQ_COLUMNS.items():
+                if column not in existing:
+                    connection.execute(f"ALTER TABLE dqs ADD COLUMN {column} {column_type}")
 
     # --- Detected calls ------------------------------------------------------
 
@@ -324,28 +329,89 @@ class DqStore:
                 (entry["swimmer"], entry["club"] or None, dq_id),
             )
 
-    def change_state(self, dq_id: int, state: str, by_name: str | None = None, note: str | None = None) -> bool:
+    def change_state(
+        self, dq_id: int, state: str, by_name: str | None = None, note: str | None = None, at: str | None = None
+    ) -> bool:
         """Move a DQ to a new state, recording who and when in the history.
+
+        Some states record more:
+
+        * ``notified``: when and by whom (``notified_at``, ``notified_by``).
+        * ``protested``: when the protest came in (``at``, default now) and the
+          protest count. A protest after the window (30 minutes from the call) or
+          beyond the cycle limit is accepted only with a reason in ``note``: the
+          app never makes it impossible, it asks why.
+        * ``upheld`` / ``overturned``: who ruled (``ruled_by``).
+
+        Args:
+            dq_id: The DQ.
+            state: One of ``constants.DQ_STATES``.
+            by_name: Who made the change (a person or, for notification, a channel).
+            note: Free text kept in the history (required for late or extra protests).
+            at: When it happened, ISO text (default: now).
 
         Returns:
             False if there is no such DQ.
 
         Raises:
-            DqError: If the state is unknown.
+            DqError: If the state or time is invalid, or a late/extra protest has no reason.
         """
         if state not in constants.DQ_STATES:
             raise DqError(f"Unknown state {state!r}")
+        when = _parse_time(at) if at else datetime.now(timezone.utc)
+        when_text = when.isoformat(timespec="seconds")
         with self._database.transaction() as connection:
-            row = connection.execute("SELECT state FROM dqs WHERE id = ?", (dq_id,)).fetchone()
+            row = connection.execute("SELECT state, protest_count FROM dqs WHERE id = ?", (dq_id,)).fetchone()
             if row is None:
                 return False
-            now = utc_now_iso()
-            connection.execute("UPDATE dqs SET state = ?, updated_at = ? WHERE id = ?", (state, now, dq_id))
+            extra = ""
+            values: list[Any] = []
+            if state == constants.DQ_STATE_NOTIFIED:
+                extra, values = ", notified_at = ?, notified_by = ?", [when_text, by_name]
+            elif state == constants.DQ_STATE_PROTESTED:
+                count = row["protest_count"] or 0
+                deadline = _protest_deadline(_call_time(connection, dq_id))
+                if not note and count >= constants.MAX_PROTEST_CYCLES:
+                    raise DqError(f"This DQ already had {count} protests (limit {constants.MAX_PROTEST_CYCLES}). Add a reason to accept another.")
+                if not note and deadline is not None and when > deadline:
+                    raise DqError(f"The protest window closed at {_local_clock(deadline)}. Add a reason to accept a late protest.")
+                extra, values = ", protested_at = ?, protest_count = ?", [when_text, count + 1]
+            elif state in (constants.DQ_STATE_UPHELD, constants.DQ_STATE_OVERTURNED):
+                extra, values = ", ruled_by = ?", [by_name]
+            connection.execute(f"UPDATE dqs SET state = ?, updated_at = ?{extra} WHERE id = ?", (state, utc_now_iso(), *values, dq_id))
             connection.execute(
                 "INSERT INTO dq_history (dq_id, at, from_state, to_state, by_name, note) VALUES (?, ?, ?, ?, ?, ?)",
-                (dq_id, now, row["state"], state, by_name, note),
+                (dq_id, when_text, row["state"], state, by_name, note),
             )
             return True
+
+    def notify_event(self, meet_id: int | None, event: str, by_name: str | None, include_not_ready: bool = False) -> list[int]:
+        """Notify every DQ of an event that is pending notification (the paper process:
+        slips go to the coaches once all of the event's DQs are complete).
+
+        Args:
+            meet_id: The meet.
+            event: The event number.
+            by_name: Who or what notified (see ``constants.NOTIFIED_BY_OPTIONS``).
+            include_not_ready: Notify the ready ones even though others in the
+                event are still called or incomplete.
+
+        Returns:
+            The ids of the DQs notified.
+
+        Raises:
+            DqError: If the event is not ready (and ``include_not_ready`` is false) or has nothing to notify.
+        """
+        dqs = [dq for dq in self.list_dqs(meet_id) if (dq["event"] or "") == event]
+        ready = [dq for dq in dqs if dq["status"] == constants.DQ_STATUS_PENDING_NOTIFICATION]
+        waiting = [dq for dq in dqs if dq["status"] in (constants.DQ_STATUS_CALLED, constants.DQ_STATUS_INCOMPLETE)]
+        if waiting and not include_not_ready:
+            raise DqError(f"Event {event} is not ready: {len(waiting)} DQ(s) still called or incomplete")
+        if not ready:
+            raise DqError(f"Event {event} has no DQs pending notification")
+        for dq in ready:
+            self.change_state(dq["id"], constants.DQ_STATE_NOTIFIED, by_name)
+        return [dq["id"] for dq in ready]
 
     def list_dqs(self, meet_id: int | None) -> list[dict[str, Any]]:
         """A meet's DQs (all DQs if None), sorted by event, heat, lane, with infractions, evidence and history."""
@@ -384,6 +450,10 @@ class DqStore:
                     )
                 )
                 _suggest_codes(dq, heard)
+                call_time = _call_time(connection, dq["id"])
+                deadline = _protest_deadline(call_time)
+                dq["call_time"] = call_time.isoformat(timespec="seconds") if call_time else None
+                dq["protest_deadline"] = deadline.isoformat(timespec="seconds") if deadline else None
                 dq["missing"] = missing_fields(dq)
                 dq["status"] = dq_status(dq["state"], dq["missing"])
                 dq["history"] = [
@@ -433,6 +503,53 @@ def _text_fields(payload: dict[str, Any]) -> dict[str, str | None]:
             raise DqError(f"{name} is too long")
         fields[name] = text or None
     return fields
+
+
+# Columns added to dqs after the first release (added on start-up if missing).
+_ADDED_DQ_COLUMNS = {
+    "notified_at": "TEXT", "notified_by": "TEXT", "protested_at": "TEXT",
+    "protest_count": "INTEGER NOT NULL DEFAULT 0", "ruled_by": "TEXT",
+}
+
+
+def _parse_time(text: str) -> datetime:
+    """Read an ISO time (a time without a zone is taken as this device's local time)."""
+    try:
+        moment = datetime.fromisoformat(text)
+    except (TypeError, ValueError) as error:
+        raise DqError(f"Not a time: {text!r}") from error
+    return moment.astimezone(timezone.utc) if moment.tzinfo else moment.astimezone().astimezone(timezone.utc)
+
+
+def _call_time(connection: sqlite3.Connection, dq_id: int) -> datetime | None:
+    """When the DQ was called on the radio: the earliest evidence (clip start + offset).
+
+    It stands in for the race time, which starts the protest window.
+    """
+    times = []
+    for row in connection.execute(
+        "SELECT COALESCE(c.started_at, c.created_at) AS clip_start, e.start_seconds FROM dq_evidence e "
+        "JOIN clips c ON c.id = e.clip_id WHERE e.dq_id = ?",
+        (dq_id,),
+    ):
+        try:
+            start = datetime.fromisoformat(row["clip_start"])
+        except (TypeError, ValueError):
+            continue
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        times.append(start + timedelta(seconds=row["start_seconds"] or 0))
+    return min(times) if times else None
+
+
+def _protest_deadline(call_time: datetime | None) -> datetime | None:
+    """When the protest window closes (rulebook 102.22.4: 30 minutes from the race)."""
+    return call_time + timedelta(minutes=constants.PROTEST_WINDOW_MINUTES) if call_time else None
+
+
+def _local_clock(moment: datetime) -> str:
+    """A time as this device shows it, 12-hour ("5:42 PM")."""
+    return moment.astimezone().strftime(constants.CLOCK_FORMAT_12_HOUR).lstrip("0")
 
 
 def _event_label(event: dict[str, Any] | None) -> str | None:

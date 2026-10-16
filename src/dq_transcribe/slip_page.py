@@ -36,7 +36,7 @@ DETAIL_SEPARATOR = " "
 REVISION_LABEL_FORMAT = "rev. ({month}/{year:02d})"
 PRINTED_FORMAT = "%m/%d/%Y %I:%M %p"
 SLIP_TEMPLATE_PATH = Path(__file__).parent / constants.WEB_DIRECTORY_NAME / constants.SLIP_PAGE_FILENAME
-NOTIFIED_TIME_FORMAT = "%I:%M %p"
+NOTIFIED_TIME_FORMAT = constants.CLOCK_FORMAT_12_HOUR
 
 
 def revision_label(revision: str) -> str:
@@ -149,9 +149,9 @@ def render_slip(dq: dict[str, Any], code_rows: list[dict[str, str]], revision: s
     parts = [
         '<section class="slip">',
         f"<h1>{_escape(SLIP_TITLE.upper())}</h1>",
-        f'<div class="row"><span>EVENT#{_blank(dq.get("event"), "wide")}</span><span>HEAT{_blank(dq.get("heat"), "wide")}</span>'
-        f'<span>LANE{_blank(dq.get("lane"), "wide")}</span></div>',
-        f'<div class="row"><span>SWIMMER</span>{_blank(swimmer, "full")}<span>TEAM{_blank(dq.get("club"), "wide")}</span></div>',
+        f'<div class="row header-row"><span>EVENT#{_blank(dq.get("event"), "wide big")}</span><span>HEAT{_blank(dq.get("heat"), "wide big")}</span>'
+        f'<span>LANE{_blank(dq.get("lane"), "wide big")}</span></div>',
+        f'<div class="row header-row"><span>SWIMMER</span>{_blank(swimmer, "full big")}<span>TEAM{_blank(dq.get("club"), "wide big")}</span></div>',
     ]
     for section, rows in sections.items():
         parts.append(_render_section(section, rows, marks, other_text.get(section, []), phases.get(section, set())))

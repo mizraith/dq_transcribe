@@ -100,6 +100,45 @@ if __name__ == "__main__":
     unittest.main()
 
 
+    def _complete_dq(self, event: str, lane: str, accepted: bool = True, evidence: list | None = None) -> int:
+        """A DQ with every required field (pending notification once accepted)."""
+        return self.store.create_dq(
+            {"event": event, "heat": "1", "lane": lane, "swimmer": "Pat Lee", "club": "PASA", "official": "Red",
+             "referee": "Sam Ortiz", "accepted": accepted, "infractions": [{"description": "One hand touch"}],
+             "evidence": evidence or []},
+            None,
+        )
+
+    def test_notify_event_waits_for_every_dq(self) -> None:
+        first = self._complete_dq("12", "1")
+        second = self._complete_dq("12", "2", accepted=False)  # still called
+        with self.assertRaises(DqError):
+            self.store.notify_event(None, "12", "Chief Judge")
+        self.assertEqual(self.store.notify_event(None, "12", "Chief Judge", include_not_ready=True), [first])
+        self.store.change_state(second, constants.DQ_STATE_ACCEPTED)
+        self.assertEqual(self.store.notify_event(None, "12", "HTML Publish"), [second])
+        dqs = {dq["id"]: dq for dq in self.store.list_dqs(None)}
+        self.assertEqual((dqs[first]["notified_by"], dqs[second]["status"]), ("Chief Judge", constants.DQ_STATUS_NOTIFIED))
+        self.assertIsNotNone(dqs[first]["notified_at"])
+
+    def test_protest_window_and_cycle_limit(self) -> None:
+        utterance_ids = self._add_transcribed_clip(["Event 12, heat 1, lane 1, one hand touch."])
+        evidence = [{"clip_id": 1, "utterance_id": utterance_ids[0], "start_seconds": 0.0, "end_seconds": 4.0, "role": "call"}]
+        dq_id = self._complete_dq("12", "1", evidence=evidence)  # called at 01:00 UTC on 2026-10-14
+        dq = self.store.list_dqs(None)[0]
+        self.assertEqual(dq["protest_deadline"], "2026-10-14T01:30:00+00:00")
+        self.store.change_state(dq_id, constants.DQ_STATE_NOTIFIED, "Chief Judge")
+        self.store.change_state(dq_id, constants.DQ_STATE_PROTESTED, at="2026-10-14T01:20:00+00:00")
+        self.store.change_state(dq_id, constants.DQ_STATE_UPHELD, "Deck Referee")
+        with self.assertRaises(DqError):  # late, no reason
+            self.store.change_state(dq_id, constants.DQ_STATE_PROTESTED, at="2026-10-14T01:45:00+00:00")
+        self.store.change_state(dq_id, constants.DQ_STATE_PROTESTED, note="coach was at the other end", at="2026-10-14T01:45:00+00:00")
+        self.store.change_state(dq_id, constants.DQ_STATE_OVERTURNED, "Meet Referee")
+        with self.assertRaises(DqError):  # past the 2-protest limit, no reason
+            self.store.change_state(dq_id, constants.DQ_STATE_PROTESTED, at="2026-10-14T01:25:00+00:00")
+        dq = self.store.list_dqs(None)[0]
+        self.assertEqual((dq["protest_count"], dq["ruled_by"], dq["status"]), (2, "Meet Referee", constants.DQ_STATUS_OVERTURNED))
+
 class DqStatusTests(unittest.TestCase):
     """Accepted DQs split into incomplete and pending notification."""
 
@@ -114,5 +153,6 @@ class DqStatusTests(unittest.TestCase):
         self.assertEqual(dq_status(constants.DQ_STATE_NOTIFIED, []), constants.DQ_STATUS_NOTIFIED)
         self.assertEqual(list(constants.DQ_STATUS_LABELS), [
             constants.DQ_STATUS_CALLED, constants.DQ_STATUS_INCOMPLETE, constants.DQ_STATUS_PENDING_NOTIFICATION,
-            constants.DQ_STATUS_NOTIFIED, constants.DQ_STATUS_DECLINED,
+            constants.DQ_STATUS_NOTIFIED, constants.DQ_STATUS_PROTESTED, constants.DQ_STATUS_UPHELD,
+            constants.DQ_STATUS_OVERTURNED, constants.DQ_STATUS_DECLINED,
         ])

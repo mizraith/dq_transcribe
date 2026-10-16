@@ -158,8 +158,21 @@ def build_web_config() -> dict[str, Any]:
         "dqStates": {
             "called": constants.DQ_STATE_CALLED, "accepted": constants.DQ_STATE_ACCEPTED,
             "notified": constants.DQ_STATE_NOTIFIED, "declined": constants.DQ_STATE_DECLINED,
+            "protested": constants.DQ_STATE_PROTESTED, "upheld": constants.DQ_STATE_UPHELD,
+            "overturned": constants.DQ_STATE_OVERTURNED,
         },
         "dqStatusLabels": constants.DQ_STATUS_LABELS,
+        "statesAfterNotification": list(constants.DQ_STATES_AFTER_NOTIFICATION),
+        "notifiedByOptions": list(constants.NOTIFIED_BY_OPTIONS),
+        "protestRuledByOptions": list(constants.PROTEST_RULED_BY_OPTIONS),
+        "maxProtestCycles": constants.MAX_PROTEST_CYCLES,
+        "protestWindowMinutes": constants.PROTEST_WINDOW_MINUTES,
+        "notifyEventRoute": constants.ROUTE_NOTIFY_EVENT,
+        "byKey": constants.REQUEST_KEY_BY,
+        "noteKey": constants.REQUEST_KEY_NOTE,
+        "atKey": constants.REQUEST_KEY_AT,
+        "eventKey": constants.REQUEST_KEY_EVENT,
+        "includeNotReadyKey": constants.REQUEST_KEY_INCLUDE_NOT_READY,
         "dqRequiredFields": list(constants.DQ_REQUIRED_FIELDS),
         "racePhases": list(constants.RACE_PHASES),
         "sectionAbbreviations": constants.SLIP_SECTION_ABBREVIATIONS,
@@ -401,6 +414,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_create_dq()
         elif path == constants.ROUTE_DISMISS_CANDIDATE:
             self._handle_dismiss_candidate()
+        elif path == constants.ROUTE_NOTIFY_EVENT:
+            self._handle_notify_event()
         elif (match := _DQ_STATE_PATTERN.match(path)) is not None:
             self._handle_dq_state(int(match.group(1)))
         elif (match := _DQ_PATTERN.match(path)) is not None:
@@ -701,12 +716,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         by_name = payload.get(constants.REQUEST_KEY_BY)
         note = payload.get(constants.REQUEST_KEY_NOTE)
+        at = payload.get(constants.REQUEST_KEY_AT)
         try:
             found = self.server.dq_store.change_state(
                 dq_id,
                 str(payload.get(constants.REQUEST_KEY_STATE)),
-                by_name if isinstance(by_name, str) else None,
-                note if isinstance(note, str) else None,
+                by_name if isinstance(by_name, str) and by_name.strip() else None,
+                note.strip() if isinstance(note, str) and note.strip() else None,
+                at if isinstance(at, str) and at else None,
             )
         except DqError as error:
             self._send_json_error(HTTPStatus.BAD_REQUEST, str(error))
@@ -715,6 +732,24 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json_error(HTTPStatus.NOT_FOUND, "No such DQ")
             return
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _handle_notify_event(self) -> None:
+        """Notify an event's DQs that are pending notification: {"event", "by", "include_not_ready"}."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        by_name = payload.get(constants.REQUEST_KEY_BY)
+        try:
+            notified = self.server.dq_store.notify_event(
+                self.server.database.get_active_meet_id(),
+                str(payload.get(constants.REQUEST_KEY_EVENT) or ""),
+                by_name if isinstance(by_name, str) and by_name.strip() else None,
+                bool(payload.get(constants.REQUEST_KEY_INCLUDE_NOT_READY)),
+            )
+        except DqError as error:
+            self._send_json_error(HTTPStatus.CONFLICT, str(error))
+            return
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_NOTIFIED: notified})
 
     def _handle_dismiss_candidate(self) -> None:
         """Hide a detected call."""

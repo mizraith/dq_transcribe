@@ -26,6 +26,11 @@ const ROSTER_SUGGESTIONS = {
 const MAX_CODE_CHIPS = 4;
 const DQ_FILTER_ALL = "all";
 const DQ_FILTER_STORAGE_KEY = "dq_transcribe.dqFilter";
+const DQ_GROUP_STORAGE_KEY = "dq_transcribe.dqGroupByEvent";
+const NOTIFIED_BY_STORAGE_KEY = "dq_transcribe.notifiedBy";
+// Protest statuses get a filter button only once some DQ has them (fewer buttons on deck).
+const DQ_STATUSES_SHOWN_WHEN_EMPTY = ["called", "incomplete", "pending_notification", "notified", "declined"];
+const MINUTE_MS = 60 * 1000;
 
 let candidatesByGroup = new Map(); // group id -> detected calls not yet turned into DQs
 let candidatesSignature = "";
@@ -34,6 +39,7 @@ let expandedDqId = null; // the DQ whose edit panel is open
 let dqsSignature = "";
 let dqCount = 0;
 let dqFilter = loadDqFilter(); // a status from CONFIG.dqStatusLabels, or DQ_FILTER_ALL
+let dqGroupByEvent = loadSetting(DQ_GROUP_STORAGE_KEY, "false") === "true";
 let flashDqId = null; // the DQ just changed, highlighted once when the list is redrawn
 // State buttons in the editor, in order (labels say what tapping does when not current).
 const DQ_STATE_BUTTONS = [
@@ -223,6 +229,25 @@ async function refreshDqView(force) {
   }
 }
 
+/** A small setting remembered on this tablet (falls back to the default if storage is unavailable). */
+function loadSetting(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : value;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+/** Remember a small setting on this tablet (silently skipped if storage is unavailable). */
+function saveSetting(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (error) {
+    // Not remembered; it still applies now.
+  }
+}
+
 /** The status filter remembered on this tablet (falls back to showing all). */
 function loadDqFilter() {
   try {
@@ -256,15 +281,122 @@ function buildDqFilterBar(dqs) {
   };
   addButton(DQ_FILTER_ALL, "All", dqs.length);
   for (const [status, label] of Object.entries(CONFIG.dqStatusLabels)) {
-    addButton(status, label, dqs.filter((dq) => dq.status === status).length);
+    const count = dqs.filter((dq) => dq.status === status).length;
+    if (count || DQ_STATUSES_SHOWN_WHEN_EMPTY.includes(status) || dqFilter === status) {
+      addButton(status, label, count);
+    }
   }
+  const group = makeButton("dq-group-toggle" + (dqGroupByEvent ? " on" : ""), (dqGroupByEvent ? "\u2713 " : "") + "Group by event", () => {
+    dqGroupByEvent = !dqGroupByEvent;
+    saveSetting(DQ_GROUP_STORAGE_KEY, String(dqGroupByEvent));
+    forceRefresh();
+  });
+  group.setAttribute("aria-pressed", dqGroupByEvent ? "true" : "false");
+  bar.append(group);
   return bar;
+}
+
+/** The person or channel that notified, remembered between events. */
+function buildNotifiedByPicker() {
+  const select = document.createElement("select");
+  select.className = "notified-by";
+  CONFIG.notifiedByOptions.forEach((option) => select.append(new Option(option, option)));
+  select.value = loadSetting(NOTIFIED_BY_STORAGE_KEY, CONFIG.notifiedByOptions[0]);
+  select.addEventListener("change", () => saveSetting(NOTIFIED_BY_STORAGE_KEY, select.value));
+  return select;
+}
+
+/**
+ * How far an event is: every DQ of the event that is not declined counts.
+ * Returns {ready, waiting, called, incomplete, notified, total, label, kind}.
+ */
+function eventReadiness(eventDqs) {
+  const live = eventDqs.filter((dq) => dq.state !== CONFIG.dqStates.declined);
+  const count = (status) => live.filter((dq) => dq.status === status).length;
+  const result = {
+    ready: count("pending_notification"),
+    called: count("called"),
+    incomplete: count("incomplete"),
+    notified: live.filter((dq) => CONFIG.statesAfterNotification.includes(dq.state)).length,
+    total: live.length,
+  };
+  result.waiting = result.called + result.incomplete;
+  if (result.total === 0) {
+    result.kind = "declined";
+    result.label = "All declined";
+  } else if (result.notified === result.total) {
+    result.kind = "done";
+    result.label = "\u2713 All notified";
+  } else if (result.waiting) {
+    result.kind = "waiting";
+    result.label = "Waiting on " + [result.called ? result.called + " called" : "", result.incomplete ? result.incomplete + " incomplete" : ""].filter(Boolean).join(", ");
+  } else {
+    result.kind = "ready";
+    result.label = "Ready to notify (" + result.ready + ")";
+  }
+  return result;
+}
+
+/** The header of one event in the grouped list: readiness, Notify and Print. */
+function buildEventHeader(event, eventDqs) {
+  const header = makeElement("div", "event-header");
+  const readiness = eventReadiness(eventDqs);
+  const title = makeElement("div", "event-title");
+  title.append(makeElement("strong", "", "Event " + (event || "?")));
+  const label = eventDqs.find((dq) => dq.event_label);
+  if (label) {
+    title.append(makeElement("span", "dq-event-label", " " + label.event_label));
+  }
+  title.append(makeElement("span", "event-readiness " + readiness.kind, readiness.label));
+  header.append(title);
+  const actions = makeElement("div", "event-actions");
+  if (readiness.ready && event) {
+    const notifiedBy = buildNotifiedByPicker();
+    actions.append(makeElement("span", "muted", "Notified by"), notifiedBy);
+    if (readiness.waiting) {
+      actions.append(makeButton("", "Notify the " + readiness.ready + " ready now", () => notifyEvent(event, notifiedBy.value, true)));
+    } else {
+      actions.append(makeButton("notify-event", "Notify event (" + readiness.ready + ")", () => notifyEvent(event, notifiedBy.value, false)));
+    }
+  }
+  if (event && readiness.total) {
+    actions.append(makeButton("dq-print", "\ud83d\udda8 Event slips", () => openSlips(CONFIG.eventQueryKey, event)));
+  }
+  header.append(actions);
+  return header;
+}
+
+/** Notify an event's DQs that are pending notification. */
+async function notifyEvent(event, notifiedBy, includeNotReady) {
+  const body = {};
+  body[CONFIG.eventKey] = event;
+  body[CONFIG.byKey] = notifiedBy;
+  body[CONFIG.includeNotReadyKey] = includeNotReady;
+  try {
+    const reply = await postJson(CONFIG.notifyEventRoute, body);
+    notify("\u2713 Event " + event + ": " + reply.notified.length + " DQ(s) notified (" + notifiedBy + ")");
+  } catch (error) {
+    notify("Could not notify event " + event + ": " + error.message, "error");
+  }
+  forceRefresh();
 }
 
 /** Draw the filter bar and the DQ list, sorted by event, heat and lane (the server sorts). */
 function renderDqList(dqs) {
   const shown = dqFilter === DQ_FILTER_ALL ? dqs : dqs.filter((dq) => dq.status === dqFilter);
-  const cards = shown.map((dq) => buildDqCard(dq));
+  const cards = [];
+  if (dqGroupByEvent) {
+    // One block per event (in event order); readiness counts all of the event's DQs, not just the filtered ones.
+    const events = [...new Set(shown.map((dq) => dq.event || ""))];
+    for (const event of events) {
+      const block = makeElement("section", "event-group");
+      block.append(buildEventHeader(event, dqs.filter((dq) => (dq.event || "") === event)));
+      shown.filter((dq) => (dq.event || "") === event).forEach((dq) => block.append(buildDqCard(dq)));
+      cards.push(block);
+    }
+  } else {
+    shown.forEach((dq) => cards.push(buildDqCard(dq)));
+  }
   if (dqs.length === 0) {
     cards.push(makeElement("p", "note", "No DQs yet for this meet. Create them from the detected calls in the transcript."));
   } else if (cards.length === 0) {
@@ -286,6 +418,12 @@ function buildDqCard(dq) {
   summary.append(makeElement("span", "badge dq-status-badge status-" + dq.status, CONFIG.dqStatusLabels[dq.status] || dq.status));
   if (dq.missing.length && dq.state !== CONFIG.dqStates.declined) {
     summary.append(makeElement("span", "dq-missing", "missing: " + dq.missing.join(", ")));
+  }
+  if (dq.state === CONFIG.dqStates.notified) {
+    const protestWindow = protestWindowText(dq);
+    if (protestWindow && protestWindow.open) {
+      summary.append(makeElement("span", "protest-countdown", protestWindow.text.replace("Protest window closes", "protest window:")));
+    }
   }
   if (dq.swimmer || dq.club) {
     summary.append(makeElement("span", "muted", " · " + [dq.swimmer, dq.club].filter(Boolean).join(", ")));
@@ -524,6 +662,9 @@ function buildDqEditor(dq) {
     status.append(button);
   }
   editor.append(status);
+  if (CONFIG.statesAfterNotification.includes(dq.state)) {
+    editor.append(buildProtestPanel(dq));
+  }
   const history = dq.history.map((item) => formatTime(new Date(item.at)) + " " + item.to_state + (item.by_name ? " (" + item.by_name + ")" : "")).join(" → ");
   editor.append(makeElement("p", "note", "History: " + history));
 
@@ -545,6 +686,80 @@ function fillRoleFromRoster(editor) {
       role.value = entry.role;
     }
   });
+}
+
+/** "closes 5:42 PM (12 min left)" or "closed at 5:42 PM", from the DQ's protest deadline. */
+function protestWindowText(dq) {
+  if (!dq.protest_deadline) {
+    return null;
+  }
+  const deadline = new Date(dq.protest_deadline);
+  const minutesLeft = Math.ceil((deadline - Date.now()) / MINUTE_MS);
+  return minutesLeft > 0
+    ? { open: true, text: "Protest window closes " + formatTime(deadline) + " (" + minutesLeft + " min left)" }
+    : { open: false, text: "Protest window closed at " + formatTime(deadline) };
+}
+
+/** "17:05" for a time input, now. */
+function currentClockValue() {
+  const now = new Date();
+  return String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+}
+
+/** Today's local date with a time input's value, as ISO text without a zone (the server reads it as local time). */
+function localIsoFromClock(clockValue) {
+  const now = new Date();
+  const date = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+  return date + "T" + clockValue + ":00";
+}
+
+/**
+ * Protest controls for a notified DQ: record a protest (with the time it came in),
+ * then the ruling (Upheld / Overturned, and who ruled). A late protest or one past
+ * the cycle limit asks for a reason instead of being refused.
+ */
+function buildProtestPanel(dq) {
+  const panel = makeElement("div", "protest-panel");
+  const protestWindow = protestWindowText(dq);
+  const count = dq.protest_count || 0;
+  if (dq.state === CONFIG.dqStates.protested) {
+    panel.append(makeElement("div", "protest-line", "Protested at " + formatTime(new Date(dq.protested_at)) + " (protest " + count + " of " + CONFIG.maxProtestCycles + "). Ruling:"));
+    const row = makeElement("div", "protest-row");
+    const ruledBy = document.createElement("select");
+    CONFIG.protestRuledByOptions.forEach((option) => ruledBy.append(new Option(option, option)));
+    ruledBy.value = CONFIG.protestRuledByOptions[Math.min(count, CONFIG.protestRuledByOptions.length) - 1] || CONFIG.protestRuledByOptions[0];
+    row.append(makeElement("span", "muted", "by"), ruledBy);
+    row.append(makeButton("ruling upheld", "Upheld (DQ stands)", () => changeDqState(dq, CONFIG.dqStates.upheld, null, ruledBy.value)));
+    row.append(makeButton("ruling overturned", "Overturned", () => changeDqState(dq, CONFIG.dqStates.overturned, null, ruledBy.value)));
+    panel.append(row);
+    return panel;
+  }
+  if (protestWindow) {
+    panel.append(makeElement("div", "protest-window " + (protestWindow.open ? "open" : "closed"), protestWindow.text));
+  }
+  const row = makeElement("div", "protest-row");
+  const time = document.createElement("input");
+  time.type = "time";
+  time.value = currentClockValue();
+  const needsReason = count >= CONFIG.maxProtestCycles || (protestWindow && !protestWindow.open);
+  const reason = document.createElement("input");
+  reason.type = "text";
+  reason.className = "protest-reason";
+  reason.placeholder = count >= CONFIG.maxProtestCycles ? "Reason to accept another protest (required)" : "Reason to accept a late protest (required)";
+  row.append(makeElement("span", "", count ? "Another protest at" : "Coach protested at"), time);
+  if (needsReason) {
+    row.append(reason);
+  }
+  row.append(makeButton("protest-button", "Record protest", () => {
+    if (needsReason && !reason.value.trim()) {
+      notify("Add a reason first (the protest is late or past the limit).", "error");
+      reason.focus();
+      return;
+    }
+    changeDqState(dq, CONFIG.dqStates.protested, null, null, reason.value.trim(), localIsoFromClock(time.value));
+  }));
+  panel.append(row);
+  return panel;
 }
 
 /** Open printable slips in a new tab (``key`` is the ids or event query key). */
@@ -588,9 +803,21 @@ async function saveDq(dq, editor) {
  * Change a DQ's state (recorded in its history). Edits in the open editor are
  * saved first, so tapping "Mark accepted" after editing does not lose them.
  */
-async function changeDqState(dq, state, editor) {
+async function changeDqState(dq, state, editor, by, note, at) {
   const body = {};
   body[CONFIG.stateKey] = state;
+  if (state === CONFIG.dqStates.notified && !by) {
+    by = loadSetting(NOTIFIED_BY_STORAGE_KEY, CONFIG.notifiedByOptions[0]);
+  }
+  if (by) {
+    body[CONFIG.byKey] = by;
+  }
+  if (note) {
+    body[CONFIG.noteKey] = note;
+  }
+  if (at) {
+    body[CONFIG.atKey] = at;
+  }
   const label = eventHeatLane(dq);
   try {
     if (editor) {

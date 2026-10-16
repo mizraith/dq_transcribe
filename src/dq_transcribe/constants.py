@@ -181,7 +181,29 @@ DQ_STATE_CALLED = "called"
 DQ_STATE_ACCEPTED = "accepted"
 DQ_STATE_NOTIFIED = "notified"  # the coach has been told (slip handed over, or published)
 DQ_STATE_DECLINED = "declined"
-DQ_STATES = (DQ_STATE_CALLED, DQ_STATE_ACCEPTED, DQ_STATE_NOTIFIED, DQ_STATE_DECLINED)
+DQ_STATE_PROTESTED = "protested"  # a coach protested; the referee is deciding
+DQ_STATE_UPHELD = "upheld"  # the DQ stands after a protest
+DQ_STATE_OVERTURNED = "overturned"  # the DQ was overturned (kept for the paper trail, never deleted)
+DQ_STATES = (
+    DQ_STATE_CALLED, DQ_STATE_ACCEPTED, DQ_STATE_NOTIFIED, DQ_STATE_PROTESTED, DQ_STATE_UPHELD,
+    DQ_STATE_OVERTURNED, DQ_STATE_DECLINED,
+)
+# States after the coach was told (an event counts as notified when all its DQs are in one of these).
+DQ_STATES_AFTER_NOTIFICATION = (DQ_STATE_NOTIFIED, DQ_STATE_PROTESTED, DQ_STATE_UPHELD, DQ_STATE_OVERTURNED)
+# Protests (rulebook 102.22.4): the window runs from the race; the call time stands in for the race time.
+PROTEST_WINDOW_MINUTES = 30
+MAX_PROTEST_CYCLES = 2  # stated by the owner; a setting, never a hard stop (late/over-limit protests need a reason)
+# Who (or what) notified the coach.
+NOTIFIED_BY_OPTIONS = (
+    "Admin Official", "Chief Judge", "Deck Referee", "Meet Referee", "Printed slip", "HTML Publish", "SMS Push", "None Required",
+)
+# Who rules on a protest: the first protest usually goes to the Deck Referee, a second to the Meet Referee.
+PROTEST_RULED_BY_OPTIONS = ("Deck Referee", "Meet Referee", "Review committee")
+REQUEST_KEY_AT = "at"  # ISO time the state change happened (default: now), e.g. when a protest came in
+REQUEST_KEY_EVENT = "event"
+REQUEST_KEY_INCLUDE_NOT_READY = "include_not_ready"
+ROUTE_NOTIFY_EVENT = "/api/events/notify"  # POST {"event", "by", "include_not_ready"}
+RESPONSE_KEY_NOTIFIED = "notified"
 # Fields a DQ needs before the coach can be notified ("infraction" = at least one).
 DQ_REQUIRED_FIELDS = ("event", "heat", "lane", "swimmer", "club", "official", "referee")
 DQ_REQUIRED_INFRACTION = "infraction"
@@ -191,12 +213,18 @@ DQ_STATUS_CALLED = "called"
 DQ_STATUS_INCOMPLETE = "incomplete"  # accepted, information still missing
 DQ_STATUS_PENDING_NOTIFICATION = "pending_notification"  # accepted and complete; coach not told yet
 DQ_STATUS_NOTIFIED = "notified"
+DQ_STATUS_PROTESTED = "protested"
+DQ_STATUS_UPHELD = "upheld"
+DQ_STATUS_OVERTURNED = "overturned"
 DQ_STATUS_DECLINED = "declined"
 DQ_STATUS_LABELS = {  # in workflow order (the filter buttons use this order)
     DQ_STATUS_CALLED: "Called",
     DQ_STATUS_INCOMPLETE: "Incomplete",
     DQ_STATUS_PENDING_NOTIFICATION: "Pending notification",
     DQ_STATUS_NOTIFIED: "Notified",
+    DQ_STATUS_PROTESTED: "Protested",
+    DQ_STATUS_UPHELD: "Upheld",
+    DQ_STATUS_OVERTURNED: "Overturned",
     DQ_STATUS_DECLINED: "Declined",
 }
 DQ_SOURCE_AUTO = "auto"  # created from a detected call
@@ -317,6 +345,7 @@ EXPORT_DOWNLOAD_FILENAME = "dq_transcribe_export.json"
 # Owner preference: 12-hour clock (US standard) on all screens and printouts.
 USE_12_HOUR_CLOCK = True
 TRANSCRIPT_TIME_FORMAT = "%I:%M:%S %p"
+CLOCK_FORMAT_12_HOUR = "%I:%M %p"
 
 # JSON keys shared by the server and the web pages.
 RESPONSE_KEY_SAVED_AS = "saved_as"
