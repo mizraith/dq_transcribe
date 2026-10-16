@@ -1,0 +1,12 @@
+task: 20261016T000328Z_install_notify
+started: 2026-10-15T17:03:50-07:00
+finished: 2026-10-15T17:03:54-07:00
+work_repo_commit: 4c74b41
+exit_code: 0
+--- output ---
+running 4c74b41
+2026-10-15 17:03:53,175 whisper-server ready: ggml-base
+2026-10-15 17:03:53,684 whisper-server ready: ggml-small.en
+slip page status 200
+font status 200
+7 DQs {'pending_notification': 1, 'incomplete': 5, 'declined': 1}
