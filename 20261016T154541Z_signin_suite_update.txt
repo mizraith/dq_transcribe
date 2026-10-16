@@ -1,0 +1,19 @@
+task: 20261016T154541Z_signin_suite_update
+started: 2026-10-16T08:45:55-07:00
+finished: 2026-10-16T08:45:55-07:00
+work_repo_commit: ada7a68
+exit_code: 0
+--- output ---
+code: ada7a68 device task: 20261016T154541Z_signin_suite_update
+main page ready after 0 s
+/officials 200
+/coaches 200
+/home.js 200
+/meets.js 200
+/roster.json 200
+added 10/14 Test id 4
+current: {'id': 3, 'name': 'All Treats No Tricks Candy Meet Block Party', 'start_date': '2026-10-16'} | session: ['Friday PM']
+meet: All Treats No Tricks Candy Meet Block Party 2026-10-16 sessions 1 signed in 0 
+meet: Test 2 2026-10-15 sessions 2 signed in 3 
+meet: Test Party 2026-10-15 sessions 1 signed in 1 
+meet: 10/14 Test 2026-10-14 sessions 1 signed in 0 
