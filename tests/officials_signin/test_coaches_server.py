@@ -69,7 +69,7 @@ class CoachesServerTests(unittest.TestCase):
     def test_page_and_state_share_the_meet(self) -> None:
         status, page, _ = self.request("GET", constants.ROUTE_COACHES)
         self.assertEqual(status, 200)
-        self.assertIn(b"COACHES", page)
+        self.assertIn(constants.COACHES_APP_TITLE.encode(), page)
         state = self.state()
         self.assertEqual(state[constants.KEY_MEET][constants.KEY_NAME], "Real Meet")
         self.assertEqual([s[constants.KEY_NAME] for s in state[constants.KEY_SESSIONS]], ["Friday AM", "Friday PM"])

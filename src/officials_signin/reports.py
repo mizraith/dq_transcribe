@@ -28,7 +28,7 @@ _PAGE = """<!doctype html>
 <link rel="stylesheet" href="{stylesheet}">
 </head>
 <body class="{body_class}">
-<div class="toolbar"><button type="button" onclick="window.print()">Print</button>{extra_links}<a href="/">Back to sign-in</a></div>
+<div class="toolbar"><button type="button" onclick="window.print()">Print</button>{extra_links}<a href="{back_route}">{back_label}</a></div>
 {body}
 <div class="footer">Printed {printed}</div>
 </body>
@@ -59,7 +59,15 @@ _STANDALONE_PAGE = """<!doctype html>
 _STYLESHEET_PATH = Path(__file__).parent / "web" / constants.PRINT_STYLESHEET_FILENAME
 
 
-def _page(title: str, body: str, body_class: str = "", extra_links: str = "", standalone: bool = False) -> bytes:
+def _page(
+    title: str,
+    body: str,
+    body_class: str = "",
+    extra_links: str = "",
+    standalone: bool = False,
+    back_route: str = constants.ROUTE_OFFICIALS_PAGE,
+    back_label: str = "Back to sign-in",
+) -> bytes:
     """Wrap a page body in the shared HTML shell.
 
     Args:
@@ -67,6 +75,8 @@ def _page(title: str, body: str, body_class: str = "", extra_links: str = "", st
         body: The page body (already escaped HTML).
         body_class: CSS class for ``<body>``.
         extra_links: More toolbar links, as HTML.
+        back_route: Where the toolbar's "back" link goes (the page that opened this one).
+        back_label: Its text.
         standalone: For a saved file (the meet zip): the stylesheet inside the page and
             no toolbar, so it opens on any computer without the app.
     """
@@ -80,6 +90,8 @@ def _page(title: str, body: str, body_class: str = "", extra_links: str = "", st
         ).encode("utf-8")
     return _PAGE.format(
         extra_links=extra_links,
+        back_route=back_route,
+        back_label=escape(back_label),
         title=escape(title),
         stylesheet=constants.ROUTE_PRINT_STYLESHEET,
         body_class=body_class,
@@ -312,7 +324,7 @@ def render_team_display(
         f"{schedule}</div></div>"
     )
     back_to_teams = (
-        f"<a href='/?{constants.OPEN_QUERY_KEY}={constants.OPEN_TEAMS_VALUE}'>Back to Teams</a>"
+        f"<a href='{constants.ROUTE_OFFICIALS_PAGE}?{constants.OPEN_QUERY_KEY}={constants.OPEN_TEAMS_VALUE}'>Back to Teams</a>"
     )
     return _page(title, body, body_class="display", extra_links=back_to_teams, standalone=standalone)
 
@@ -371,7 +383,8 @@ def render_coaches_session(
     title = f"{meet[constants.KEY_NAME]}: {session[constants.KEY_NAME]}"
     subtitle = session_subtitle(session, len(coaches)).rsplit(" · ", 1)[0] + " · " + _coach_counts_text(coaches)
     body = f"<h1>{escape(title)}: coaches</h1><p class='subtitle'>{escape(subtitle)}</p>{_coaches_table(coaches, compact=False)}"
-    return _page(title + " (coaches)", body, standalone=standalone)
+    return _page(title + " (coaches)", body, standalone=standalone,
+                 back_route=constants.ROUTE_COACHES, back_label="Back to coaches")
 
 
 def render_coaches_meet(
@@ -395,7 +408,8 @@ def render_coaches_meet(
         for session, coaches in sessions
     ]
     body = f"<h1>{escape(meet[constants.KEY_NAME])}: coaches</h1>" + "".join(blocks)
-    return _page(meet[constants.KEY_NAME] + " (coaches)", body, standalone=standalone)
+    return _page(meet[constants.KEY_NAME] + " (coaches)", body, standalone=standalone,
+                 back_route=constants.ROUTE_COACHES, back_label="Back to coaches")
 
 
 def jurisdiction_box(view: dict[str, Any]) -> str:

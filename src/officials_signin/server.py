@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import importlib
 import json
 import logging
@@ -112,6 +113,8 @@ def build_web_config() -> dict[str, Any]:
             "demoReset": constants.ROUTE_DEMO_RESET,
             "meetPrefix": constants.ROUTE_MEET_PREFIX,
             "meetSave": constants.ROUTE_MEET_SAVE,
+            "home": constants.ROUTE_HOME,
+            "officialsPage": constants.ROUTE_OFFICIALS_PAGE,
             "coaches": constants.ROUTE_COACHES,
             "meetOpenSuffix": constants.MEET_OPEN_SUFFIX,
             "meetArchiveSuffix": constants.MEET_ARCHIVE_SUFFIX,
@@ -219,8 +222,12 @@ def build_web_config() -> dict[str, Any]:
         "demoResetWarningSeconds": constants.DEMO_RESET_WARNING_SECONDS,
         "assignmentShortLabels": constants.ASSIGNMENT_SHORT_LABELS,
         "assignmentRelief": constants.ASSIGNMENT_RELIEF,
-        "officialsTabName": constants.OFFICIALS_TAB_NAME,
-        "coachesTabName": constants.COACHES_TAB_NAME,
+        "suiteTitle": constants.SUITE_TITLE,
+        "suiteApps": [dict(app) for app in constants.SUITE_APPS],
+        "homeAppKey": constants.HOME_APP_KEY,
+        "meetsMenuLabel": constants.MEETS_MENU_LABEL,
+        "officialsAppKey": constants.OFFICIALS_APP_KEY,
+        "coachesAppKey": constants.COACHES_APP_KEY,
         "deskChannelName": constants.DESK_CHANNEL_NAME,
         "deskChangedMessage": constants.DESK_CHANGED_MESSAGE,
         "deskRefreshSeconds": constants.DESK_REFRESH_SECONDS,
@@ -360,8 +367,22 @@ def _is_coaches_path(path: str) -> bool:
     )
 
 
+def render_home_page() -> bytes:
+    """Render the Admin Assistant main page (launcher and meets)."""
+    return _render(
+        constants.HOME_PAGE_FILENAME,
+        {
+            "suite_title": constants.SUITE_TITLE,
+            "desk_stylesheet_route": constants.ROUTE_DESK_STYLESHEET,
+            "desk_shared_route": constants.ROUTE_DESK_SHARED_SCRIPT,
+            "meets_script_route": constants.ROUTE_MEETS_SCRIPT,
+            "script_route": constants.ROUTE_HOME_SCRIPT,
+        },
+    )
+
+
 def render_page() -> bytes:
-    """Render the sign-in page."""
+    """Render the Officials Sign-In page."""
     return _render(
         constants.PAGE_FILENAME,
         {
@@ -495,6 +516,41 @@ class RequestHandler(BaseHTTPRequestHandler):
         morsel = cookie.get(constants.DEMO_COOKIE_NAME)
         return morsel is not None and morsel.value == constants.DEMO_COOKIE_ON
 
+    def _suite_client_origin(self) -> str | None:
+        """The calling page's origin when it is a suite app on another port (DQ Transcribe), else None.
+
+        Only suite API requests from ``constants.SUITE_CLIENT_PORTS`` on
+        ``constants.SUITE_CLIENT_HOSTS`` get CORS headers; everything else stays same-origin.
+        """
+        origin = self.headers.get(constants.ORIGIN_HEADER)
+        if not origin or urlsplit(self.path).path not in constants.SUITE_ROUTES:
+            return None
+        parts = urlsplit(origin)
+        if parts.hostname in constants.SUITE_CLIENT_HOSTS and parts.port in constants.SUITE_CLIENT_PORTS:
+            return origin
+        return None
+
+    def _send_cors_headers(self) -> None:
+        """Let a suite app on another port read the reply (and send this browser's demo cookie)."""
+        origin = self._suite_client_origin()
+        if origin is None:
+            return
+        self.send_header(constants.CORS_ALLOW_ORIGIN_HEADER, origin)
+        self.send_header(constants.CORS_ALLOW_CREDENTIALS_HEADER, "true")
+        self.send_header(constants.VARY_HEADER, constants.ORIGIN_HEADER)
+
+    def do_OPTIONS(self) -> None:  # noqa: N802 (name required by BaseHTTPRequestHandler)
+        """Answer the browser's CORS check before a suite app posts to the suite API."""
+        if self._suite_client_origin() is None:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "Not found")
+            return
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self._send_cors_headers()
+        self.send_header(constants.CORS_ALLOW_METHODS_HEADER, constants.CORS_ALLOWED_METHODS)
+        self.send_header(constants.CORS_ALLOW_HEADERS_HEADER, constants.CORS_ALLOWED_HEADERS)
+        self.send_header(constants.CONTENT_LENGTH_HEADER, "0")
+        self.end_headers()
+
     @property
     def database(self) -> Database:
         """The real meet's database, or the demo one for a browser in demo mode."""
@@ -513,7 +569,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         database = self.database
 
         if path == constants.ROUTE_HOME:
+            self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_home_page())
+        elif path == constants.ROUTE_OFFICIALS_PAGE:
             self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_page())
+        elif path in (constants.ROUTE_HOME_SCRIPT, constants.ROUTE_MEETS_SCRIPT):
+            filename = constants.HOME_SCRIPT_FILENAME if path == constants.ROUTE_HOME_SCRIPT else constants.MEETS_SCRIPT_FILENAME
+            self._send_bytes(HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(filename))
         elif path == constants.ROUTE_SCRIPT:
             self._send_bytes(HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.SCRIPT_FILENAME))
         elif path in (constants.ROUTE_CARD_CAMERA_SCRIPT, constants.ROUTE_DESK_SHARED_SCRIPT):
@@ -537,6 +598,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_demo_page(current))
         elif path == constants.ROUTE_MEETS:
             self._send_meet_overview()
+        elif path == constants.ROUTE_SUITE_CURRENT:
+            self._send_json(HTTPStatus.OK, self._suite_current())
+        elif path == constants.ROUTE_SUITE_MEETS:
+            self._send_json(HTTPStatus.OK, {constants.KEY_MEETS: database.list_meets()})
         elif path == constants.ROUTE_MEET_ZIP:
             meet = database.get_state()[constants.KEY_MEET]
             self._send_meet_zip(database, None if meet is None else meet[constants.KEY_ID])
@@ -616,6 +681,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_update_session(int(match.group(1)), payload)
             elif path == constants.ROUTE_ACTIVE_SESSION:
                 self._handle_active_session(payload)
+            elif path == constants.ROUTE_SUITE_SELECT:
+                self._handle_suite_select(payload)
             elif path == constants.ROUTE_CARD_READING:
                 self._handle_card_reading(payload)
             elif path == constants.ROUTE_SIGNINS:
@@ -735,6 +802,41 @@ class RequestHandler(BaseHTTPRequestHandler):
             raise SigninError("Pick a session")
         self.database.set_active_session(session_id)
         self._send_json(HTTPStatus.OK, {constants.KEY_OK: True})
+
+    def _suite_current(self) -> dict[str, Any]:
+        """The suite's current meet and session (what every app shows), with a version stamp.
+
+        ``version`` changes whenever the meet, the current session or the meet's sessions
+        change, so an app polling this (DQ Transcribe) can tell at a glance.
+        """
+        state = self.database.get_state()
+        current = {
+            constants.KEY_SUITE: constants.SUITE_TITLE,
+            constants.KEY_DEMO: self.in_demo,
+            constants.KEY_MEET: state[constants.KEY_MEET],
+            constants.KEY_SESSIONS: [
+                {key: value for key, value in session.items() if key != constants.KEY_SIGNIN_COUNT}
+                for session in state[constants.KEY_SESSIONS]
+            ],
+            constants.KEY_ACTIVE_SESSION_ID: state[constants.KEY_ACTIVE_SESSION_ID],
+        }
+        fingerprint = json.dumps(current, sort_keys=True).encode("utf-8")
+        current[constants.KEY_VERSION] = hashlib.sha1(fingerprint).hexdigest()[:12]  # noqa: S324 (a change stamp, not security)
+        return current
+
+    def _handle_suite_select(self, payload: dict[str, Any]) -> None:
+        """Make a meet and/or session current for every app (from any app's top bar)."""
+        meet_id = payload.get(constants.KEY_MEET_ID)
+        session_id = payload.get(constants.KEY_SESSION_ID)
+        if meet_id is not None:
+            if not isinstance(meet_id, int):
+                raise SigninError("Unknown meet")
+            self.database.open_meet(meet_id, date.today())
+        if session_id is not None:
+            if not isinstance(session_id, int):
+                raise SigninError("Unknown session")
+            self.database.set_active_session(session_id)
+        self._send_json(HTTPStatus.OK, self._suite_current())
 
     def _active_session_date(self) -> date:
         """Date of the active session (today if none), for checking card dates."""
@@ -1192,6 +1294,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_header(constants.CACHE_CONTROL_HEADER, cache)
         if cookie is not None:
             self.send_header(constants.SET_COOKIE_HEADER, cookie)
+        self._send_cors_headers()
         if download_filename is not None:
             self.send_header(constants.CONTENT_DISPOSITION_HEADER, f'attachment; filename="{download_filename}"')
         self.end_headers()

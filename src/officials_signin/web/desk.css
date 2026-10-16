@@ -194,3 +194,27 @@ button.danger { background: var(--bad); border-color: var(--bad); color: #fff; f
 #toast { position: fixed; left: 50%; bottom: 1.5rem; transform: translate(-50%, 2rem); opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; padding: 0.9rem 1.5rem; border-radius: 0.7rem; font-size: 1.15rem; font-weight: 700; color: #fff; background: var(--go); z-index: 10; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 #toast.error { background: var(--bad); }
+
+/* --- The ☰ menu's suite entries (desk_shared.js) ------------------------------------ */
+.main-menu .menu-item { display: block; width: 100%; text-align: left; border: 0; border-radius: 0.5rem; background: none; min-height: 3rem; padding: 0.7rem 0.9rem; color: var(--ink); text-decoration: none; font: inherit; }
+.main-menu .menu-item:hover { background: var(--accent-soft); }
+.main-menu .submenu-toggle { font-weight: 700; border-top: 1px solid var(--line); border-radius: 0; }
+.main-menu .submenu { display: flex; flex-direction: column; padding-left: 1rem; }
+.main-menu .submenu .current { font-weight: 700; color: var(--accent); }
+
+/* --- Admin Assistant main page (home.html) ------------------------------------------- */
+.app-launcher { display: grid; gap: 0.8rem; }
+.app-card { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; width: 100%; text-align: left; padding: 1rem 1.1rem; min-height: 5.5rem; border: 2px solid var(--line); border-radius: 0.9rem; background: var(--card); }
+.app-card:hover { border-color: var(--accent); }
+.app-card .app-title { font-size: 1.3rem; font-weight: 800; color: var(--ink); }
+.app-card .app-description { color: var(--muted); font-size: 0.95rem; }
+.app-card[data-app="dq"] { border-left: 8px solid #b91c1c; }
+.app-card[data-app="officials"] { border-left: 8px solid #1d4ed8; }
+.app-card[data-app="coaches"] { border-left: 8px solid #0f766e; }
+.app-card.placeholder { border-style: dashed; color: var(--muted); min-height: 3.5rem; justify-content: center; }
+.current-meet-title { font-size: 1.25rem; font-weight: 800; }
+.current-sessions { width: 100%; border-collapse: collapse; margin-top: 0.6rem; font-size: 0.95rem; }
+.current-sessions th { text-align: left; color: var(--muted); font-size: 0.8rem; font-weight: 600; padding: 0.2rem 0.4rem; }
+.current-sessions td { padding: 0.35rem 0.4rem; border-top: 1px solid var(--line); }
+.current-sessions tr.current td { background: var(--accent-soft); font-weight: 700; }
+.panel-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.8rem; }

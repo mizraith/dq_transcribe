@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Start both Swimming Admin Assistant apps in one command. Chrome tabs open in this
-# order, left to right (owner, 2026-10-16):
-#   1. Officials Sign-In  (scripts/start_signin.sh: server restart, http://localhost:8010)
-#   2. Coaches Sign-In    (same server, http://localhost:8010/coaches; follows the
-#                          officials tab's meet and session)
-#   3. dq_transcribe      (scripts/start_dq.sh: wake lock, update, device agent,
-#                          server restart, http://localhost:8000)
-#   4. Coaches' DQ view   (dq_transcribe's coach page, http://localhost:8020; it answers
-#                          when the coach page is switched on in dq_transcribe)
+# Start Admin Assistant: both servers, then its main page (owner, 2026-10-16).
+#   - Officials Sign-In server (scripts/start_signin.sh, no tabs): serves the Admin
+#     Assistant main page (http://localhost:8010/: meets, sessions, app launcher), Officials
+#     Sign-In (/officials) and Coaches Sign-In (/coaches).
+#   - DQ Transcribe (scripts/start_dq.sh: wake lock, update, device agent, server restart,
+#     http://localhost:8000). DQ_OPEN_BROWSER=0 asks it not to open its own tab (once DQ
+#     Transcribe supports that; until then it opens its tab as before).
+#   - Then opens the main page; the other apps open from its launcher, each in its own tab.
 #
 # Careful during a meet: "start" RESTARTS the dq_transcribe server (that is what
 # start_dq.sh does). Do not run it while capture is recording.
@@ -27,7 +26,7 @@ DQ_SCRIPT="$SCRIPTS_DIRECTORY/start_dq.sh"
 SIGNIN_SCRIPT="$SCRIPTS_DIRECTORY/start_signin.sh"
 
 BROWSER_SETTLE_SECONDS=3
-COACH_DQ_VIEW_URL="http://localhost:8020/"
+MAIN_PAGE_URL="http://localhost:8010/"
 
 COMMAND_START="start"
 COMMAND_STOP="stop"
@@ -50,16 +49,19 @@ open_browser() {
 command_name="${1:-$COMMAND_START}"
 case "$command_name" in
   "$COMMAND_START"|"$COMMAND_STOP"|"$COMMAND_STATUS")
-    bash "$SIGNIN_SCRIPT" "$command_name"
+    SIGNIN_OPEN_TABS=0 bash "$SIGNIN_SCRIPT" "$command_name"
     signin_exit_code=$?
-    # Give Chrome time to finish opening the tabs; Android can drop an "open this
-    # URL" request that arrives while Chrome is still busy.
-    [ "$command_name" = "$COMMAND_START" ] && sleep "$BROWSER_SETTLE_SECONDS"
-    bash "$DQ_SCRIPT" "$command_name"
+    DQ_OPEN_BROWSER=0 bash "$DQ_SCRIPT" "$command_name"
     dq_exit_code=$?
     if [ "$command_name" = "$COMMAND_START" ]; then
+      # Give Chrome time to finish any tab DQ Transcribe opened; Android can drop an
+      # "open this URL" request that arrives while Chrome is still busy.
       sleep "$BROWSER_SETTLE_SECONDS"
-      open_browser "$COACH_DQ_VIEW_URL" && printf '[admin_assistant] opened %s\n' "$COACH_DQ_VIEW_URL"
+      if open_browser "$MAIN_PAGE_URL"; then
+        printf '[admin_assistant] opened %s\n' "$MAIN_PAGE_URL"
+      else
+        printf '[admin_assistant] open %s in Chrome\n' "$MAIN_PAGE_URL"
+      fi
     fi
     # Fail if either app failed, so problems are not hidden.
     [ "$dq_exit_code" -eq 0 ] && [ "$signin_exit_code" -eq 0 ]

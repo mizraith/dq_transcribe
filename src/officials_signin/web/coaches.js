@@ -18,64 +18,29 @@ const CONFIG = ${config};
 const KEYS = CONFIG.keys;
 const ROUTES = CONFIG.routes;
 const MATCH_LIMIT = 8;
-const TOAST_SECONDS = 2.5;
 const REMOVE_CONFIRM_SECONDS = 3;
-const MILLISECONDS_PER_SECOND = 1000;
 const HEAD_ON_LABEL = "★ Head coach";
 const HEAD_OFF_LABEL = "☆ Head coach";
 
-const element = function (id) { return document.getElementById(id); };
+const element = window.Desk.element;
+const getJson = window.Desk.getJson;
+const postJson = window.Desk.postJson;
+const makeButton = window.Desk.makeButton;
+const showToast = window.Desk.showToast;
 const searchInput = element("search");
 const matchList = element("matches");
 const newPersonButton = element("new-person");
 const signinsList = element("signins");
-const sessionSelect = element("session-select");
-const mainMenu = element("main-menu");
 const sheetOverlay = element("sheet-overlay");
-const toast = element("toast");
 
 let pageState = { demo: false, meet: null, sessions: [], activeSessionId: null, coaches: [] };
 let knownCoaches = [];
 let sheet = null; // the sign-in sheet's state while it is open
-let toastTimer = null;
 
 // --- Helpers -------------------------------------------------------------------------
 
 function nameKey(text) {
   return text.toLowerCase().replace(/[^a-z]+/g, "");
-}
-
-function showToast(message, isError) {
-  toast.textContent = message;
-  toast.classList.toggle("error", Boolean(isError));
-  toast.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(function () { toast.classList.remove("show"); }, TOAST_SECONDS * MILLISECONDS_PER_SECOND);
-}
-
-async function getJson(route) {
-  const response = await fetch(route, { cache: "no-store" });
-  return response.json();
-}
-
-async function postJson(route, body) {
-  const response = await fetch(route, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  const payload = await response.json();
-  if (!response.ok) { throw new Error(payload[KEYS.error] || "Something went wrong"); }
-  return payload;
-}
-
-function makeButton(label, className, onClick) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  if (className) { button.className = className; }
-  button.addEventListener("click", onClick);
-  return button;
 }
 
 function activeSession() {
@@ -113,16 +78,8 @@ async function refresh() {
 }
 
 function drawHeader() {
-  element("meet-name").textContent = pageState.meet ? pageState.meet[KEYS.name] : "No meet yet";
-  sessionSelect.replaceChildren();
-  pageState.sessions.forEach(function (session) {
-    const option = document.createElement("option");
-    option.value = String(session[KEYS.id]);
-    option.textContent = session[KEYS.name] + "  ·  " + session[KEYS.coachCount];
-    option.selected = session[KEYS.id] === pageState.activeSessionId;
-    sessionSelect.appendChild(option);
-  });
-  element("session-picker").hidden = pageState.sessions.length === 0;
+  // The session drop-down: "Friday PM  ·  6" (6 coaches signed in); picking one makes it current everywhere.
+  window.Desk.drawSessionPicker(pageState.meet, pageState.sessions, pageState.activeSessionId, KEYS.coachCount);
   const ready = pageState.activeSessionId !== null;
   element("desk-panel").hidden = !ready;
   element("print-panel").hidden = !ready;
@@ -133,6 +90,7 @@ function drawHeader() {
   element("print-session-link").href = ROUTES.coachesPrintSession + "?" + KEYS.sessionId + "=" + pageState.activeSessionId;
   element("print-meet-link").href = ROUTES.coachesPrintMeet;
   element("meet-zip-link").href = ROUTES.meetZip;
+  element("home-link").href = ROUTES.home;
 }
 
 function badge(text, className) {
@@ -244,18 +202,6 @@ function drawMatches() {
     item.appendChild(button);
     matchList.appendChild(item);
   });
-}
-
-async function chooseSession(sessionId) {
-  const body = {};
-  body[KEYS.sessionId] = sessionId;
-  try {
-    await postJson(ROUTES.activeSession, body);
-    await refresh();
-    window.Desk.announceChange();
-  } catch (error) {
-    showToast(error.message, true);
-  }
 }
 
 // --- Camera --------------------------------------------------------------------------
@@ -386,22 +332,6 @@ async function submitSheet() {
 
 // --- Wiring --------------------------------------------------------------------------
 
-function setMenuOpen(open) {
-  if (open) { mainMenu.style.top = (document.querySelector("header").getBoundingClientRect().bottom + 4) + "px"; }
-  mainMenu.hidden = !open;
-  element("menu-button").setAttribute("aria-expanded", open ? "true" : "false");
-}
-
-element("menu-button").addEventListener("click", function (event) {
-  event.stopPropagation();
-  setMenuOpen(mainMenu.hidden);
-});
-mainMenu.addEventListener("click", function () { setMenuOpen(false); });
-document.addEventListener("click", function (event) {
-  if (!mainMenu.hidden && !mainMenu.contains(event.target)) { setMenuOpen(false); }
-});
-document.addEventListener("keydown", function (event) { if (event.key === "Escape") { setMenuOpen(false); } });
-sessionSelect.addEventListener("change", function () { chooseSession(Number(sessionSelect.value)); });
 element("capture-button").addEventListener("click", function () { startCamera(null); });
 searchInput.addEventListener("input", drawMatches);
 newPersonButton.addEventListener("click", function () { openSheet(null, null, null); });
@@ -417,15 +347,9 @@ element("demo-exit").addEventListener("click", async function () {
   window.Desk.announceChange();
   window.location.reload();
 });
-document.querySelectorAll(".sheet-close").forEach(function (closeButton) {
-  closeButton.addEventListener("click", function () { element(closeButton.dataset.closes).click(); });
-});
-
-// Name this tab and send "Officials sign-in" to the officials tab (same server, same data).
-window.name = CONFIG.coachesTabName;
-element("officials-button").target = CONFIG.officialsTabName;
-element("menu-officials").target = CONFIG.officialsTabName;
-// Stay on the same meet and session as the officials tab (see desk_shared.js).
+// The standard top bar (☰ menu, session drop-down); names this tab. Stay on the same
+// meet and session as the other apps (see desk_shared.js).
+window.Desk.initTopBar({ app: CONFIG.coachesAppKey, refresh: refresh });
 window.Desk.followChanges(refresh);
 
 refresh().then(function () {

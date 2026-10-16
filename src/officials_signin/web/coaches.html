@@ -21,7 +21,6 @@
     :root {
       --accent: #0f766e; --accent-soft: #ccfbf1; --accent-line: #5eead4; --bar: #134e4a; --paper: #f0fdfa;
     }
-    .page-tag { padding: 0.15rem 0.6rem; border-radius: 0.5rem; background: #5eead4; color: #134e4a; font-weight: 800; font-size: 0.85rem; letter-spacing: 0.05em; }
     .badge.head { background: #fef3c7; color: #92400e; }
     .head-toggle { min-height: 2.6rem; padding: 0.3rem 0.7rem; font-weight: 700; color: #6b7280; }
     .head-toggle.on { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
@@ -42,18 +41,15 @@
   <header>
     <button id="menu-button" class="header-button menu-button" type="button" aria-label="Menu" aria-expanded="false" aria-controls="main-menu">☰</button>
     <h1>${app_title}</h1>
-    <span class="page-tag">COACHES</span>
     <span id="meet-name"></span>
     <label class="session-picker" id="session-picker" hidden>
       <span class="visually-hidden">Session</span>
       <select id="session-select" title="Session (number of coaches signed in)"></select>
     </label>
-    <a id="officials-button" class="header-button button-link" href="${officials_route}">Officials sign-in</a>
   </header>
   <nav id="main-menu" class="main-menu" hidden>
-    <a id="menu-officials" href="${officials_route}">Officials sign-in</a>
-    <a id="print-meet-link" href="#" target="_blank">Print coaches (whole meet)</a>
-    <a id="meet-zip-link" href="#">Save meet (zip file)</a>
+    <a id="print-meet-link" class="menu-item" href="#" target="_blank">Print coaches (whole meet)</a>
+    <a id="meet-zip-link" class="menu-item" href="#">Save meet (zip file)</a>
   </nav>
 
   <div id="layout">
@@ -66,8 +62,8 @@
       </div>
       <div class="panel" id="no-session-panel" hidden>
         <h2>Get started</h2>
-        <p>The meet and its sessions are set up on the <a href="${officials_route}">officials page</a>
-          (☰ menu, Meet setup). Then coaches can sign in here.</p>
+        <p>Meets and their sessions are set up on the main page. Open or set up a meet there, then coaches can sign in.</p>
+        <a id="home-link" class="button-link primary" href="#">Meets &amp; Main Page</a>
       </div>
       <div class="panel roster-links" id="print-panel">
         <h2>Print</h2>

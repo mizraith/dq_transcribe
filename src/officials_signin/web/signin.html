@@ -7,6 +7,8 @@
   letters of their name and taps their row. Both open the sign-in sheet
   (roles, trainee, later sessions) with everything known pre-filled.
   Right: this session's sign-ins, with anyone who still needs the admin at the top.
+  Meets and sessions are set up on the Admin Assistant main page (home.html); the session
+  drop-down here makes a session current for every app.
 
   This file is a string.Template: dollar-brace placeholders are filled in by
   officials_signin.server.render_page, so never use a literal dollar sign here.
@@ -20,9 +22,7 @@
 </head>
 <body>
   <div id="demo-banner" hidden>
-    <strong>DEMO MEET</strong> · made-up officials, nothing here is real
-    <a id="demo-new" href="#">Change demo size</a>
-    <button id="demo-reset" class="danger" type="button">Reset demo</button>
+    <strong>DEMO MEET</strong> · made-up officials, nothing here is real (reset it from Meets &amp; Main Page)
     <button id="demo-exit" type="button">Exit demo</button>
   </div>
   <header>
@@ -35,15 +35,12 @@
     </label>
     <span id="meeting-time" hidden></span>
     <button id="teams-button" class="header-button" type="button" hidden>Teams</button>
-    <a id="coaches-button" class="header-button button-link" href="#" hidden>Coach sign-in</a>
   </header>
-  <!-- The ☰ menu: things used now and then, kept out of the top bar. -->
+  <!-- The ☰ menu: things used now and then, kept out of the top bar. desk_shared.js adds
+       "Meets & Main Page" first and the "Admin Assistant ›" apps sub-menu last. -->
   <nav id="main-menu" class="main-menu" hidden>
-    <button id="meets-button" type="button">Meets…</button>
-    <button id="setup-button" type="button">Meet setup…</button>
-    <a id="print-meet-link" href="#" target="_blank">Print meet summary</a>
-    <a id="meet-zip-link" href="#">Save meet (zip file)</a>
-    <a id="coaches-link" href="#" hidden>Coaches sign-in</a>
+    <a id="print-meet-link" class="menu-item" href="#" target="_blank">Print meet summary</a>
+    <a id="meet-zip-link" class="menu-item" href="#">Save meet (zip file)</a>
   </nav>
 
   <div id="layout">
@@ -56,7 +53,8 @@
       </div>
       <div class="panel" id="no-session-panel" hidden>
         <h2>Get started</h2>
-        <p>Set up the meet and its first session in <strong>Meet setup</strong> (in the ☰ menu), then officials can sign in.</p>
+        <p>Meets and their sessions are set up on the main page. Open or set up a meet there, then officials can sign in.</p>
+        <a id="home-link" class="button-link primary" href="#">Meets &amp; Main Page</a>
       </div>
       <div class="panel roster-links" id="print-panel">
         <h2>Print</h2>
@@ -120,87 +118,7 @@
     </div>
   </div>
 
-  <!-- Meet overview: every meet (tap to open one), a new meet, and the demo meet with
-       Reset demo (behind a warning, as in dq_transcribe). -->
-  <div class="overlay" id="meets-overlay" hidden>
-    <div class="sheet">
-      <button class="sheet-close" type="button" data-closes="meets-close" aria-label="Close">✕</button>
-      <h2>Meet overview</h2>
-      <ul id="meet-list" class="meet-list"></ul>
-      <button id="meets-new" type="button">+ New meet</button>
-      <button id="archived-toggle" class="link-button" type="button" hidden></button>
-      <ul id="archived-list" class="meet-list archived" hidden></ul>
-      <div id="meet-delete-warning" class="delete-warning" hidden>
-        <strong id="meet-delete-title"></strong>
-        <p id="meet-delete-detail"></p>
-        <div class="sheet-actions">
-          <button id="meet-delete-keep" type="button">Keep it</button>
-          <button id="meet-delete-confirm" class="danger" type="button">Yes, delete it</button>
-        </div>
-      </div>
-      <span class="sheet-label">Practice</span>
-      <ul class="meet-list">
-        <li id="demo-row" class="meet-row demo">
-          <span class="meet-text">
-            <span class="meet-title">Demo meet</span>
-            <span class="signin-detail">Made-up officials for trying sign-in, Teams and the printouts. The real meets are not touched.</span>
-          </span>
-          <button id="demo-open" class="go" type="button">Open</button>
-          <button id="demo-reset-overview" class="danger" type="button">Reset demo</button>
-        </li>
-      </ul>
-      <a id="demo-size-link" class="link-button" href="#">Choose how many officials and sessions…</a>
-      <div id="demo-reset-warning" class="delete-warning" hidden>
-        <strong>⚠ Reset the demo meet?</strong>
-        <p>This erases everything done in the demo (sign-ins, edits, teams) and rebuilds it with fresh made-up
-          officials, the same size as now. No real meet is changed.</p>
-        <div class="sheet-actions">
-          <button id="demo-reset-cancel" type="button">Cancel</button>
-          <button id="demo-reset-confirm" class="danger" type="button">Yes, reset demo</button>
-        </div>
-      </div>
-      <div class="sheet-actions"><button id="meets-close" class="primary" type="button">Done</button></div>
-    </div>
-  </div>
-
-  <!-- Meet setup: the meet's name and start date, then its sessions as rows of a table
-       ("+ Add session" adds a row, each row can be deleted behind a warning). Save sends
-       the meet and every session at once. A new meet starts with one empty row. -->
-  <div class="overlay" id="setup-overlay" hidden>
-    <div class="sheet wide">
-      <button class="sheet-close" type="button" data-closes="setup-cancel" aria-label="Close">✕</button>
-      <h2 id="setup-title">Meet setup</h2>
-      <div class="setup-grid meet-grid">
-        <label>Meet name<input id="meet-name-input" type="text" autocomplete="off"></label>
-        <label>Start date<input id="meet-date-input" type="date"></label>
-      </div>
-      <span class="sheet-label">Sessions</span>
-      <div class="session-table-wrap">
-        <table class="session-table">
-          <thead>
-            <tr><th>Type</th><th>Date</th><th>Start</th><th>Officials meeting</th><th>Session name</th><th>Hours</th><th>Signed in</th><th></th></tr>
-          </thead>
-          <tbody id="session-rows"></tbody>
-        </table>
-      </div>
-      <div id="row-delete-warning" class="delete-warning" hidden>
-        <strong id="row-delete-title"></strong>
-        <p id="row-delete-detail"></p>
-        <div class="sheet-actions">
-          <button id="row-delete-keep" type="button">Keep it</button>
-          <button id="row-delete-confirm" class="danger" type="button">Yes, delete it</button>
-        </div>
-      </div>
-      <button id="session-add-row" type="button">+ Add session</button>
-      <div class="sheet-actions">
-        <button id="setup-meets" class="link-button" type="button">Meets…</button>
-        <button id="setup-cancel" type="button">Cancel</button>
-        <button id="setup-save" class="go" type="button">Save</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Teams: stroke & turn judges in equal seniority teams, extras, trainees with mentors. -->
+  <!-- Teams for the session's stroke & turn judges. -->
   <div class="overlay" id="teams-overlay" hidden>
     <div class="sheet wide-sheet">
       <button class="sheet-close" type="button" data-closes="teams-close" aria-label="Close">✕</button>

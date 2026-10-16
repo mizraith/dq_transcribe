@@ -14,6 +14,7 @@ from pathlib import Path
 # --- Application identity ---------------------------------------------------
 APP_NAME = "officials_signin"
 APP_TITLE = "Officials Sign-In"
+COACHES_APP_TITLE = "Coaches Sign-In"  # the coaches page, same server and data
 
 # --- Local storage ----------------------------------------------------------
 DATA_DIRECTORY = Path.home() / f".{APP_NAME}"
@@ -28,6 +29,33 @@ SQLITE_JOURNAL_MODE = "WAL"
 SERVER_HOST = "127.0.0.1"
 SERVER_DISPLAY_HOST = "localhost"
 SERVER_PORT = 8010
+
+# --- Admin Assistant suite ----------------------------------------------------------
+# This server is also the suite's home: the main page (launcher + meets) and the one
+# list of meets and sessions that every app follows (owner, 2026-10-16). DQ Transcribe
+# runs on its own port and reads/sets the current meet and session through the suite API.
+SUITE_TITLE = "Admin Assistant"
+DQ_TRANSCRIBE_TITLE = "DQ Transcribe"
+DQ_TRANSCRIBE_PORT = 8000
+DQ_TRANSCRIBE_PATH = "/"  # its main page
+# Pages on these ports (any of the hosts below) may call the suite API from the browser.
+SUITE_CLIENT_PORTS = (DQ_TRANSCRIBE_PORT,)
+SUITE_CLIENT_HOSTS = ("localhost", "127.0.0.1")
+ROUTE_SUITE_CURRENT = "/api/suite/current"  # GET: the meet, its sessions, the current session
+ROUTE_SUITE_SELECT = "/api/suite/select"  # POST {meet_id?, session_id?}: make them current for every app
+ROUTE_SUITE_MEETS = "/api/suite/meets"  # GET: every meet (for linking another app's records)
+SUITE_ROUTES = (ROUTE_SUITE_CURRENT, ROUTE_SUITE_SELECT, ROUTE_SUITE_MEETS)
+KEY_MEET_ID = "meet_id"
+KEY_VERSION = "version"  # changes whenever the current meet, session or the meet's sessions change
+KEY_SUITE = "suite"
+ORIGIN_HEADER = "Origin"
+CORS_ALLOW_ORIGIN_HEADER = "Access-Control-Allow-Origin"
+CORS_ALLOW_CREDENTIALS_HEADER = "Access-Control-Allow-Credentials"
+CORS_ALLOW_METHODS_HEADER = "Access-Control-Allow-Methods"
+CORS_ALLOW_HEADERS_HEADER = "Access-Control-Allow-Headers"
+CORS_ALLOWED_METHODS = "GET, POST, OPTIONS"
+CORS_ALLOWED_HEADERS = "Content-Type"
+VARY_HEADER = "Vary"
 MAX_REQUEST_BODY_BYTES = 5_000_000  # room for one diagnostics frame
 # The server restarts itself when its own Python code changes on disk (after a
 # git pull), so the page and the server never disagree. Checked this often, and
@@ -43,7 +71,37 @@ CARD_CAMERA_SCRIPT_FILENAME = "card_camera.js"
 DESK_SHARED_SCRIPT_FILENAME = "desk_shared.js"
 
 # Routes.
-ROUTE_HOME = "/"
+ROUTE_HOME = "/"  # the Admin Assistant main page (launcher + meets)
+ROUTE_OFFICIALS_PAGE = "/officials"  # Officials Sign-In (was "/" before the main page existed)
+ROUTE_HOME_SCRIPT = "/home.js"
+ROUTE_MEETS_SCRIPT = "/meets.js"  # the meet overview and Meet setup (main page)
+HOME_PAGE_FILENAME = "home.html"
+HOME_SCRIPT_FILENAME = "home.js"
+MEETS_SCRIPT_FILENAME = "meets.js"
+
+ROUTE_COACHES = "/coaches"  # GET: the coaches sign-in page
+# The apps on the main page's launcher and in every "Admin Assistant ›" menu. ``port`` is
+# for an app served elsewhere (DQ Transcribe); ``tab`` names its browser tab so the
+# launcher switches to it instead of opening another (and never reloads it).
+HOME_APP_KEY = "home"
+OFFICIALS_APP_KEY = "officials"
+COACHES_APP_KEY = "coaches"
+DQ_APP_KEY = "dq"
+MEETS_MENU_LABEL = "Meets & Main Page"
+HOME_TAB_NAME = "admin_assistant"
+DQ_TAB_NAME = "dq_transcribe"  # DQ Transcribe names its own tab this (see its suite handoff)
+OFFICIALS_TAB_NAME = "officials_signin"
+COACHES_TAB_NAME = "coaches_signin"
+SUITE_APPS = (
+    {"key": HOME_APP_KEY, "title": SUITE_TITLE, "path": ROUTE_HOME, "port": None, "tab": HOME_TAB_NAME,
+     "description": "Meets and sessions for every app, and this launcher."},
+    {"key": DQ_APP_KEY, "title": DQ_TRANSCRIBE_TITLE, "path": DQ_TRANSCRIBE_PATH, "port": DQ_TRANSCRIBE_PORT, "tab": DQ_TAB_NAME,
+     "description": "Records the officials' radio calls, finds the DQs and takes them to the coaches."},
+    {"key": OFFICIALS_APP_KEY, "title": APP_TITLE, "path": ROUTE_OFFICIALS_PAGE, "port": None, "tab": OFFICIALS_TAB_NAME,
+     "description": "Signs officials in from their USA Swimming card and builds the stroke & turn teams."},
+    {"key": COACHES_APP_KEY, "title": COACHES_APP_TITLE, "path": ROUTE_COACHES, "port": None, "tab": COACHES_TAB_NAME,
+     "description": "Signs coaches in from their USA Swimming card and marks the head coaches."},
+)
 ROUTE_SCRIPT = "/signin.js"
 ROUTE_CARD_SCANNER_SCRIPT = "/card_scanner.js"
 ROUTE_CARD_CAMERA_SCRIPT = "/card_camera.js"  # the camera window shared by the officials and coaches pages
@@ -86,7 +144,7 @@ PRINT_DENSE_ROW_COUNT = 40
 ROUTE_PRINT_SESSION = "/print/session"  # ?session_id= (default: active session)
 ROUTE_PRINT_MEET = "/print/meet"  # every session of the active meet, compact
 ROUTE_TEAM_DISPLAY = "/teams/display"  # ?session_id=: big-screen teams + rotation, prints on one page
-# "/?open=teams" opens the sign-in page straight on the Teams screen (the team page's
+# "/officials?open=teams" opens the sign-in page straight on the Teams screen (the team page's
 # "Back to Teams" link).
 OPEN_QUERY_KEY = "open"
 OPEN_TEAMS_VALUE = "teams"
@@ -586,14 +644,8 @@ KEY_WITH_SIGNIN_ID = "with_signin_id"
 # officials_signin/coaches.py, when present, handles these routes through
 # coaches.handle_get / coaches.handle_post (see server._coaches_module).
 COACHES_MODULE_NAME = "officials_signin.coaches"
-ROUTE_COACHES = "/coaches"  # GET: the coaches sign-in page
 ROUTE_COACHES_PREFIX = "/coaches/"  # GET: the coaches page's own files
 ROUTE_COACHES_API_PREFIX = "/api/coaches/"  # GET/POST: the coaches page's API
-COACHES_APP_TITLE = "Coaches Sign-In"
-# Each desk page names its browser tab, so "Coach sign-in" / "Officials sign-in" switch to
-# the tab already open instead of opening another (both use the same server and data).
-OFFICIALS_TAB_NAME = "officials_signin"
-COACHES_TAB_NAME = "coaches_signin"
 # The two desk tabs tell each other when the meet, session or demo changed (see
 # desk_shared.js); each also refreshes every so often while in view.
 DESK_CHANNEL_NAME = "officials_signin_desk"

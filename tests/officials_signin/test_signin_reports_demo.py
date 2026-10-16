@@ -262,7 +262,7 @@ class DemoServerTests(unittest.TestCase):
         cookie = self.start_demo()
         self.request("POST", constants.ROUTE_TEAMS_BUILD, {}, cookie=cookie)
         _, page, _ = self.request("GET", constants.ROUTE_TEAM_DISPLAY, cookie=cookie)
-        self.assertIn(f"/?{constants.OPEN_QUERY_KEY}={constants.OPEN_TEAMS_VALUE}".encode(), page)
+        self.assertIn(f"{constants.ROUTE_OFFICIALS_PAGE}?{constants.OPEN_QUERY_KEY}={constants.OPEN_TEAMS_VALUE}".encode(), page)
         self.assertIn(b"<strong>Fixed ends</strong>", page)
 
     def test_unchecked_judge_is_kept_off_the_teams(self) -> None:

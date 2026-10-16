@@ -1,0 +1,147 @@
+<!doctype html>
+<!--
+  Admin Assistant main page: the suite's launcher and its meets.
+
+  - Top bar (as on every app): ☰ menu, "Admin Assistant" in bold, the current meet and
+    a session drop-down. Choosing a meet or session here makes it current for every app.
+  - Apps: one button per app (DQ Transcribe, Officials Sign-In, Coaches Sign-In), each
+    opening in its own tab; room for more.
+  - Meets: the current meet with its sessions and Meet setup, every meet (open, archive,
+    restore, delete), a new meet, and the demo meet. All meet setup happens here.
+
+  Styles are shared (desk.css). Scripts: desk_shared.js (shared helpers, top bar, tab
+  sync), meets.js (meets and Meet setup), home.js (this page).
+
+  This file is a string.Template: dollar-brace placeholders are filled in by
+  officials_signin.server.render_home_page, so never use a literal dollar sign here.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${suite_title}</title>
+  <link rel="stylesheet" href="${desk_stylesheet_route}">
+</head>
+<body class="home">
+  <div id="demo-banner" hidden>
+    <strong>DEMO MEET</strong> · made-up officials and coaches, nothing here is real
+    <button id="demo-reset" class="danger" type="button">Reset demo</button>
+    <button id="demo-exit" type="button">Exit demo</button>
+  </div>
+  <header>
+    <button id="menu-button" class="header-button menu-button" type="button" aria-label="Menu" aria-expanded="false" aria-controls="main-menu">☰</button>
+    <h1>${suite_title}</h1>
+    <span id="meet-name"></span>
+    <label class="session-picker" id="session-picker" hidden>
+      <span class="visually-hidden">Session</span>
+      <select id="session-select" title="Current session (every app)"></select>
+    </label>
+    <span id="meeting-time" hidden></span>
+  </header>
+  <nav id="main-menu" class="main-menu" hidden>
+    <button id="menu-setup" class="menu-item" type="button">Meet setup…</button>
+    <button id="menu-new-meet" class="menu-item" type="button">New meet…</button>
+    <a id="meet-zip-link" class="menu-item" href="#">Save meet (zip file)</a>
+  </nav>
+
+  <div id="layout">
+    <section>
+      <div class="panel">
+        <h2>Apps</h2>
+        <div id="app-launcher" class="app-launcher"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="panel" id="current-meet-panel">
+        <h2>Current meet</h2>
+        <div id="current-meet"></div>
+        <div class="panel-actions">
+          <button id="current-setup" class="primary" type="button">Meet setup</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Meets</h2>
+        <ul id="meet-list" class="meet-list"></ul>
+        <button id="meets-new" type="button">+ New meet</button>
+        <button id="archived-toggle" class="link-button" type="button" hidden></button>
+        <ul id="archived-list" class="meet-list archived" hidden></ul>
+        <div id="meet-delete-warning" class="delete-warning" hidden>
+          <strong id="meet-delete-title"></strong>
+          <p id="meet-delete-detail"></p>
+          <div class="sheet-actions">
+            <button id="meet-delete-keep" type="button">Keep it</button>
+            <button id="meet-delete-confirm" class="danger" type="button">Yes, delete it</button>
+          </div>
+        </div>
+        <span class="sheet-label">Practice</span>
+        <ul class="meet-list">
+          <li id="demo-row" class="meet-row demo">
+            <span class="meet-text">
+              <span class="meet-title">Demo meet</span>
+              <span class="signin-detail">Made-up officials and coaches for trying the apps. The real meets are not touched.</span>
+            </span>
+            <span class="meet-actions">
+              <button id="demo-reset-overview" class="danger" type="button">Reset demo</button>
+              <button id="demo-open" class="go" type="button">Open</button>
+            </span>
+          </li>
+        </ul>
+        <a id="demo-size-link" class="link-button" href="#">Choose how many officials and sessions…</a>
+        <div id="demo-reset-warning" class="delete-warning" hidden>
+          <strong>⚠ Reset the demo meet?</strong>
+          <p>This erases everything done in the demo (sign-ins, edits, teams) and rebuilds it with fresh made-up
+            officials, the same size as now. No real meet is changed.</p>
+          <div class="sheet-actions">
+            <button id="demo-reset-cancel" type="button">Cancel</button>
+            <button id="demo-reset-confirm" class="danger" type="button">Yes, reset demo</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Meet setup: the meet's name and start date, then its sessions as rows of a table
+       ("+ Add session" adds a row, each row can be deleted behind a warning). Save sends
+       the meet and every session at once. A new meet starts with one empty row. -->
+  <div class="overlay" id="setup-overlay" hidden>
+    <div class="sheet wide">
+      <button class="sheet-close" type="button" data-closes="setup-cancel" aria-label="Close">✕</button>
+      <h2 id="setup-title">Meet setup</h2>
+      <div class="setup-grid meet-grid">
+        <label>Meet name<input id="meet-name-input" type="text" autocomplete="off"></label>
+        <label>Start date<input id="meet-date-input" type="date"></label>
+      </div>
+      <span class="sheet-label">Sessions</span>
+      <div class="session-table-wrap">
+        <table class="session-table">
+          <thead>
+            <tr><th>Type</th><th>Date</th><th>Start</th><th>Officials meeting</th><th>Session name</th><th>Hours</th><th>Signed in</th><th></th></tr>
+          </thead>
+          <tbody id="session-rows"></tbody>
+        </table>
+      </div>
+      <div id="row-delete-warning" class="delete-warning" hidden>
+        <strong id="row-delete-title"></strong>
+        <p id="row-delete-detail"></p>
+        <div class="sheet-actions">
+          <button id="row-delete-keep" type="button">Keep it</button>
+          <button id="row-delete-confirm" class="danger" type="button">Yes, delete it</button>
+        </div>
+      </div>
+      <button id="session-add-row" type="button">+ Add session</button>
+      <div class="sheet-actions">
+        <button id="setup-cancel" type="button">Cancel</button>
+        <button id="setup-save" class="go" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="${desk_shared_route}"></script>
+  <script src="${meets_script_route}"></script>
+  <script src="${script_route}"></script>
+</body>
+</html>

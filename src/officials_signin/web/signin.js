@@ -19,15 +19,16 @@ const CONFIG = ${config};
 const KEYS = CONFIG.keys;
 const ROUTES = CONFIG.routes;
 const MATCH_LIMIT = 8;
-const TOAST_SECONDS = 2.5;
 const REMOVE_CONFIRM_SECONDS = 3;
 
 // --- Page elements ----------------------------------------------------------
 
-const element = function (id) { return document.getElementById(id); };
-const meetNameText = element("meet-name");
-const sessionSelect = element("session-select");
-const mainMenu = element("main-menu");
+const element = window.Desk.element;
+const getJson = window.Desk.getJson;
+const postJson = window.Desk.postJson;
+const makeButton = window.Desk.makeButton;
+const showToast = window.Desk.showToast;
+const formatTime12 = window.Desk.formatTime12;
 const captureButton = element("capture-button");
 const searchInput = element("search");
 const matchList = element("matches");
@@ -45,8 +46,6 @@ const sheetRoles = element("sheet-roles");
 const sheetTrainee = element("sheet-trainee");
 const sheetLaterBlock = element("sheet-later-block");
 const sheetLater = element("sheet-later");
-const setupOverlay = element("setup-overlay");
-const toast = element("toast");
 
 // --- State ------------------------------------------------------------------
 
@@ -60,41 +59,6 @@ let sheet = { officialId: null, card: null, cardResult: null, roles: [], trainee
 /** Lower-case letters only, for name matching (same rule as the server). */
 function nameKey(text) {
   return (text || "").toLowerCase().replace(/[^a-z]+/g, "");
-}
-
-function showToast(message, isError) {
-  toast.textContent = message;
-  toast.classList.toggle("error", Boolean(isError));
-  toast.classList.add("show");
-  clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(function () { toast.classList.remove("show"); }, TOAST_SECONDS * 1000);
-}
-
-async function getJson(route) {
-  const response = await fetch(route, { cache: "no-store" });
-  return response.json();
-}
-
-async function postJson(route, body) {
-  const response = await fetch(route, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload[KEYS.error] || "Something went wrong");
-  }
-  return payload;
-}
-
-function makeButton(label, className, onClick) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  if (className) { button.className = className; }
-  button.addEventListener("click", onClick);
-  return button;
 }
 
 function activeSession() {
@@ -140,17 +104,8 @@ async function refresh() {
 }
 
 function drawHeader() {
-  meetNameText.textContent = pageState.meet ? pageState.meet[KEYS.name] : "No meet yet";
-  // The session drop-down: "Friday PM · 18" (18 signed in); picking one makes it the session.
-  sessionSelect.replaceChildren();
-  pageState.sessions.forEach(function (session) {
-    const option = document.createElement("option");
-    option.value = String(session[KEYS.id]);
-    option.textContent = session[KEYS.name] + "  ·  " + session[KEYS.signinCount];
-    option.selected = session[KEYS.id] === pageState.activeSessionId;
-    sessionSelect.appendChild(option);
-  });
-  element("session-picker").hidden = pageState.sessions.length === 0;
+  // The session drop-down: "Friday PM  ·  18" (18 signed in); picking one makes it current everywhere.
+  window.Desk.drawSessionPicker(pageState.meet, pageState.sessions, pageState.activeSessionId, KEYS.signinCount);
   const ready = pageState.activeSessionId !== null;
   element("teams-button").hidden = !ready;
   deskPanel.hidden = !ready;
@@ -161,17 +116,10 @@ function drawHeader() {
   meetingTime.textContent = meetingTime.hidden ? "" : "Officials Meeting: " + formatTime12(session[KEYS.meetingTime]);
   signinsTitle.textContent = session ? "Signed in: " + session[KEYS.name] : "Signed in";
   element("demo-banner").hidden = !pageState.demo;
-  element("demo-new").href = ROUTES.demo;
-  element("coaches-link").hidden = !CONFIG.coachesPage;
-  element("coaches-link").href = ROUTES.coaches;
-  element("coaches-button").hidden = !CONFIG.coachesPage;
-  element("coaches-button").href = ROUTES.coaches;
-  // The coaches page opens in its own tab (the same one each time).
-  element("coaches-button").target = CONFIG.coachesTabName;
-  element("coaches-link").target = CONFIG.coachesTabName;
   const sessionQuery = "?" + KEYS.sessionId + "=" + pageState.activeSessionId;
   element("print-session-link").href = ROUTES.printSession + sessionQuery;
   element("print-meet-link").href = ROUTES.printMeet;
+  element("home-link").href = ROUTES.home;
   element("meet-zip-link").href = ROUTES.meetZip;
   element("print-panel").hidden = !ready;
   element("team-display-link").href = ROUTES.teamDisplay + sessionQuery;
@@ -290,366 +238,6 @@ function drawMatches() {
     matchList.appendChild(item);
   });
 }
-
-// --- Sessions and setup --------------------------------------------------------
-
-async function chooseSession(sessionId) {
-  const body = {};
-  body[KEYS.sessionId] = sessionId;
-  try {
-    await postJson(ROUTES.activeSession, body);
-    await refresh();
-    window.Desk.announceChange();
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const NOON_HOUR = 12;
-const MINUTES_PER_HOUR = 60;
-const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
-const MILLISECONDS_PER_MINUTE = 60000;
-const ISO_DATE_LENGTH = 10;
-const TYPE_AM = "AM";
-const TYPE_PM = "PM";
-const OTHER_TYPE_VALUE = "other";
-let setupMeetId = null; // meet being edited in Meet setup (null: a new meet)
-let setupRows = []; // one entry per session row (see addSessionRow)
-
-/** Today's date as YYYY-MM-DD in local time. */
-function isoToday() {
-  const now = new Date();
-  return new Date(now.getTime() - now.getTimezoneOffset() * MILLISECONDS_PER_MINUTE).toISOString().slice(0, ISO_DATE_LENGTH);
-}
-
-/** "13:05" -> minutes after midnight. */
-function minutesOfDay(hoursMinutes) {
-  const parts = hoursMinutes.split(":").map(Number);
-  return parts[0] * MINUTES_PER_HOUR + parts[1];
-}
-
-/** Minutes after midnight -> "13:05" (clamped to the same day). */
-function hoursMinutesOf(minutes) {
-  const clamped = Math.max(0, Math.min(MINUTES_PER_DAY - 1, minutes));
-  const hours = Math.floor(clamped / MINUTES_PER_HOUR);
-  const rest = clamped % MINUTES_PER_HOUR;
-  return String(hours).padStart(2, "0") + ":" + String(rest).padStart(2, "0");
-}
-
-/** "13:05" -> "1:05 PM". */
-function formatTime12(hoursMinutes) {
-  const minutes = minutesOfDay(hoursMinutes);
-  const hours = Math.floor(minutes / MINUTES_PER_HOUR);
-  const displayHours = hours % NOON_HOUR === 0 ? NOON_HOUR : hours % NOON_HOUR;
-  return displayHours + ":" + String(minutes % MINUTES_PER_HOUR).padStart(2, "0") + (hours < NOON_HOUR ? " AM" : " PM");
-}
-
-/** YYYY-MM-DD plus some days. */
-function addDays(isoDate, days) {
-  const parts = isoDate.split("-").map(Number);
-  const day = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + days));
-  return day.toISOString().slice(0, ISO_DATE_LENGTH);
-}
-
-/**
- * Suggest a session name, for example "Friday Prelims", "Friday PM" or "Friday Session A".
- * @param {string} isoDate  YYYY-MM-DD, or "".
- * @param {string} sessionType  Session type, or "".
- * @returns {string}  The suggestion, or "" without a date.
- */
-function suggestSessionName(isoDate, sessionType) {
-  if (!isoDate) { return ""; }
-  const parts = isoDate.split("-").map(Number);
-  const weekday = WEEKDAY_NAMES[new Date(parts[0], parts[1] - 1, parts[2]).getDay()];
-  if (!sessionType) { return weekday; }
-  const isLetter = CONFIG.sessionLetterTypes.indexOf(sessionType) >= 0;
-  return weekday + " " + (isLetter ? CONFIG.sessionLetterPrefix + " " + sessionType : sessionType);
-}
-
-/** A small input element for the session table. */
-function makeInput(type, className) {
-  const input = document.createElement("input");
-  input.type = type;
-  input.autocomplete = "off";
-  if (className) { input.className = className; }
-  return input;
-}
-
-/** The type drop-down: a blank choice, the usual types, then "Other…". */
-function makeTypeSelect() {
-  const select = document.createElement("select");
-  // "|| []": a page served by an older server process still loads (without the list).
-  [["", "—"]].concat((CONFIG.sessionTypes || []).map(function (type) { return [type, type]; }))
-    .concat([[OTHER_TYPE_VALUE, CONFIG.sessionTypeOtherLabel]])
-    .forEach(function (pair) {
-      const option = document.createElement("option");
-      option.value = pair[0];
-      option.textContent = pair[1];
-      select.appendChild(option);
-    });
-  return select;
-}
-
-/** The session type chosen in a row ("" if none). */
-function rowSessionType(row) {
-  if (row.type.value === OTHER_TYPE_VALUE) { return row.typeOther.value.trim(); }
-  return row.type.value;
-}
-
-/**
- * Fill in whatever the admin has not set by hand in a row: the type follows the
- * start time (AM/PM), the officials meeting is an hour before the start, and the
- * name is suggested from the date and type.
- */
-function autoFillRow(row) {
-  const time = row.time.value;
-  if (!row.type.dataset.chosen && time) {
-    row.type.value = minutesOfDay(time) < NOON_HOUR * MINUTES_PER_HOUR ? TYPE_AM : TYPE_PM;
-  }
-  if (!row.meeting.dataset.typed) {
-    row.meeting.value = time ? hoursMinutesOf(minutesOfDay(time) - CONFIG.meetingMinutesBeforeStart) : "";
-  }
-  if (!row.name.dataset.typed) {
-    row.name.value = suggestSessionName(row.date.value, rowSessionType(row));
-  }
-}
-
-/** Mark a row as changed (a stripe on its left) until Save. */
-function markRowChanged(row) {
-  row.tr.classList.add("changed");
-}
-
-/**
- * Add a row to the session table.
- * @param {object|null} session  A saved session to show, or null for a new row.
- * @param {object} [defaults]  For a new row: {date, time, type} to start from.
- */
-function addSessionRow(session, defaults) {
-  const tbody = element("session-rows");
-  const row = {
-    id: session ? session[KEYS.id] : null,
-    signinCount: session ? session[KEYS.signinCount] : 0,
-    tr: document.createElement("tr"),
-    type: makeTypeSelect(),
-    typeOther: makeInput("text", "type-other"),
-    date: makeInput("date"),
-    time: makeInput("time"),
-    meeting: makeInput("time"),
-    name: makeInput("text", "session-name-input"),
-    hours: makeInput("number", "hours-input"),
-  };
-  row.typeOther.placeholder = "Type of session";
-  row.typeOther.hidden = true;
-  row.hours.inputMode = "decimal";
-  row.hours.min = String(CONFIG.sessionLengthStepMinutes / MINUTES_PER_HOUR);
-  row.hours.max = String(CONFIG.maxSessionMinutes / MINUTES_PER_HOUR);
-  row.hours.step = String(CONFIG.sessionLengthStepMinutes / MINUTES_PER_HOUR);
-  if (session) {
-    const sessionType = session[KEYS.sessionType] || "";
-    if (sessionType && CONFIG.sessionTypes.indexOf(sessionType) < 0) {
-      row.type.value = OTHER_TYPE_VALUE;
-      row.typeOther.value = sessionType;
-      row.typeOther.hidden = false;
-    } else {
-      row.type.value = sessionType;
-    }
-    row.type.dataset.chosen = "1";
-    row.date.value = session[KEYS.date];
-    row.time.value = session[KEYS.startTime] || "";
-    row.meeting.value = session[KEYS.meetingTime] || "";
-    row.meeting.dataset.typed = "1";
-    row.name.value = session[KEYS.name];
-    row.name.dataset.typed = "1";
-    row.hours.value = String((session[KEYS.estimatedMinutes] || CONFIG.defaultSessionMinutes) / MINUTES_PER_HOUR);
-  } else {
-    const start = defaults || {};
-    row.date.value = start.date || element("meet-date-input").value || isoToday();
-    row.time.value = start.time || "";
-    if (start.type) { row.type.value = start.type; row.type.dataset.chosen = "1"; }
-    row.hours.value = String((start.minutes || CONFIG.defaultSessionMinutes) / MINUTES_PER_HOUR);
-    autoFillRow(row);
-    markRowChanged(row);
-  }
-  // Wiring: suggestions follow the date, time and type until a box is typed in.
-  row.type.addEventListener("change", function () {
-    row.type.dataset.chosen = "1";
-    row.typeOther.hidden = row.type.value !== OTHER_TYPE_VALUE;
-    if (!row.typeOther.hidden) { row.typeOther.focus(); }
-    autoFillRow(row);
-  });
-  row.typeOther.addEventListener("input", function () { autoFillRow(row); });
-  [row.date, row.time].forEach(function (input) { input.addEventListener("change", function () { autoFillRow(row); }); });
-  [row.name, row.meeting].forEach(function (input) {
-    input.addEventListener("input", function () { input.dataset.typed = "1"; });
-  });
-  [row.type, row.typeOther, row.date, row.time, row.meeting, row.name, row.hours].forEach(function (input) {
-    input.addEventListener("input", function () { markRowChanged(row); });
-    input.addEventListener("change", function () { markRowChanged(row); });
-  });
-  const cell = function (children, className) {
-    const td = document.createElement("td");
-    if (className) { td.className = className; }
-    td.append.apply(td, children);
-    row.tr.appendChild(td);
-    return td;
-  };
-  cell([row.type, row.typeOther]);
-  cell([row.date]);
-  cell([row.time]);
-  cell([row.meeting]);
-  cell([row.name]);
-  cell([row.hours]);
-  cell([String(row.signinCount)], "count-cell");
-  cell([makeButton("Delete", "", function () { askDeleteRow(row); })]);
-  tbody.appendChild(row.tr);
-  setupRows.push(row);
-  return row;
-}
-
-/** "+ Add session": a new row that follows on from the last one. */
-function addFollowingRow() {
-  const last = setupRows[setupRows.length - 1];
-  if (!last) { addSessionRow(null, null); return; }
-  const defaults = { minutes: Number(last.hours.value) * MINUTES_PER_HOUR || CONFIG.defaultSessionMinutes };
-  // A morning session is usually followed by an afternoon one the same day; after
-  // that, the next day at the same time.
-  if (last.time.value && minutesOfDay(last.time.value) < NOON_HOUR * MINUTES_PER_HOUR) {
-    defaults.date = last.date.value;
-  } else {
-    defaults.date = last.date.value ? addDays(last.date.value, 1) : "";
-    defaults.time = last.time.value;
-    defaults.type = last.type.value === OTHER_TYPE_VALUE ? "" : last.type.value;
-  }
-  const row = addSessionRow(null, defaults);
-  (row.time.value ? row.name : row.time).focus();
-}
-
-/** The request body for one row. */
-function rowBody(row) {
-  const body = {};
-  const sessionType = rowSessionType(row);
-  body[KEYS.id] = row.id;
-  body[KEYS.name] = row.name.value.trim() || suggestSessionName(row.date.value, sessionType);
-  body[KEYS.date] = row.date.value;
-  body[KEYS.startTime] = row.time.value || null;
-  body[KEYS.sessionType] = sessionType || null;
-  body[KEYS.meetingTime] = row.meeting.value || null;
-  const hours = Number(row.hours.value);
-  body[KEYS.estimatedMinutes] = hours > 0
-    ? Math.round(hours * MINUTES_PER_HOUR / CONFIG.sessionLengthStepMinutes) * CONFIG.sessionLengthStepMinutes
-    : null;
-  return body;
-}
-
-let rowBeingDeleted = null; // the saved session row whose delete warning is open
-
-/** Close the delete warning (if open). */
-function closeRowWarning() {
-  if (rowBeingDeleted) { rowBeingDeleted.tr.classList.remove("deleting"); }
-  rowBeingDeleted = null;
-  element("row-delete-warning").hidden = true;
-}
-
-/** Delete a row: a new row just goes; a saved session asks first (big warning under the table). */
-function askDeleteRow(row) {
-  if (row.id === null) {
-    row.tr.remove();
-    setupRows = setupRows.filter(function (item) { return item !== row; });
-    return;
-  }
-  closeRowWarning();
-  rowBeingDeleted = row;
-  row.tr.classList.add("deleting");
-  element("row-delete-title").textContent = "⚠ Delete " + (row.name.value || "this session") + "?";
-  element("row-delete-detail").textContent = row.signinCount === 0
-    ? "Nobody has signed in to it yet. This cannot be undone."
-    : "Its " + row.signinCount + " sign-in" + (row.signinCount === 1 ? "" : "s") + " and team placements will be "
-      + "deleted too (the officials stay in the app for next time). This cannot be undone.";
-  const warning = element("row-delete-warning");
-  warning.hidden = false;
-  warning.scrollIntoView({ block: "nearest" });
-}
-
-async function deleteSavedRow() {
-  const row = rowBeingDeleted;
-  if (!row) { return; }
-  try {
-    await postJson(ROUTES.sessionPrefix + row.id + ROUTES.sessionDeleteSuffix, {});
-    closeRowWarning();
-    row.tr.remove();
-    setupRows = setupRows.filter(function (item) { return item !== row; });
-    await refresh();
-    window.Desk.announceChange();
-    showToast((row.name.value || "Session") + " deleted");
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-/**
- * Show Meet setup for the active meet, or for a new meet.
- * @param {boolean} newMeet  Start a new meet (one empty session row).
- */
-function openSetup(newMeet) {
-  const editing = !newMeet && pageState.meet !== null;
-  setupMeetId = editing ? pageState.meet[KEYS.id] : null;
-  closeRowWarning();
-  setupRows = [];
-  element("session-rows").replaceChildren();
-  element("setup-title").textContent = editing ? "Meet setup" : "New meet";
-  element("meet-name-input").value = editing ? pageState.meet[KEYS.name] : "";
-  element("meet-date-input").value = editing ? pageState.meet[KEYS.startDate] : isoToday();
-  element("setup-save").textContent = editing ? "Save" : "Create meet";
-  if (editing) {
-    pageState.sessions.forEach(function (session) { addSessionRow(session, null); });
-  }
-  if (setupRows.length === 0) { addSessionRow(null, null); }
-  setupOverlay.hidden = false;
-  if (!editing) { element("meet-name-input").focus(); }
-}
-
-function closeSetup() {
-  closeRowWarning();
-  setupOverlay.hidden = true;
-}
-
-/** Save the meet and every session row in one request. */
-async function saveSetup() {
-  const body = {};
-  body[KEYS.id] = setupMeetId;
-  body[KEYS.name] = element("meet-name-input").value.trim();
-  body[KEYS.startDate] = element("meet-date-input").value;
-  if (!body[KEYS.name] || !body[KEYS.startDate]) {
-    showToast("Enter the meet name and start date", true);
-    return;
-  }
-  const missingDate = setupRows.findIndex(function (row) { return !row.date.value; });
-  if (missingDate >= 0) {
-    showToast("Session " + (missingDate + 1) + " needs a date", true);
-    return;
-  }
-  body[KEYS.sessions] = setupRows.map(rowBody);
-  const isNew = setupMeetId === null;
-  try {
-    if (isNew && pageState.demo) { await postJson(ROUTES.demoExit, {}); } // a new meet is always real
-    await postJson(ROUTES.meetSave, body);
-    closeSetup();
-    await refresh();
-    window.Desk.announceChange();
-    showToast("✓ " + body[KEYS.name] + (isNew ? " created" : " saved"));
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-// When a new meet's start date changes, rows not yet touched follow it.
-element("meet-date-input").addEventListener("change", function () {
-  if (setupMeetId !== null || setupRows.length !== 1) { return; }
-  const row = setupRows[0];
-  row.date.value = element("meet-date-input").value;
-  autoFillRow(row);
-});
 
 // --- Teams --------------------------------------------------------------------------
 
@@ -1225,191 +813,6 @@ function closeTeams() {
   refresh();
 }
 
-// --- Meet overview and the demo meet ---------------------------------------------
-
-const meetsOverlay = element("meets-overlay");
-let demoResetTimer = null;
-
-let showArchivedMeets = false;
-let meetBeingDeleted = null;
-
-/**
- * One meet in the overview: name, date, sessions and officials, and its buttons.
- * Current meet: "Open now". Other meets: Open and Archive. Archived meets: Open,
- * Restore and Delete (behind a warning).
- */
-function meetRow(meet, isCurrent) {
-  const row = document.createElement("li");
-  row.className = "meet-row" + (isCurrent ? " current" : "");
-  const text = document.createElement("span");
-  text.className = "meet-text";
-  const title = document.createElement("span");
-  title.className = "meet-title";
-  title.textContent = meet[KEYS.name];
-  const detail = document.createElement("span");
-  detail.className = "signin-detail";
-  const sessions = meet[KEYS.sessionCount];
-  const people = meet[KEYS.officialCount];
-  detail.textContent = "starts " + meet[KEYS.startDate] + " · " + sessions + " session" + (sessions === 1 ? "" : "s")
-    + " · " + people + " official" + (people === 1 ? "" : "s");
-  text.append(title, detail);
-  const actions = document.createElement("span");
-  actions.className = "meet-actions";
-  if (isCurrent) {
-    const here = document.createElement("strong");
-    here.textContent = "Open now";
-    actions.appendChild(here);
-  } else if (meet[KEYS.archived]) {
-    const zip = document.createElement("a");
-    zip.className = "button-link";
-    zip.href = ROUTES.meetPrefix + meet[KEYS.id] + ROUTES.meetZipSuffix;
-    zip.textContent = "Save zip";
-    actions.append(
-      zip,
-      makeButton("Restore", "", function () { archiveMeet(meet, false); }),
-      makeButton("Delete…", "danger", function () { askDeleteMeet(meet); })
-    );
-  } else {
-    actions.append(
-      makeButton("Archive", "", function () { archiveMeet(meet, true); }),
-      makeButton("Open", "go", function () { openMeet(meet[KEYS.id]); })
-    );
-  }
-  row.append(text, actions);
-  return row;
-}
-
-async function openMeetOverview(showResetWarning) {
-  const overview = await getJson(ROUTES.meets);
-  const current = overview[KEYS.demo] ? null : overview[KEYS.activeMeetId];
-  const active = overview[KEYS.meets].filter(function (meet) { return !meet[KEYS.archived]; });
-  const archived = overview[KEYS.meets].filter(function (meet) { return meet[KEYS.archived]; });
-  const list = element("meet-list");
-  list.replaceChildren();
-  active.forEach(function (meet) { list.appendChild(meetRow(meet, meet[KEYS.id] === current)); });
-  if (!active.length) {
-    const empty = document.createElement("li");
-    empty.className = "signin-detail";
-    empty.textContent = archived.length ? "No meets in use. Start a new one, or open an archived meet." : "No meets yet.";
-    list.appendChild(empty);
-  }
-  const toggle = element("archived-toggle");
-  toggle.hidden = archived.length === 0;
-  toggle.textContent = (showArchivedMeets ? "Hide" : "Show") + " archived meets (" + archived.length + ")";
-  const archivedList = element("archived-list");
-  archivedList.replaceChildren();
-  archived.forEach(function (meet) { archivedList.appendChild(meetRow(meet, false)); });
-  archivedList.hidden = !showArchivedMeets || archived.length === 0;
-  closeMeetDeleteWarning();
-  element("demo-row").classList.toggle("current", overview[KEYS.demo]);
-  element("demo-open").textContent = overview[KEYS.demo] ? "Open now" : "Open";
-  element("demo-open").disabled = overview[KEYS.demo];
-  element("demo-reset-overview").hidden = !overview[KEYS.demoReady];
-  element("demo-size-link").href = ROUTES.demo;
-  showDemoResetWarning(Boolean(showResetWarning));
-  meetsOverlay.hidden = false;
-}
-
-async function archiveMeet(meet, archived) {
-  const body = {};
-  body[KEYS.archived] = archived;
-  try {
-    await postJson(ROUTES.meetPrefix + meet[KEYS.id] + ROUTES.meetArchiveSuffix, body);
-    showToast(meet[KEYS.name] + (archived ? " archived" : " restored"));
-    await openMeetOverview(false);
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-function closeMeetDeleteWarning() {
-  meetBeingDeleted = null;
-  element("meet-delete-warning").hidden = true;
-}
-
-/** The big warning before deleting an archived meet for good. */
-function askDeleteMeet(meet) {
-  meetBeingDeleted = meet;
-  const signins = meet[KEYS.signinCount];
-  element("meet-delete-title").textContent = "⚠ Delete " + meet[KEYS.name] + " for good?";
-  element("meet-delete-detail").textContent = "Its " + meet[KEYS.sessionCount] + " session"
-    + (meet[KEYS.sessionCount] === 1 ? "" : "s") + " and " + signins + " sign-in" + (signins === 1 ? "" : "s")
-    + " (teams included) will be deleted. The officials stay in the app for next time. This cannot be undone. "
-    + "To keep a record, tap Save zip first (pages, spreadsheet and rosters).";
-  const warning = element("meet-delete-warning");
-  warning.hidden = false;
-  warning.scrollIntoView({ block: "nearest" });
-}
-
-async function deleteMeet() {
-  const meet = meetBeingDeleted;
-  if (!meet) { return; }
-  try {
-    await postJson(ROUTES.meetPrefix + meet[KEYS.id] + ROUTES.meetDeleteSuffix, {});
-    showToast(meet[KEYS.name] + " deleted");
-    await openMeetOverview(false);
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-async function openMeet(meetId) {
-  try {
-    await postJson(ROUTES.meetPrefix + meetId + ROUTES.meetOpenSuffix, {});
-    meetsOverlay.hidden = true;
-    await refresh();
-    window.Desk.announceChange();
-    showToast("✓ " + (pageState.meet ? pageState.meet[KEYS.name] : "Meet") + " open");
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-async function openDemo() {
-  try {
-    await postJson(ROUTES.demoOpen, {});
-    meetsOverlay.hidden = true;
-    await refresh();
-    window.Desk.announceChange();
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-/** The "Reset the demo meet?" warning; it closes by itself after a few seconds. */
-function showDemoResetWarning(show) {
-  clearTimeout(demoResetTimer);
-  element("demo-reset-warning").hidden = !show;
-  if (show) {
-    demoResetTimer = setTimeout(function () { element("demo-reset-warning").hidden = true; },
-      CONFIG.demoResetWarningSeconds * 1000);
-  }
-}
-
-async function resetDemo() {
-  showDemoResetWarning(false);
-  try {
-    await postJson(ROUTES.demoReset, {});
-    meetsOverlay.hidden = true;
-    await refresh();
-    window.Desk.announceChange();
-    showToast("✓ Demo meet reset");
-  } catch (error) {
-    showToast("Could not reset the demo meet: " + error.message, true);
-  }
-}
-
-/** "+ New meet": always a real meet, so leave demo mode first. */
-async function newMeetFromOverview() {
-  if (pageState.demo) {
-    await postJson(ROUTES.demoExit, {});
-    await refresh();
-    window.Desk.announceChange();
-  }
-  meetsOverlay.hidden = true;
-  openSetup(true);
-}
-
 // --- Camera -------------------------------------------------------------------
 
 /**
@@ -1611,49 +1014,7 @@ element("sheet-scan").addEventListener("click", function () {
 sheetName.addEventListener("input", function () { markNameForChecking(false); });
 element("sheet-cancel").addEventListener("click", function () { sheetOverlay.hidden = true; });
 element("sheet-submit").addEventListener("click", submitSheet);
-element("setup-button").addEventListener("click", function () { openSetup(false); });
-// --- The ☰ menu ------------------------------------------------------------------
-
-function setMenuOpen(open) {
-  if (open) {
-    // Just under the top bar, wherever it is (the demo banner pushes it down).
-    mainMenu.style.top = (document.querySelector("header").getBoundingClientRect().bottom + 4) + "px";
-  }
-  mainMenu.hidden = !open;
-  element("menu-button").setAttribute("aria-expanded", open ? "true" : "false");
-}
-
-element("menu-button").addEventListener("click", function (event) {
-  event.stopPropagation();
-  setMenuOpen(mainMenu.hidden);
-});
-// Any choice in the menu, a tap elsewhere or Escape closes it.
-mainMenu.addEventListener("click", function () { setMenuOpen(false); });
-document.addEventListener("click", function (event) {
-  if (!mainMenu.hidden && !mainMenu.contains(event.target)) { setMenuOpen(false); }
-});
-document.addEventListener("keydown", function (event) { if (event.key === "Escape") { setMenuOpen(false); } });
 element("meet-zip-link").addEventListener("click", function () { showToast("Saving the meet as a zip file…"); });
-sessionSelect.addEventListener("change", function () { chooseSession(Number(sessionSelect.value)); });
-
-element("meets-button").addEventListener("click", function () { openMeetOverview(false); });
-element("setup-meets").addEventListener("click", function () {
-  closeSetup();
-  openMeetOverview(false);
-});
-element("meets-close").addEventListener("click", function () { showDemoResetWarning(false); meetsOverlay.hidden = true; });
-element("meets-new").addEventListener("click", newMeetFromOverview);
-element("archived-toggle").addEventListener("click", function () {
-  showArchivedMeets = !showArchivedMeets;
-  openMeetOverview(false);
-});
-element("meet-delete-keep").addEventListener("click", closeMeetDeleteWarning);
-element("meet-delete-confirm").addEventListener("click", deleteMeet);
-element("demo-open").addEventListener("click", openDemo);
-element("demo-reset-overview").addEventListener("click", function () { showDemoResetWarning(true); });
-element("demo-reset-cancel").addEventListener("click", function () { showDemoResetWarning(false); });
-element("demo-reset-confirm").addEventListener("click", resetDemo);
-element("demo-reset").addEventListener("click", function () { openMeetOverview(true); });
 element("demo-exit").addEventListener("click", async function () {
   await postJson(ROUTES.demoExit, {});
   window.Desk.announceChange();
@@ -1691,19 +1052,9 @@ element("place-fifteen").addEventListener("click", function () {
   body[KEYS.assignment] = member && member[KEYS.assignment] === CONFIG.assignmentFifteenMeter ? null : CONFIG.assignmentFifteenMeter;
   postTeamChange(body);
 });
-element("setup-cancel").addEventListener("click", closeSetup);
-element("setup-save").addEventListener("click", saveSetup);
-element("session-add-row").addEventListener("click", addFollowingRow);
-element("row-delete-keep").addEventListener("click", closeRowWarning);
-element("row-delete-confirm").addEventListener("click", deleteSavedRow);
-// The ✕ in a sheet's corner does what that sheet's own close button does.
-document.querySelectorAll(".sheet-close").forEach(function (closeButton) {
-  closeButton.addEventListener("click", function () { element(closeButton.dataset.closes).click(); });
-});
-
-// Name this tab, so the coaches page's "Officials sign-in" comes back to it.
-window.name = CONFIG.officialsTabName;
-// Stay on the same meet and session as the coaches tab (see desk_shared.js).
+// The standard top bar (☰ menu, session drop-down); names this tab. Stay on the same
+// meet and session as the other apps (see desk_shared.js).
+window.Desk.initTopBar({ app: CONFIG.officialsAppKey, refresh: refresh });
 window.Desk.followChanges(refresh);
 
 refresh().then(function () {
@@ -1713,8 +1064,6 @@ refresh().then(function () {
     window.history.replaceState(null, "", window.location.pathname);
     openTeams();
   }
-  // Nothing to sign in to yet: go straight to Meet setup.
-  if (pageState.activeSessionId === null) { openSetup(false); }
   // Load the OCR engine in the background so the first scan starts quickly.
   if (window.CardScanner) {
     window.CardScanner.warmUp().catch(function () { showToast("The card reader could not load", true); });

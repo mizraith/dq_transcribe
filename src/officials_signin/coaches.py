@@ -387,7 +387,7 @@ def web_config() -> dict[str, Any]:
         "headSuffix": constants.COACH_HEAD_SUFFIX,
         "coachesPrintSession": constants.ROUTE_COACHES_PRINT_SESSION,
         "coachesPrintMeet": constants.ROUTE_COACHES_PRINT_MEET,
-        "officials": constants.ROUTE_HOME,
+        "officials": constants.ROUTE_OFFICIALS_PAGE,
     })
     config["keys"].update({
         "coachId": constants.KEY_COACH_ID,
@@ -408,7 +408,6 @@ def render_page() -> bytes:
         "card_camera_route": constants.ROUTE_CARD_CAMERA_SCRIPT,
         "desk_shared_route": constants.ROUTE_DESK_SHARED_SCRIPT,
         "engine_script_route": constants.OCR_ENGINE_PATH + constants.OCR_ENGINE_SCRIPT_FILENAME,
-        "officials_route": constants.ROUTE_HOME,
     })
 
 

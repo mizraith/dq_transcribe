@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Start the Officials Sign-In app, in one command.
+# Start the Officials Sign-In server (which also serves the Admin Assistant main page and
+# Coaches Sign-In), in one command.
 #
 #   1. Keeps the tablet awake (Termux only: termux-wake-lock).
 #   2. Updates the code from GitHub (fast-forward only; never overwrites local work).
 #   3. (Re)starts the sign-in server, so it always runs the latest code.
-#   4. Opens two browser tabs: Officials Sign-In (http://localhost:8010) and Coaches
-#      Sign-In (http://localhost:8010/coaches). Both use the same server and data.
+#   4. Opens two browser tabs: Officials Sign-In (http://localhost:8010/officials) and
+#      Coaches Sign-In (http://localhost:8010/coaches). Both use the same server and data;
+#      the Admin Assistant main page (meets, app launcher) is http://localhost:8010/.
+#      SIGNIN_OPEN_TABS=0 opens no tabs (start_admin_assistant.sh opens the main page).
 #
 # It never starts, stops or restarts dq_transcribe, its whisper servers or the
 # device agent: the two apps are independent.
@@ -29,7 +32,10 @@ REPO_DIRECTORY="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null |
 DATA_DIRECTORY="$HOME/.officials_signin"
 SERVER_LOG="$DATA_DIRECTORY/server.log"
 APP_URL="http://localhost:8010"
+OFFICIALS_URL="$APP_URL/officials"
 COACHES_URL="$APP_URL/coaches"
+OPEN_TABS="${SIGNIN_OPEN_TABS:-1}"  # 0: start the server only, open no browser tabs
+OPEN_TABS_OFF="0"
 # Android can drop a second "open this URL" that arrives while Chrome is still busy.
 BROWSER_SETTLE_SECONDS=3
 SERVER_MODULE="officials_signin"
@@ -112,12 +118,15 @@ start_server() {
     exit 1
   fi
 
-  if open_browser "$APP_URL"; then
-    say "opened $APP_URL"
+  if [ "$OPEN_TABS" = "$OPEN_TABS_OFF" ]; then
+    return 0
+  fi
+  if open_browser "$OFFICIALS_URL"; then
+    say "opened $OFFICIALS_URL"
     sleep "$BROWSER_SETTLE_SECONDS"
     open_browser "$COACHES_URL" && say "opened $COACHES_URL"
   else
-    say "open $APP_URL and $COACHES_URL in Chrome"
+    say "open $OFFICIALS_URL and $COACHES_URL in Chrome"
   fi
 }
 
