@@ -1,0 +1,12 @@
+task: 20261016T055541Z_install_coach_sort
+started: 2026-10-15T22:56:03-07:00
+finished: 2026-10-15T22:56:08-07:00
+work_repo_commit: 0348519
+exit_code: 0
+--- output ---
+running 0348519
+2026-10-15 22:56:06,284 Coach page on port 8020
+2026-10-15 22:56:07,325 whisper-server ready: ggml-base
+2026-10-15 22:56:07,830 whisper-server ready: ggml-small.en
+admin page 200
+coach page running True ['http://192.168.123.26:8020/']
