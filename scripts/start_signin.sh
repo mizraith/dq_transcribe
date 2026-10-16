@@ -30,7 +30,7 @@ SERVER_LOG="$DATA_DIRECTORY/server.log"
 APP_URL="http://localhost:8010"
 SERVER_MODULE="officials_signin"
 SERVER_PATTERN="python[0-9.]* -m $SERVER_MODULE"
-SERVER_STARTUP_TIMEOUT_SECONDS=15
+SERVER_STARTUP_TIMEOUT_SECONDS=30  # generous: whisper servers may be loading models at the same time
 
 COMMAND_START="start"
 COMMAND_STOP="stop"
@@ -94,12 +94,14 @@ start_server() {
   fi
 
   pkill -f "$SERVER_PATTERN" 2>/dev/null && sleep 1
-  PYTHONPATH=src nohup "$(python_command)" -m "$SERVER_MODULE" >"$SERVER_LOG" 2>&1 &
+  # Append (never overwrite) so the log of a failed start survives the next attempt.
+  printf '\n=== %s start ===\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$SERVER_LOG"
+  PYTHONPATH=src nohup "$(python_command)" -m "$SERVER_MODULE" >>"$SERVER_LOG" 2>&1 &
   disown
   if wait_for_server; then
     say "server running at $APP_URL"
   else
-    say "server did not answer; last lines of $SERVER_LOG:"
+    say "server did not answer after ${SERVER_STARTUP_TIMEOUT_SECONDS}s; last lines of $SERVER_LOG:"
     tail -20 "$SERVER_LOG"
     exit 1
   fi

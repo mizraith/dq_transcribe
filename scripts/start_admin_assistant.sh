@@ -23,6 +23,8 @@ SCRIPTS_DIRECTORY="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || e
 DQ_SCRIPT="$SCRIPTS_DIRECTORY/start_dq.sh"
 SIGNIN_SCRIPT="$SCRIPTS_DIRECTORY/start_signin.sh"
 
+BROWSER_SETTLE_SECONDS=3
+
 COMMAND_START="start"
 COMMAND_STOP="stop"
 COMMAND_STATUS="status"
@@ -32,6 +34,9 @@ case "$command_name" in
   "$COMMAND_START"|"$COMMAND_STOP"|"$COMMAND_STATUS")
     bash "$DQ_SCRIPT" "$command_name"
     dq_exit_code=$?
+    # Give Chrome time to finish opening the first tab; Android can drop a
+    # second "open this URL" request that arrives while Chrome is still starting.
+    [ "$command_name" = "$COMMAND_START" ] && sleep "$BROWSER_SETTLE_SECONDS"
     bash "$SIGNIN_SCRIPT" "$command_name"
     signin_exit_code=$?
     # Fail if either app failed, so problems are not hidden.
