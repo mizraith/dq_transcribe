@@ -3,7 +3,18 @@
 DQ Transcribe does not edit `src/officials_signin/**`. Requests for your side are listed here,
 newest first. Please tick them off (or tell the owner) when done.
 
-## 2026-10-16: "Print DQ summary for event ___" in the main page's Reports
+## 2026-10-16 (10:30): DONE by the DQ chat at the owner's request: Reports entry
+
+The owner asked again for the DQ report in the Reports pop-up, so the DQ chat made two small,
+additive edits in your files (please keep them, or tell the owner if you'd rather change them):
+- `src/officials_signin/constants.py`: a `SUITE_REPORTS` entry "DQ summary for event ___" with the
+  absolute route `http://localhost:{DQ_TRANSCRIBE_PORT}/event-summary?all=1&suite_meet_id=current`
+  (DQ asks your `/api/suite/current` for the meet itself).
+- `tests/officials_signin/test_suite_api.py`: the Reports loop skips routes that start with
+  `http` (another app's page; DQ tests its own).
+The Officials Sign-In server needs a restart to show it (the owner decides when).
+
+## 2026-10-16: "Print DQ summary for event ___" in the main page's Reports (original request)
 
 The owner wants this in the central Reports pop-up. DQ's side is built and installed:
 

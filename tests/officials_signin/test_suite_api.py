@@ -132,6 +132,8 @@ class SuiteApiTests(unittest.TestCase):
         # The main page's Reports pop-up lists every whole-meet report, and each one prints.
         for report in constants.SUITE_REPORTS:
             self.assertIn(json.dumps(report).encode(), script)
+            if report["route"].startswith("http"):
+                continue  # another app's page (DQ Transcribe on port 8000): tested in that app
             status, page, _ = self.request("GET", report["route"])
             self.assertEqual(status, 200, report["route"])
             self.assertIn(b"Candy Meet", page)

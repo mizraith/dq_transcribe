@@ -769,4 +769,10 @@ SUITE_REPORTS = (
      "description": "Every session's officials: roles, club, years and card checks.", "route": ROUTE_PRINT_MEET},
     {"key": "coaches_meet", "title": "Meet summary - coaches",
      "description": "Every session's coaches, with the head coaches marked.", "route": ROUTE_COACHES_PRINT_MEET},
+    # Added by the DQ Transcribe chat at the owner's request (2026-10-16): DQ Transcribe's page on
+    # port 8000 asks for the event number and prints every DQ of the event with its status.
+    # suite_meet_id=current: DQ asks this server for the current meet itself.
+    {"key": "dq_event_report", "title": "DQ summary for event ___",
+     "description": "Every DQ of one event with its status (from DQ Transcribe).",
+     "route": f"http://localhost:{DQ_TRANSCRIBE_PORT}/event-summary?all=1&suite_meet_id=current"},
 )
