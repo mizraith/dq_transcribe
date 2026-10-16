@@ -17,9 +17,9 @@
 #     bash ~/dq_transcribe/scripts/start_signin.sh stop     # stop the server
 #     bash ~/dq_transcribe/scripts/start_signin.sh status   # show whether it runs
 #
-# To make it a command called officials_signin (Termux shown; on a Mac or Linux
+# To make it a command called officials_signup (Termux shown; on a Mac or Linux
 # use any folder on your PATH, such as /usr/local/bin):
-#     ln -sf ~/dq_transcribe/scripts/start_signin.sh "$PREFIX/bin/officials_signin"
+#     ln -sf ~/dq_transcribe/scripts/start_signin.sh "$PREFIX/bin/officials_signup"
 
 set -uo pipefail
 
@@ -116,5 +116,5 @@ case "${1:-$COMMAND_START}" in
   "$COMMAND_START") start_server ;;
   "$COMMAND_STOP") stop_server ;;
   "$COMMAND_STATUS") show_status ;;
-  *) say "usage: officials_signin [$COMMAND_START|$COMMAND_STOP|$COMMAND_STATUS]"; exit 2 ;;
+  *) say "usage: officials_signup [$COMMAND_START|$COMMAND_STOP|$COMMAND_STATUS]"; exit 2 ;;
 esac
