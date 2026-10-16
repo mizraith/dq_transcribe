@@ -923,7 +923,11 @@ async function createMeetFromSheet(file) {
       throw new Error(reply.error || "server answered " + response.status);
     }
     const sheet = reply[CONFIG.sheetKey];
-    const found = [sheet.events + " events", sheet.sessions.length + " session(s)", sheet.officials.length + " official(s)"];
+    const found = [sheet.events + " events"];
+    if (sheet.entries) {
+      found.push(sheet.entries + " swimmers seeded"); // from a Meet Manager file or heat sheet
+    }
+    found.push(sheet.sessions.length + " session(s)", sheet.officials.length + " official(s)");
     notify("\u2713 Created " + sheet.name + ": " + found.join(", ") + (sheet.missing.length ? ". Not on the sheet: " + sheet.missing.join("; ") : ""));
     sheetSource.value = "";
     showNewMeetForm(false);

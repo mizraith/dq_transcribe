@@ -308,6 +308,19 @@ class ServerTests(unittest.TestCase):
         bad = self._post_json(constants.ROUTE_MEET_FROM_SHEET, {constants.REQUEST_KEY_SHEET_TEXT: " "})
         self.assertEqual(bad.status, 400)
 
+    def test_new_meet_from_a_heat_sheet(self) -> None:
+        report = (Path(__file__).parent / "data" / "hytek_meet_program.htm").read_bytes()
+        route = f"{constants.ROUTE_MEET_FROM_SHEET}?{constants.QUERY_KEY_FILENAME}=MeetProg.htm"
+        response = self._request("POST", route, report, {constants.CONTENT_TYPE_HEADER: "application/octet-stream"})
+        self.assertEqual(response.status, 200)
+        reply = json.loads(response.read())
+        sheet = reply[constants.RESPONSE_KEY_SHEET]
+        self.assertEqual((sheet["name"], sheet["start_date"], sheet["events"], sheet["entries"]),
+                         ("Example Candy Meet Block Party", "2026-10-16", 26, 538))
+        program = json.loads(self._request("GET", f"{constants.ROUTE_MEETS}/{reply[constants.RESPONSE_KEY_MEET_ID]}{constants.ROUTE_MEET_PROGRAM_SUFFIX}").read())
+        self.assertEqual(program[constants.RESPONSE_KEY_PROGRAM]["active"]["file_format"], constants.MEET_FILE_FORMAT_HTML)
+
+
 
 if __name__ == "__main__":
     unittest.main()

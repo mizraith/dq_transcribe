@@ -83,7 +83,7 @@ AGE_WORDS = {"u": "Under", "un": "Under", "under": "Under", "o": "Over", "over":
 # Race distances: a lone "400" next to "400 IM" in a time-standards table is not event 400.
 STANDARD_DISTANCES = frozenset({25, 50, 100, 200, 400, 500, 800, 1000, 1500, 1650})
 EVENT_NEIGHBOR_DISTANCE = 3
-MIXED_WORD = re.compile(r"\bmixed\b", re.IGNORECASE)
+MIXED_WORD = re.compile(r"\b(mixed|combined)\b", re.IGNORECASE)
 MOSTLY_GENDERED_SHARE = 0.8
 TWO_COLUMN_EVENT = re.compile(r"^\s*#?(\d{1,3}[A-Za-z]?)[.)]?\s+(.+?)\s+#?(\d{1,3}[A-Za-z]?)\s*$")
 ONE_COLUMN_EVENT = re.compile(r"^\s*(?:Event\s*|#)?(\d{1,3}[A-Za-z]?)[.):]?\s+(.+?)\s*$", re.IGNORECASE)
@@ -427,7 +427,7 @@ def _is_event(description: str) -> bool:
 
 def _with_gender(description: str, gender: str | None) -> str:
     """Add the column's gender ("Girls") unless the description already has one."""
-    if gender and not re.search(r"\b(girls|boys|women|men|mixed)\b", description, re.IGNORECASE):
+    if gender and not re.search(r"\b(girls|boys|women|men|mixed|combined)\b", description, re.IGNORECASE):
         return f"{gender} {description}"
     return description
 

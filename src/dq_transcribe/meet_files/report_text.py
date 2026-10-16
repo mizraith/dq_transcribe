@@ -75,7 +75,7 @@ RELAY_TEAM_FORMAT = "{club}-{letter}"
 MIDDLE_INITIAL = re.compile(r"\s+[A-Z]\.?$")
 # Meet Manager prints "-" for a missing middle initial ("Lyon, Quincy -").
 # Report titles end in the meet date ("Candy Meet Block Party - 10/16/2026").
-TITLE_DATE_SUFFIX = re.compile(r"\s+-\s+\d{1,2}/\d{1,2}/\d{2,4}$")
+TITLE_DATE_SUFFIX = re.compile(r"\s+-\s+(\d{1,2}/\d{1,2}/\d{2,4})(?:\s+to\s+\d{1,2}/\d{1,2}/\d{2,4})?$")
 TRAILING_PUNCTUATION = re.compile(r"[\s\-.]+$")
 RELAY_TEAM_NAME_MAX_WORDS = 6
 UNREAD_LINES_WARNING = "{count} lines inside events were not understood (first: {example!r})"
@@ -196,12 +196,27 @@ def parse_report_lines(lines: Iterable[str], meet_name: str = "") -> MeetProgram
             )
             continue
         unread.append(line.strip())
+    title_date = TITLE_DATE_SUFFIX.search(program.meet_name)
+    if title_date:
+        program.start_date = _iso_date(title_date.group(1))
     program.meet_name = TITLE_DATE_SUFFIX.sub("", program.meet_name)
     program.events = list(events.values())
     program.sessions = list(sessions.values())
     if unread:
         program.warnings.append(UNREAD_LINES_WARNING.format(count=len(unread), example=unread[0][:80]))
     return program
+
+
+def _iso_date(text: str) -> str:
+    """"10/16/2026" (or 10/16/26) -> "2026-10-16"; "" if it is not a date."""
+    from datetime import datetime
+
+    for date_format in ("%m/%d/%Y", "%m/%d/%y"):
+        try:
+            return datetime.strptime(text, date_format).date().isoformat()
+        except ValueError:
+            continue
+    return ""
 
 
 def clean_first_name(first: str) -> str:

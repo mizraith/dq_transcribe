@@ -34,7 +34,8 @@ _STROKE_PATTERNS = (
 _DISTANCE_PATTERN = re.compile(r"\b(\d{2,4})\s*(Yard|Yd|Y|Meter|M|LC\s*Meter|SC\s*Meter)\b", re.IGNORECASE)
 # A distance written without a unit, right before the stroke ("Open 100 free" on a meet sheet).
 _BARE_DISTANCE_PATTERN = re.compile(r"\b(\d{2,4})\s+(?=(?:free|back|breast|fly|butterfly|im\b|individual|medley|med\b))", re.IGNORECASE)
-_GENDER_PATTERN = re.compile(r"\b(Girls|Boys|Women|Men|Mixed|Female|Male)\b", re.IGNORECASE)
+# "Combined" (girls and boys together) is printed as written.
+_GENDER_PATTERN = re.compile(r"\b(Girls|Boys|Women|Men|Mixed|Combined|Female|Male)\b", re.IGNORECASE)
 _AGE_GROUP_PATTERN = re.compile(
     r"\b(\d{1,2}\s*(?:&|and)\s*(?:Under|Over|Up)\b|\d{1,2}\s*-\s*\d{1,2}\b|\d{1,2}\+|Open\b|Senior\b)", re.IGNORECASE
 )
@@ -187,6 +188,7 @@ class MeetProgram:
     """Everything read from one Meet Manager file."""
 
     meet_name: str = ""
+    start_date: str = ""  # YYYY-MM-DD, when the file says (database, or the report title's date)
     events: list[ProgramEvent] = field(default_factory=list)
     entries: list[ProgramEntry] = field(default_factory=list)
     sessions: list[ProgramSession] = field(default_factory=list)

@@ -212,6 +212,7 @@ def _read_database(path: Path) -> MeetProgram:
     if meets:
         program.meet_name = _column(meets[0], "meet_name")
         meet_start = _column(meets[0], "meet_start")
+        program.start_date = _meet_day(meet_start, "1") or ""
 
     # The club as Meet Manager's heat sheets print it: the short name ("PASA", "UC Sharks").
     teams = {

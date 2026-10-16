@@ -682,6 +682,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         safe_name = _SAFE_FILENAME_CHARACTERS.sub("_", original_name)[:_MAX_STORED_NAME_CHARS] or _DEFAULT_SHEET_NAME
         stored_path = folder / f"{datetime.now().strftime(constants.RECORDING_TIMESTAMP_FORMAT)}_{safe_name}"
         stored_path.write_bytes(sheet_bytes)
+        program = self._read_meet_manager_file(stored_path, original_name)
+        if program is not None:
+            self._create_meet_from_program(program[0], program[1], source, original_name, stored_path)
+            return
         try:
             sheet = read_meet_sheet_file(stored_path, original_name)
         except MeetFileError as error:
@@ -702,6 +706,36 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.server.program_store.save(meet_id, sheet.program(), constants.MEET_FILE_FORMAT_SHEET, source, original_name, str(stored_path))
         LOGGER.info("Created meet %d from a meet sheet: %s", meet_id, sheet.summary())
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id, constants.RESPONSE_KEY_SHEET: sheet.summary()})
+
+    @staticmethod
+    def _read_meet_manager_file(path: Path, original_name: str) -> tuple | None:
+        """The file as a Meet Manager file (database or heat-sheet report) if it is one: (program, format).
+
+        A file with seeded swimmers is a Meet Manager file; anything else (a meet
+        sheet has events but no swimmers) returns None and is read as a meet sheet.
+        """
+        try:
+            program, file_format = read_meet_file(path, original_name)
+        except MeetFileError:
+            return None
+        return (program, file_format) if program.entries else None
+
+    def _create_meet_from_program(self, program: Any, file_format: str, source: str, original_name: str, stored_path: Path) -> None:
+        """Create the meet (active) from a Meet Manager file, with the file as its first program version."""
+        database = self.server.database
+        name = (program.meet_name or Path(original_name).stem)[: constants.MAX_MEET_NAME_CHARS]
+        start_date = program.start_date or today().isoformat()
+        meet_id = database.create_meet(name, start_date)
+        self.server.program_store.save(meet_id, program, file_format, source, original_name, str(stored_path))
+        missing = [] if program.start_date else ["the date (set the first day by hand)"]
+        summary = {
+            "name": name, "start_date": start_date, "events": len(program.events), "entries": len(program.entries),
+            "sessions": [{"name": session.name, "day": session.day, "start_time": session.start_time} for session in program.sessions],
+            "officials": [], "missing": missing + ["officials (add them, or import from Sign-In)"],
+            "file_format": file_format,
+        }
+        LOGGER.info("Created meet %d from a Meet Manager file: %s", meet_id, {k: v for k, v in summary.items() if k != "sessions"})
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id, constants.RESPONSE_KEY_SHEET: summary})
 
     def _send_slips(self, query: dict[str, list[str]]) -> None:
         """Send printable slips: ``?ids=3,4`` for those DQs, or ``?event=12`` for an event of the active meet."""
