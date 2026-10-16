@@ -397,7 +397,8 @@ function resetSessionForm(form) {
 function fillTypeOptions(form) {
   const select = sessionField(form, SESSION_FIELD_TYPE);
   select.replaceChildren();
-  [["", "—"]].concat(CONFIG.sessionTypes.map(function (type) { return [type, type]; }))
+  // "|| []": a page served by an older server process still loads (without the list).
+  [["", "—"]].concat((CONFIG.sessionTypes || []).map(function (type) { return [type, type]; }))
     .concat([[OTHER_TYPE_VALUE, CONFIG.sessionTypeOtherLabel]])
     .forEach(function (pair) {
       const option = document.createElement("option");

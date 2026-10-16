@@ -29,6 +29,10 @@ SERVER_HOST = "127.0.0.1"
 SERVER_DISPLAY_HOST = "localhost"
 SERVER_PORT = 8010
 MAX_REQUEST_BODY_BYTES = 1_000_000
+# The server restarts itself when its own Python code changes on disk (after a
+# git pull), so the page and the server never disagree. Checked this often, and
+# only after the change has been stable for one more check (no half-written pull).
+CODE_RELOAD_CHECK_SECONDS = 3
 
 WEB_DIRECTORY_NAME = "web"
 VENDOR_DIRECTORY_NAME = "vendor"
