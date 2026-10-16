@@ -1,0 +1,12 @@
+task: 20261016T013614Z_install_new_meet_mm
+started: 2026-10-15T18:36:23-07:00
+finished: 2026-10-15T18:36:27-07:00
+work_repo_commit: 0923586
+exit_code: 0
+--- output ---
+running 0923586
+2026-10-15 18:36:26,115 whisper-server ready: ggml-base
+2026-10-15 18:36:26,625 whisper-server ready: ggml-small.en
+page status 200
+2 Workflow demo (test data) 2026-10-15 169 clips ACTIVE
+1 10/14 Test 2026-10-14 29 clips 
