@@ -830,7 +830,7 @@ async function loadMeets() {
     const data = await (await fetch(CONFIG.meetsRoute)).json();
     const activeId = data[CONFIG.activeMeetKey];
     const options = data[CONFIG.meetsKey].map((meet) =>
-      new Option(meet.name + " · " + formatMeetDate(meet.start_date) + " · " + meet.clip_count + " clips", String(meet.id)));
+      new Option(meet.name + " · " + formatMeetDate(meet.start_date) + " · " + meet.clip_count + " clips" + (meet.closed_at ? " · closed" : ""), String(meet.id)));
     options.push(new Option(NO_MEET_LABEL, String(CONFIG.noMeetId)));
     meetSelect.replaceChildren(...options);
     meetSelect.value = String(activeId === null ? CONFIG.noMeetId : activeId);
@@ -1242,6 +1242,13 @@ function renderClips(clips) {
   if (cards.length === 0) {
     const emptyText = showingTrash ? "The trash is empty." : "Nothing captured yet. Tap Start capturing.";
     cards.push(makeElement("p", "note", emptyText));
+  }
+  if (showingTrash) {
+    // Permanent delete waits until the meet is closed; declined DQs are listed under DQs > Declined.
+    const rule = activeMeet && !activeMeet.closed_at
+      ? "Clips here can be restored any time. Permanent delete unlocks once the meet is closed (Meet setup > End of meet). Declined DQs are under DQs > Declined."
+      : "Declined DQs are under DQs > Declined. Empty the whole trash from Meet setup > End of meet.";
+    cards.unshift(makeElement("p", "note trash-rule", rule));
   }
   clipsContainer.replaceChildren(...cards);
   return true;

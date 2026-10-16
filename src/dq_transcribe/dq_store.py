@@ -435,6 +435,21 @@ class DqStore:
             payloads.append({"notes": note, "evidence": evidence, "infractions": []})
         return [self.create_dq(payload, meet_id) for payload in payloads]
 
+    def delete_declined(self, meet_id: int) -> int:
+        """Permanently delete a closed meet's declined DQs (the trash). Overturned DQs are never deleted.
+
+        Returns:
+            How many were deleted.
+        """
+        with self._database.transaction() as connection:
+            ids = [row["id"] for row in connection.execute(
+                "SELECT id FROM dqs WHERE meet_id = ? AND state = ?", (meet_id, constants.DQ_STATE_DECLINED))]
+            for dq_id in ids:
+                for table in ("dq_infractions", "dq_evidence", "dq_history"):
+                    connection.execute(f"DELETE FROM {table} WHERE dq_id = ?", (dq_id,))
+                connection.execute("DELETE FROM dqs WHERE id = ?", (dq_id,))
+            return len(ids)
+
     def notify_event(self, meet_id: int | None, event: str, by_name: str | None, include_not_ready: bool = False) -> list[int]:
         """Notify every DQ of an event that is pending notification (the paper process:
         slips go to the coaches once all of the event's DQs are complete).

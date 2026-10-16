@@ -274,7 +274,16 @@ MEET_FILES_DIRECTORY = DATA_DIRECTORY / "meet_files"
 MAX_MEET_FILE_BYTES = 80 * 1024 * 1024
 MEET_FILE_DOWNLOAD_TIMEOUT_SECONDS = 60
 ROUTE_MEET_FILE_SUFFIX = "/file"  # POST /api/meets/<id>/file?name=<filename> (raw body) or {"url": ...}
-ROUTE_MEET_PROGRAM_SUFFIX = "/program"  # GET /api/meets/<id>/program: active file summary and events
+ROUTE_MEET_PROGRAM_SUFFIX = "/program"
+MEET_ARCHIVE_SUFFIX = "/archive"  # GET /api/meets/<id>/archive: the meet's archive zip (no Meet Manager files)
+MEET_CLOSE_SUFFIX = "/close"  # POST: close the meet (unlocks emptying its trash)
+MEET_REOPEN_SUFFIX = "/reopen"  # POST: reopen a closed meet
+MEET_EMPTY_TRASH_SUFFIX = "/empty-trash"  # POST: permanently delete a closed meet's trashed clips and declined DQs
+ZIP_CONTENT_TYPE = "application/zip"
+FILE_CHUNK_BYTES = 1024 * 1024
+RESPONSE_KEY_DELETED_CLIPS = "deleted_clips"
+RESPONSE_KEY_DELETED_DQS = "deleted_dqs"
+MEET_STILL_OPEN_MESSAGE = "Permanent delete is only allowed after the meet: close the meet first (Meet setup)."  # GET /api/meets/<id>/program: active file summary and events
 QUERY_KEY_FILENAME = "name"
 REQUEST_KEY_URL = "url"
 RESPONSE_KEY_PROGRAM = "program"

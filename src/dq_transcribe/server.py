@@ -30,6 +30,7 @@ from dq_transcribe import constants
 from dq_transcribe.database import Database
 from dq_transcribe.dq_store import DqError, DqStore, load_dq_codes
 from dq_transcribe.grouping import normalize_timestamp
+from dq_transcribe.meet_archive import archive_filename, build_meet_archive
 from dq_transcribe.slip_page import render_slips
 from dq_transcribe.meet_files import MeetFileError, read_meet_file
 from dq_transcribe.meet_files.store import MeetProgramStore
@@ -62,6 +63,10 @@ _MEET_ACTIVATE_PATTERN = re.compile(
 _MEET_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+)$")
 _MEET_FILE_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.ROUTE_MEET_FILE_SUFFIX)}$")
 _MEET_PROGRAM_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.ROUTE_MEET_PROGRAM_SUFFIX)}$")
+_MEET_ARCHIVE_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_ARCHIVE_SUFFIX)}$")
+_MEET_CLOSE_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_CLOSE_SUFFIX)}$")
+_MEET_REOPEN_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_REOPEN_SUFFIX)}$")
+_MEET_EMPTY_TRASH_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_EMPTY_TRASH_SUFFIX)}$")
 _SAFE_FILENAME_CHARACTERS = re.compile(r"[^A-Za-z0-9._-]+")
 _WEB_ADDRESS_SCHEMES = ("http://", "https://")
 _DEFAULT_DOWNLOAD_NAME = "meet_file"
@@ -188,6 +193,12 @@ def build_web_config() -> dict[str, Any]:
         "activeMeetKey": constants.RESPONSE_KEY_ACTIVE_MEET_ID,
         "meetActivateSuffix": constants.MEET_ACTIVATE_SUFFIX,
         "meetFileSuffix": constants.ROUTE_MEET_FILE_SUFFIX,
+        "meetArchiveSuffix": constants.MEET_ARCHIVE_SUFFIX,
+        "meetCloseSuffix": constants.MEET_CLOSE_SUFFIX,
+        "meetReopenSuffix": constants.MEET_REOPEN_SUFFIX,
+        "meetEmptyTrashSuffix": constants.MEET_EMPTY_TRASH_SUFFIX,
+        "deletedClipsKey": constants.RESPONSE_KEY_DELETED_CLIPS,
+        "deletedDqsKey": constants.RESPONSE_KEY_DELETED_DQS,
         "meetProgramSuffix": constants.ROUTE_MEET_PROGRAM_SUFFIX,
         "programKey": constants.RESPONSE_KEY_PROGRAM,
         "urlKey": constants.REQUEST_KEY_URL,
@@ -380,6 +391,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_slips(parse_qs(url.query))
         elif path.startswith(constants.ROUTE_FONTS):
             self._send_font(path[len(constants.ROUTE_FONTS):])
+        elif (match := _MEET_ARCHIVE_PATTERN.match(path)) is not None:
+            self._send_meet_archive(int(match.group(1)))
         elif (match := _MEET_PROGRAM_PATTERN.match(path)) is not None:
             self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_PROGRAM: self.server.program_store.summary(int(match.group(1)))})
         elif path == constants.ROUTE_EXPORT:
@@ -432,6 +445,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_activate_meet(int(match.group(1)))
         elif (match := _MEET_ASSIGN_PATTERN.match(path)) is not None:
             self._handle_assign_clips(int(match.group(1)))
+        elif (match := _MEET_CLOSE_PATTERN.match(path)) is not None:
+            self._handle_close_meet(int(match.group(1)), closed=True)
+        elif (match := _MEET_REOPEN_PATTERN.match(path)) is not None:
+            self._handle_close_meet(int(match.group(1)), closed=False)
+        elif (match := _MEET_EMPTY_TRASH_PATTERN.match(path)) is not None:
+            self._handle_empty_trash(int(match.group(1)))
         elif (match := _MEET_FILE_PATTERN.match(path)) is not None:
             self._handle_meet_file(int(match.group(1)), urlsplit(self.path).query)
         elif (match := _CLIP_TRASH_PATTERN.match(path)) is not None:
@@ -611,6 +630,57 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json_error(HTTPStatus.NOT_FOUND, "No such font")
             return
         self._send_bytes(HTTPStatus.OK, constants.FONT_CONTENT_TYPE, font_path.read_bytes())
+
+    def _send_meet_archive(self, meet_id: int) -> None:
+        """Build the meet's archive zip and send it as a download (streamed, then removed)."""
+        meet = self.server.database.get_meet(meet_id)
+        if meet is None:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such meet")
+            return
+        scratch = self.server.recordings_directory.parent / constants.SCRATCH_DIRECTORY.name
+        scratch.mkdir(parents=True, exist_ok=True)
+        filename = archive_filename(meet, meet_folder_name(meet))
+        archive_path = scratch / filename
+        try:
+            counts = build_meet_archive(self.server.database, self.server.dq_store, meet_id, self.server.recordings_directory, archive_path)
+            LOGGER.info("Built archive %s: %s", filename, counts)
+            self.send_response(HTTPStatus.OK)
+            self.send_header(constants.CONTENT_TYPE_HEADER, constants.ZIP_CONTENT_TYPE)
+            self.send_header(constants.CONTENT_LENGTH_HEADER, str(archive_path.stat().st_size))
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.end_headers()
+            with archive_path.open("rb") as handle:
+                while chunk := handle.read(constants.FILE_CHUNK_BYTES):
+                    self.wfile.write(chunk)
+        finally:
+            archive_path.unlink(missing_ok=True)
+
+    def _handle_close_meet(self, meet_id: int, closed: bool) -> None:
+        """Close or reopen a meet."""
+        if not self.server.database.set_meet_closed(meet_id, closed):
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such meet")
+            return
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _handle_empty_trash(self, meet_id: int) -> None:
+        """Permanently delete a closed meet's trashed clips (and their audio) and declined DQs."""
+        meet = self.server.database.get_meet(meet_id)
+        if meet is None:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such meet")
+            return
+        if not meet.get("closed_at"):
+            self._send_json_error(HTTPStatus.CONFLICT, constants.MEET_STILL_OPEN_MESSAGE)
+            return
+        deleted_clips = 0
+        for clip in self.server.database.list_clips(trashed=True, meet_id=meet_id):
+            filename = self.server.database.delete_trashed_clip(clip["id"])
+            audio_path = None if filename is None else self._resolve_audio_path(filename)
+            if audio_path is not None:
+                audio_path.unlink(missing_ok=True)
+                deleted_clips += 1
+        deleted_dqs = self.server.dq_store.delete_declined(meet_id)
+        LOGGER.info("Emptied the trash of meet %d: %d clips, %d DQs", meet_id, deleted_clips, deleted_dqs)
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_DELETED_CLIPS: deleted_clips, constants.RESPONSE_KEY_DELETED_DQS: deleted_dqs})
 
     def _handle_meet_file(self, meet_id: int, query: str) -> None:
         """Load a Meet Manager file for a meet.
@@ -800,7 +870,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
 
     def _handle_permanent_delete(self, clip_id: int) -> None:
-        """Permanently delete a trashed clip and its audio file."""
+        """Permanently delete a trashed clip and its audio file (only once its meet is closed)."""
+        if self.server.database.clip_meet_is_open(clip_id):
+            self._send_json_error(HTTPStatus.CONFLICT, constants.MEET_STILL_OPEN_MESSAGE)
+            return
         filename = self.server.database.delete_trashed_clip(clip_id)
         if filename is None:
             self._send_json_error(HTTPStatus.NOT_FOUND, "Only clips in the trash can be deleted")

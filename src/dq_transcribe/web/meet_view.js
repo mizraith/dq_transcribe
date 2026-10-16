@@ -88,6 +88,66 @@ async function loadMeetFile(file, url) {
   renderMeetView();
 }
 
+/**
+ * The "End of meet" card: download the archive, close the meet (which unlocks
+ * emptying its trash), reopen it, and empty the trash once it is closed.
+ */
+function buildEndOfMeetCard() {
+  const card = makeElement("section", "meet-card end-of-meet");
+  card.append(makeElement("h3", "", "End of meet"));
+  const base = CONFIG.meetsRoute + "/" + activeMeet.id;
+  const row = makeElement("div", "meet-file-actions");
+  const download = makeButton("primary", "\u2b07 Download archive (.zip)", () => {
+    window.location.href = base + CONFIG.meetArchiveSuffix;
+    notify("Building the archive\u2026 it downloads when ready (audio makes it large).");
+  });
+  row.append(download);
+  if (activeMeet.closed_at) {
+    card.append(makeElement("p", "meet-file-loaded", "\u2713 Closed " + formatTime(new Date(activeMeet.closed_at))));
+    row.append(makeButton("", "Reopen meet", () => closeMeet(false)));
+    const empty = makeButton("danger", "Empty trash\u2026", () => {
+      if (empty.dataset.armed) {
+        emptyMeetTrash();
+      } else {
+        empty.dataset.armed = "1";
+        empty.textContent = "Tap again to delete forever";
+        setTimeout(() => { delete empty.dataset.armed; empty.textContent = "Empty trash\u2026"; }, 4000);
+      }
+    });
+    row.append(empty);
+  } else {
+    card.append(makeElement("p", "note",
+      "When the meet is over: download the archive (DQs, protest history, slips, transcripts and audio; not the Meet Manager files, which the meet computer keeps), then close the meet. Closing unlocks permanent deletes from the trash; you can reopen it."));
+    row.append(makeButton("", "Close meet", () => closeMeet(true)));
+  }
+  card.append(row);
+  return card;
+}
+
+/** Close or reopen the active meet. */
+async function closeMeet(closed) {
+  try {
+    await postJson(CONFIG.meetsRoute + "/" + activeMeet.id + (closed ? CONFIG.meetCloseSuffix : CONFIG.meetReopenSuffix), {});
+    notify(closed ? "\u2713 Meet closed. The trash can now be emptied." : "Meet reopened.");
+  } catch (error) {
+    notify("Could not change the meet: " + error.message, "error");
+  }
+  await loadMeets();
+  renderMeetView();
+}
+
+/** Permanently delete the closed meet's trashed clips and declined DQs. */
+async function emptyMeetTrash() {
+  try {
+    const reply = await postJson(CONFIG.meetsRoute + "/" + activeMeet.id + CONFIG.meetEmptyTrashSuffix, {});
+    notify("\u2713 Deleted " + reply[CONFIG.deletedClipsKey] + " clips and " + reply[CONFIG.deletedDqsKey] + " declined DQs for good.");
+  } catch (error) {
+    notify("Could not empty the trash: " + error.message, "error");
+  }
+  await loadMeets();
+  renderMeetView();
+}
+
 /** The "Meet file" card: what is loaded, and buttons to load a newer file. */
 function buildMeetFileCard() {
   const card = makeElement("section", "meet-card meet-file");
@@ -179,6 +239,7 @@ function renderMeetView() {
   details.append(nameLabel, dateLabel);
   page.append(details);
   page.append(buildMeetFileCard());
+  page.append(buildEndOfMeetCard());
 
   const roster = makeElement("section", "meet-card");
   roster.append(makeElement("h3", "", "Officials (" + meetDraft.officials.length + ")"));

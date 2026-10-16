@@ -213,6 +213,9 @@ class Database:
             for column, column_type in _ADDED_CLIP_COLUMNS.items():
                 if column not in existing_columns:
                     connection.execute(f"ALTER TABLE clips ADD COLUMN {column} {column_type}")
+            existing_columns = {row["name"] for row in connection.execute("PRAGMA table_info(meets)")}
+            if "closed_at" not in existing_columns:
+                connection.execute("ALTER TABLE meets ADD COLUMN closed_at TEXT")
             existing_columns = {row["name"] for row in connection.execute("PRAGMA table_info(utterances)")}
             for column, column_type in _ADDED_UTTERANCE_COLUMNS.items():
                 if column not in existing_columns:
@@ -559,7 +562,7 @@ class Database:
         """All meets, newest first (by start date, then name), with their clip counts."""
         with self._connection() as connection:
             rows = connection.execute(
-                "SELECT m.id, m.name, m.start_date, m.created_at, "
+                "SELECT m.id, m.name, m.start_date, m.created_at, m.closed_at, "
                 "(SELECT COUNT(*) FROM clips c WHERE c.meet_id = m.id AND c.trashed_at IS NULL) AS clip_count "
                 "FROM meets m ORDER BY m.start_date DESC, m.name"
             )
@@ -599,8 +602,28 @@ class Database:
     def get_meet(self, meet_id: int) -> dict[str, Any] | None:
         """One meet, or None if there is no such meet."""
         with self._connection() as connection:
-            row = connection.execute("SELECT id, name, start_date FROM meets WHERE id = ?", (meet_id,)).fetchone()
+            row = connection.execute("SELECT id, name, start_date, closed_at FROM meets WHERE id = ?", (meet_id,)).fetchone()
         return None if row is None else dict(row)
+
+    def set_meet_closed(self, meet_id: int, closed: bool) -> bool:
+        """Close a meet (unlocks permanent deletes from its trash) or reopen it.
+
+        Returns:
+            False if there is no such meet.
+        """
+        with self._transaction() as connection:
+            cursor = connection.execute(
+                "UPDATE meets SET closed_at = ? WHERE id = ?", (utc_now_iso() if closed else None, meet_id)
+            )
+            return cursor.rowcount > 0
+
+    def clip_meet_is_open(self, clip_id: int) -> bool:
+        """True if the clip belongs to a meet that is not closed (its permanent delete must wait)."""
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT m.closed_at FROM clips c JOIN meets m ON m.id = c.meet_id WHERE c.id = ?", (clip_id,)
+            ).fetchone()
+        return row is not None and row["closed_at"] is None
 
     def get_active_meet_id(self) -> int | None:
         """The active meet's id (new clips are filed under it), or None."""
