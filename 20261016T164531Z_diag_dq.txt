@@ -1,0 +1,43 @@
+task: 20261016T164531Z_diag_dq
+started: 2026-10-16T09:45:47-07:00
+finished: 2026-10-16T09:45:53-07:00
+work_repo_commit: ff61f1f
+exit_code: 0
+--- output ---
+u0_a307  18136     1  0  1970 pts/0    00:00:05 python3 /data/data/com.termux/files/usr/bin/python3 -m officials_signin
+u0_a307  18325     1 11  1970 pts/0    00:01:38 python /data/data/com.termux/files/usr/bin/python -m dq_transcribe
+u0_a307  18351 18325  0  1970 pts/0    00:00:00 python /data/data/com.termux/files/usr/bin/python -m dq_transcribe
+u0_a307  26199     1  0  1970 pts/0    00:00:00 /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/build/bin/whisper-server /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/build/b
+u0_a307  26200     1  0  1970 pts/0    00:00:00 /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/build/bin/whisper-server /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/build/b
+u0_a307  27700 30467  1  1970 pts/0    00:00:00 timeout /data/data/com.termux/files/usr/bin/timeout 600 bash /data/data/com.termux/files/home/dq_transcribe/device_tasks/20261016T164531Z_diag_dq.sh
+u0_a307  27701 27700  2  1970 pts/0    00:00:00 bash /data/data/com.termux/files/usr/bin/bash /data/data/com.termux/files/home/dq_transcribe/device_tasks/20261016T164531Z_diag_dq.sh
+u0_a307  30467     1  2  1970 pts/0    01:11:52 bash /data/data/com.termux/files/usr/bin/bash /data/data/com.termux/files/home/dq_transcribe/scripts/device_agent.sh
+--- curl
+8000: 000
+8010: 200
+--- server.log tail
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/data/data/com.termux/files/home/dq_transcribe/src/dq_transcribe/__main__.py", line 150, in <module>
+    main()
+    ~~~~^^
+  File "/data/data/com.termux/files/home/dq_transcribe/src/dq_transcribe/__main__.py", line 120, in main
+    web_server = DqTranscribeServer(
+        (constants.SERVER_HOST, constants.SERVER_PORT),
+    ...<2 lines>...
+        worker,
+    )
+  File "/data/data/com.termux/files/home/dq_transcribe/src/dq_transcribe/server.py", line 402, in __init__
+    super().__init__(server_address, RequestHandler)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/usr/lib/python3.13/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/data/data/com.termux/files/usr/lib/python3.13/http/server.py", line 140, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/data/data/com.termux/files/usr/lib/python3.13/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 98] Address already in use
