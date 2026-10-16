@@ -266,41 +266,155 @@ async function chooseSession(sessionId) {
   }
 }
 
-function openSetup() {
-  const today = new Date();
-  const isoToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  element("meet-date-input").value = element("meet-date-input").value || isoToday;
-  element("session-date-input").value = pageState.meet ? pageState.meet[KEYS.startDate] : isoToday;
-  element("session-setup").hidden = pageState.meet === null;
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const NOON_HOUR = 12;
+const MILLISECONDS_PER_MINUTE = 60000;
+const ISO_DATE_LENGTH = 10;
+
+/** Today's date as YYYY-MM-DD in local time. */
+function isoToday() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * MILLISECONDS_PER_MINUTE).toISOString().slice(0, ISO_DATE_LENGTH);
+}
+
+/**
+ * Suggest a session name from its date and start time, for example "Friday PM".
+ * @param {string} isoDate  YYYY-MM-DD, or "".
+ * @param {string} startTime  HH:MM, or "".
+ * @returns {string}  The suggestion, or "" without a date.
+ */
+function suggestSessionName(isoDate, startTime) {
+  if (!isoDate) { return ""; }
+  const parts = isoDate.split("-").map(Number);
+  const weekday = WEEKDAY_NAMES[new Date(parts[0], parts[1] - 1, parts[2]).getDay()];
+  if (!startTime) { return weekday; }
+  return weekday + (Number(startTime.split(":")[0]) < NOON_HOUR ? " AM" : " PM");
+}
+
+/**
+ * Keep a session-name box filled with the suggestion until the admin types in it.
+ * @param {string} nameId  Session name input.
+ * @param {string} dateId  Session date input.
+ * @param {string} timeId  Session start time input.
+ */
+function autoNameSession(nameId, dateId, timeId) {
+  const nameInput = element(nameId);
+  if (nameInput.dataset.typed) { return; }
+  nameInput.value = suggestSessionName(element(dateId).value, element(timeId).value);
+}
+
+/** Reset a session-name box so it follows the suggestion again. */
+function resetSessionName(nameId) {
+  element(nameId).value = "";
+  delete element(nameId).dataset.typed;
+}
+
+/** Sessions after the last one start on its date (multi-day meets add days in order). */
+function nextSessionDate() {
+  const sessions = pageState.sessions;
+  if (sessions.length > 0) { return sessions[sessions.length - 1][KEYS.date]; }
+  return pageState.meet ? pageState.meet[KEYS.startDate] : isoToday();
+}
+
+function drawSetupSessions() {
+  const list = element("setup-session-list");
+  list.replaceChildren();
+  if (pageState.sessions.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "empty";
+    empty.textContent = "No sessions yet. Add the first one below.";
+    list.appendChild(empty);
+    return;
+  }
+  pageState.sessions.forEach(function (session) {
+    const item = document.createElement("li");
+    const name = document.createElement("strong");
+    name.textContent = session[KEYS.name];
+    const detail = document.createElement("span");
+    detail.className = "signin-detail";
+    detail.textContent = "  " + [session[KEYS.date], session[KEYS.startTime], session.signin_count + " signed in"]
+      .filter(Boolean).join(" · ");
+    item.append(name, detail);
+    list.appendChild(item);
+  });
+}
+
+/**
+ * Show Meet setup. With no meet, only the "new meet + first session" form;
+ * with a meet, its sessions and the "Add session" form.
+ * @param {boolean} showNewMeet  Also open the "Start a different meet" form.
+ */
+function openSetup(showNewMeet) {
+  const hasMeet = pageState.meet !== null;
+  element("current-meet-block").hidden = !hasMeet;
+  element("new-meet-block").hidden = hasMeet && !showNewMeet;
+  element("new-meet-toggle").hidden = !hasMeet || Boolean(showNewMeet);
+  element("new-meet-cancel").hidden = !hasMeet;
+  element("new-meet-block").classList.toggle("separated", hasMeet);
+  // With no meet there is nothing to go back to, so the only way out is "Create meet".
+  element("setup-close").hidden = !hasMeet;
+  if (hasMeet) {
+    element("current-meet-name").textContent = pageState.meet[KEYS.name];
+    element("current-meet-date").textContent = "starts " + pageState.meet[KEYS.startDate];
+    drawSetupSessions();
+    element("session-date-input").value = nextSessionDate();
+    autoNameSession("session-name-input", "session-date-input", "session-time-input");
+  }
+  if (!hasMeet || showNewMeet) {
+    element("new-meet-date").value = element("new-meet-date").value || isoToday();
+    element("first-session-date").value = element("new-meet-date").value;
+    autoNameSession("first-session-name", "first-session-date", "first-session-time");
+  }
   setupOverlay.hidden = false;
 }
 
-async function createMeet() {
+function sessionBody(nameId, dateId, timeId) {
   const body = {};
-  body[KEYS.name] = element("meet-name-input").value.trim();
-  body[KEYS.startDate] = element("meet-date-input").value;
+  body[KEYS.name] = element(nameId).value.trim() || suggestSessionName(element(dateId).value, element(timeId).value);
+  body[KEYS.date] = element(dateId).value;
+  body[KEYS.startTime] = element(timeId).value || null;
+  return body;
+}
+
+/** Create a meet and its first session in one tap. */
+async function createMeetWithSession() {
+  const meetBody = {};
+  meetBody[KEYS.name] = element("new-meet-name").value.trim();
+  meetBody[KEYS.startDate] = element("new-meet-date").value;
+  const firstSession = sessionBody("first-session-name", "first-session-date", "first-session-time");
+  if (!meetBody[KEYS.name] || !meetBody[KEYS.startDate]) {
+    showToast("Enter the meet name and start date", true);
+    return;
+  }
+  if (!firstSession[KEYS.date]) {
+    showToast("Enter the first session's date", true);
+    return;
+  }
   try {
-    await postJson(ROUTES.meets, body);
-    element("meet-name-input").value = "";
+    await postJson(ROUTES.meets, meetBody);
+    await postJson(ROUTES.sessions, firstSession);
+    element("new-meet-name").value = "";
+    element("first-session-time").value = "";
+    resetSessionName("first-session-name");
     await refresh();
-    openSetup();
-    showToast("Meet created. Now add its sessions.");
+    openSetup(false);
+    showToast(meetBody[KEYS.name] + " created with " + firstSession[KEYS.name]);
   } catch (error) {
+    await refresh();
+    openSetup(false);
     showToast(error.message, true);
   }
 }
 
 async function addSession() {
-  const body = {};
-  body[KEYS.name] = element("session-name-input").value.trim();
-  body[KEYS.date] = element("session-date-input").value;
-  body[KEYS.startTime] = element("session-time-input").value || null;
+  const body = sessionBody("session-name-input", "session-date-input", "session-time-input");
   try {
     await postJson(ROUTES.sessions, body);
-    element("session-name-input").value = "";
     element("session-time-input").value = "";
+    resetSessionName("session-name-input");
     await refresh();
-    showToast("Session added");
+    openSetup(false);
+    showToast(body[KEYS.name] + " added");
   } catch (error) {
     showToast(error.message, true);
   }
@@ -484,13 +598,31 @@ element("sheet-scan").addEventListener("click", function () {
 });
 element("sheet-cancel").addEventListener("click", function () { sheetOverlay.hidden = true; });
 element("sheet-submit").addEventListener("click", submitSheet);
-element("setup-button").addEventListener("click", openSetup);
+element("setup-button").addEventListener("click", function () { openSetup(false); });
 element("setup-close").addEventListener("click", function () { setupOverlay.hidden = true; });
-element("meet-create").addEventListener("click", createMeet);
+element("new-meet-toggle").addEventListener("click", function () { openSetup(true); });
+element("new-meet-cancel").addEventListener("click", function () { openSetup(false); });
+element("new-meet-create").addEventListener("click", createMeetWithSession);
 element("session-add").addEventListener("click", addSession);
+// The first session follows the meet's start date until it is changed.
+element("new-meet-date").addEventListener("change", function () {
+  element("first-session-date").value = element("new-meet-date").value;
+  autoNameSession("first-session-name", "first-session-date", "first-session-time");
+});
+// Session names are suggested ("Friday PM") until the admin types their own.
+[["session-name-input", "session-date-input", "session-time-input"],
+  ["first-session-name", "first-session-date", "first-session-time"]].forEach(function (ids) {
+  element(ids[0]).addEventListener("input", function () {
+    if (element(ids[0]).value.trim()) { element(ids[0]).dataset.typed = "1"; } else { delete element(ids[0]).dataset.typed; }
+  });
+  [ids[1], ids[2]].forEach(function (id) {
+    element(id).addEventListener("change", function () { autoNameSession(ids[0], ids[1], ids[2]); });
+  });
+});
 
 refresh().then(function () {
-  if (pageState.meet === null) { openSetup(); }
+  // Nothing to sign in to yet: go straight to Meet setup.
+  if (pageState.activeSessionId === null) { openSetup(false); }
   // Load the OCR engine in the background so the first scan starts quickly.
   if (window.CardScanner) {
     window.CardScanner.warmUp().catch(function () { showToast("The card reader could not load", true); });

@@ -88,8 +88,20 @@
     .check-line { margin-top: 0.4rem; font-weight: 600; }
     .check-line.ok { color: var(--go); }
     .check-line.warn { color: var(--warn); }
-    .setup-grid { display: grid; grid-template-columns: 2fr 1.2fr 1fr auto; gap: 0.5rem; align-items: end; }
+    .setup-grid { display: grid; gap: 0.5rem; align-items: end; }
+    .setup-grid.session-grid { grid-template-columns: 2fr 1.3fr 1fr auto; }
+    .setup-grid.meet-grid { grid-template-columns: 2fr 1.3fr; }
+    .setup-grid.first-session-grid { grid-template-columns: 2fr 1.3fr 1fr; }
+    @media (max-width: 640px) { .setup-grid.session-grid, .setup-grid.meet-grid, .setup-grid.first-session-grid { grid-template-columns: 1fr; } }
     .setup-grid label { display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); gap: 0.2rem; }
+    .meet-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem; margin-bottom: 0.4rem; }
+    #current-meet-name { font-size: 1.25rem; font-weight: 700; }
+    .setup-sessions { list-style: none; margin: 0 0 0.4rem; padding: 0; }
+    .setup-sessions li { padding: 0.45rem 0; border-top: 1px solid var(--line); }
+    .setup-sessions li:first-child { border-top: 0; }
+    .setup-sessions .empty { color: var(--muted); }
+    #new-meet-block.separated { border-top: 1px solid var(--line); margin-top: 0.8rem; padding-top: 0.2rem; }
+    .link-button { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 0; min-height: 2.6rem; margin-top: 0.6rem; }
 
     #toast { position: fixed; left: 50%; bottom: 1.5rem; transform: translate(-50%, 2rem); opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; padding: 0.9rem 1.5rem; border-radius: 0.7rem; font-size: 1.15rem; font-weight: 700; color: #fff; background: var(--go); z-index: 10; }
     #toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -114,7 +126,7 @@
       </div>
       <div class="panel" id="no-session-panel" hidden>
         <h2>Get started</h2>
-        <p>Create the meet and its sessions in <strong>Meet setup</strong>, then officials can sign in.</p>
+        <p>Set up the meet and its first session in <strong>Meet setup</strong>, then officials can sign in.</p>
       </div>
     </section>
 
@@ -177,26 +189,47 @@
     </div>
   </div>
 
-  <!-- Meet setup -->
+  <!-- Meet setup. With no meet yet: one form for the meet and its first session.
+       With a meet: its name and sessions, an "Add session" form, and (tucked away)
+       "Start a different meet". -->
   <div class="overlay" id="setup-overlay" hidden>
     <div class="sheet">
       <h2>Meet setup</h2>
-      <span class="sheet-label">New meet</span>
-      <div class="setup-grid">
-        <label>Meet name<input id="meet-name-input" type="text"></label>
-        <label>Start date<input id="meet-date-input" type="date"></label>
-        <span></span>
-        <button id="meet-create" type="button">Create meet</button>
-      </div>
-      <div id="session-setup">
-        <span class="sheet-label">Add a session to this meet</span>
-        <div class="setup-grid">
-          <label>Session name<input id="session-name-input" type="text" placeholder="Friday PM"></label>
+
+      <div id="current-meet-block">
+        <div class="meet-summary">
+          <span id="current-meet-name"></span>
+          <span id="current-meet-date" class="signin-detail"></span>
+        </div>
+        <ul id="setup-session-list" class="setup-sessions"></ul>
+        <span class="sheet-label">Add a session</span>
+        <div class="setup-grid session-grid">
+          <label>Session name<input id="session-name-input" type="text" autocomplete="off"></label>
           <label>Date<input id="session-date-input" type="date"></label>
           <label>Start time<input id="session-time-input" type="time"></label>
-          <button id="session-add" type="button">Add session</button>
+          <button id="session-add" class="go" type="button">Add session</button>
+        </div>
+        <button id="new-meet-toggle" class="link-button" type="button">Start a different meet…</button>
+      </div>
+
+      <div id="new-meet-block">
+        <span class="sheet-label">New meet</span>
+        <div class="setup-grid meet-grid">
+          <label>Meet name<input id="new-meet-name" type="text" autocomplete="off"></label>
+          <label>Start date<input id="new-meet-date" type="date"></label>
+        </div>
+        <span class="sheet-label">First session</span>
+        <div class="setup-grid first-session-grid">
+          <label>Session name<input id="first-session-name" type="text" autocomplete="off"></label>
+          <label>Date<input id="first-session-date" type="date"></label>
+          <label>Start time<input id="first-session-time" type="time"></label>
+        </div>
+        <div class="sheet-actions">
+          <button id="new-meet-cancel" type="button">Keep the current meet</button>
+          <button id="new-meet-create" class="go" type="button">Create meet</button>
         </div>
       </div>
+
       <div class="sheet-actions"><button id="setup-close" class="primary" type="button">Done</button></div>
     </div>
   </div>
