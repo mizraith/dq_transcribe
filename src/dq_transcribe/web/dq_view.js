@@ -31,6 +31,9 @@ const NOTIFIED_BY_STORAGE_KEY = "dq_transcribe.notifiedBy";
 // Protest statuses get a filter button only once some DQ has them (fewer buttons on deck).
 const DQ_STATUSES_SHOWN_WHEN_EMPTY = ["called", "incomplete", "pending_notification", "notified", "declined"];
 const MINUTE_MS = 60 * 1000;
+// Swipe a DQ left to reveal "Move to trash": how far it slides, and how far a finger must move first.
+const SWIPE_OPEN_PX = 130;
+const SWIPE_START_PX = 12;
 
 let candidatesByGroup = new Map(); // group id -> detected calls not yet turned into DQs
 let candidatesSignature = "";
@@ -376,7 +379,10 @@ function buildEventHeader(event, eventDqs) {
     }
   }
   if (event && readiness.total) {
-    actions.append(makeButton("dq-print", "\ud83d\udda8 Event slips", () => openSlips(CONFIG.eventQueryKey, event)));
+    const reprint = makeButton("event-reprint", "\ud83d\udda8", () => openSlips(CONFIG.eventQueryKey, event));
+    reprint.title = "Reprint this event's slips (only when a coach asks)";
+    reprint.setAttribute("aria-label", "Reprint event " + event + " slips");
+    actions.append(reprint);
   }
   header.append(actions);
   return header;
@@ -452,14 +458,97 @@ function buildDqCard(dq) {
   summary.setAttribute("aria-expanded", expanded ? "true" : "false");
   summary.title = expanded ? "Tap to close" : "Tap to review and edit";
   summary.addEventListener("click", () => {
+    if (card.dataset.justSwiped) {
+      return; // the finger was swiping, not tapping
+    }
+    if (card.classList.contains("swiped")) {
+      card.classList.remove("swiped"); // a tap closes the revealed trash button
+      return;
+    }
     expandedDqId = expandedDqId === dq.id ? null : dq.id;
     forceRefresh();
   });
-  card.append(summary);
+  // Swipe left on a closed DQ to reveal "Move to trash" (for mistakes such as a duplicate).
+  const body = makeElement("div", "dq-card-body");
+  body.append(summary);
   if (expandedDqId === dq.id) {
-    card.append(buildDqEditor(dq));
+    body.append(buildDqEditor(dq));
+  } else {
+    const trashButton = makeButton("dq-swipe-trash", "\ud83d\uddd1 Move to trash", () => trashDq(dq));
+    card.append(trashButton);
+    enableSwipeToReveal(card, body, summary);
   }
+  card.append(body);
   return card;
+}
+
+/** Let a finger slide ``body`` left (on ``handle``) to reveal the button behind it; vertical scrolling still works. */
+function enableSwipeToReveal(card, body, handle) {
+  let startX = null;
+  let startY = 0;
+  let offset = 0;
+  let swiping = false;
+  handle.addEventListener("pointerdown", (event) => {
+    startX = event.clientX;
+    startY = event.clientY;
+    offset = 0;
+    swiping = false;
+  });
+  handle.addEventListener("pointermove", (event) => {
+    if (startX === null) {
+      return;
+    }
+    const moveX = event.clientX - startX;
+    const moveY = event.clientY - startY;
+    if (!swiping && Math.abs(moveX) > SWIPE_START_PX && Math.abs(moveX) > Math.abs(moveY)) {
+      swiping = true;
+      handle.setPointerCapture(event.pointerId);
+      body.style.transition = "none";
+    }
+    if (swiping) {
+      const base = card.classList.contains("swiped") ? -SWIPE_OPEN_PX : 0;
+      offset = Math.min(0, Math.max(-SWIPE_OPEN_PX, base + moveX));
+      body.style.transform = "translateX(" + offset + "px)";
+    }
+  });
+  const finish = () => {
+    if (swiping) {
+      card.classList.toggle("swiped", offset < -SWIPE_OPEN_PX / 2);
+      body.style.transition = "";
+      body.style.transform = "";
+      card.dataset.justSwiped = "1";
+      setTimeout(() => { delete card.dataset.justSwiped; }, 300);
+    }
+    startX = null;
+    swiping = false;
+  };
+  handle.addEventListener("pointerup", finish);
+  handle.addEventListener("pointercancel", finish);
+}
+
+/** Move a DQ to the trash (with Undo in the confirmation). */
+async function trashDq(dq) {
+  try {
+    await postJson(CONFIG.dqsRoute + "/" + dq.id + CONFIG.dqTrashSuffix, {});
+    notify("\ud83d\uddd1 DQ " + eventHeatLane(dq) + " moved to trash", "ok", "Undo", () => restoreDq(dq));
+  } catch (error) {
+    notify("Could not move it to the trash: " + error.message, "error");
+  }
+  if (expandedDqId === dq.id) {
+    expandedDqId = null;
+  }
+  forceRefresh();
+}
+
+/** Bring a DQ back from the trash. */
+async function restoreDq(dq) {
+  try {
+    await postJson(CONFIG.dqsRoute + "/" + dq.id + CONFIG.dqRestoreSuffix, {});
+    notify("\u2713 DQ " + eventHeatLane(dq) + " restored");
+  } catch (error) {
+    notify("Could not restore it: " + error.message, "error");
+  }
+  forceRefresh();
 }
 
 /** A labeled text input for a DQ field (numbers get the number keypad and +/- buttons). */
@@ -686,6 +775,7 @@ function buildDqEditor(dq) {
 
   // Save comes last and stands out: it is the action that ends an edit.
   const actions = makeElement("div", "dq-save-bar");
+  actions.append(makeButton("dq-trash-link", "\ud83d\uddd1 Move to trash", () => trashDq(dq)));
   actions.append(makeButton("dq-print", "\ud83d\udda8 Print slip", () => openSlips(CONFIG.idsQueryKey, dq.id)));
   actions.append(makeButton("dq-save", "Save changes", () => saveDq(dq, editor)));
   editor.append(actions);

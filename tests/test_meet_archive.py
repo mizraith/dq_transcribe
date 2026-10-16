@@ -68,5 +68,5 @@ class MeetArchiveTests(unittest.TestCase):
         self.database.set_meet_closed(self.meet_id, True)
         self.assertFalse(self.database.clip_meet_is_open(clip_id))
         self.store.change_state(self.dq_id, constants.DQ_STATE_DECLINED)
-        self.assertEqual(self.store.delete_declined(self.meet_id), 1)
+        self.assertEqual(self.store.empty_trash(self.meet_id), 1)
         self.assertEqual(self.store.list_dqs(self.meet_id), [])

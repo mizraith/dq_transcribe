@@ -160,6 +160,7 @@ function setStatus(message) {
 }
 
 const TOAST_SECONDS = 3;
+const TOAST_ACTION_SECONDS = 7;
 let toastTimer = null;
 
 /**
@@ -168,7 +169,7 @@ let toastTimer = null;
  *
  * Args: message (text), kind ("ok" or "error").
  */
-function notify(message, kind) {
+function notify(message, kind, actionLabel, action) {
   setStatus(message);
   let toast = document.getElementById("toast");
   if (!toast) {
@@ -179,8 +180,19 @@ function notify(message, kind) {
   }
   toast.textContent = message;
   toast.className = "show " + (kind || "ok");
+  let seconds = TOAST_SECONDS;
+  if (actionLabel && action) {
+    // An action in the toast (such as Undo) stays a little longer and can be tapped.
+    const button = makeButton("toast-action", actionLabel, () => {
+      toast.className = "";
+      action();
+    });
+    toast.append(button);
+    toast.classList.add("with-action");
+    seconds = TOAST_ACTION_SECONDS;
+  }
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toast.className = ""; }, TOAST_SECONDS * 1000);
+  toastTimer = setTimeout(() => { toast.className = ""; }, seconds * 1000);
 }
 
 /** Switch the REC indicator between idle, monitoring, listening and receiving. */
@@ -1185,11 +1197,28 @@ function buildClipRow(clip) {
     textarea.rows = Math.max(1, Math.ceil(utterance.text.length / 55));
     textarea.addEventListener("change", () => saveUtterance(utterance, textarea));
     // "+ DQ" beside each line: a DQ by hand from this line (or the words selected in it).
-    const line = makeElement("div", "utterance-line");
-    const makeDq = makeButton("utterance-dq", "+ DQ", () => createDqFromLine(utterance, textarea));
-    makeDq.title = "Make a DQ from this line (select words first to use only those)";
+    // A line already in a DQ says so, and making another needs a second tap.
+    const linked = dqsByUtterance.get(utterance.id) || [];
+    const line = makeElement("div", "utterance-line" + (linked.length ? " has-dq" : ""));
+    const makeDq = makeButton("utterance-dq" + (linked.length ? " again" : ""), linked.length ? "+ another" : "+ DQ", () => {
+      if (linked.length && !makeDq.dataset.armed) {
+        makeDq.dataset.armed = "1";
+        makeDq.textContent = "Tap again: new DQ";
+        setTimeout(() => { delete makeDq.dataset.armed; makeDq.textContent = "+ another"; }, 4000);
+        return;
+      }
+      createDqFromLine(utterance, textarea);
+    });
+    makeDq.title = linked.length ? "This line is already in a DQ. Tap twice to make another." : "Make a DQ from this line (select words first to use only those)";
     line.append(textarea, makeDq);
     row.append(line);
+    if (linked.length) {
+      const markers = makeElement("div", "utterance-dqs");
+      for (const entry of linked) {
+        markers.append(makeButton("utterance-dq-marker" + (entry.declined ? " declined" : ""), "\u2713 DQ " + entry.label, () => openDq(entry.id)));
+      }
+      row.append(markers);
+    }
     // A hand-edited line keeps the edit; show the refined text beside it for comparison.
     if (utterance.edited_at && utterance.refined_text && utterance.refined_text !== utterance.text) {
       row.append(makeElement("p", "note", "Refined pass heard: " + utterance.refined_text));
@@ -1243,6 +1272,18 @@ function renderClips(clips) {
     const emptyText = showingTrash ? "The trash is empty." : "Nothing captured yet. Tap Start capturing.";
     cards.push(makeElement("p", "note", emptyText));
   }
+  if (showingTrash && trashedDqs.length) {
+    const section = makeElement("section", "trashed-dqs");
+    section.append(makeElement("h3", "", "DQs in the trash (" + trashedDqs.length + ")"));
+    for (const dq of trashedDqs) {
+      const item = makeElement("div", "trashed-dq");
+      item.append(makeElement("strong", "", eventHeatLane(dq)),
+        makeElement("span", "", " " + (dq.infractions.map((infraction) => infraction.description).join("; ") || "no infraction")),
+        makeButton("", "Restore", () => restoreDq(dq)));
+      section.append(item);
+    }
+    cards.unshift(section);
+  }
   if (showingTrash) {
     // Permanent delete waits until the meet is closed; declined DQs are listed under DQs > Declined.
     const rule = activeMeet && !activeMeet.closed_at
@@ -1255,6 +1296,9 @@ function renderClips(clips) {
 }
 
 let currentView = "transcript"; // "transcript", "dqs" or "trash"
+let dqsByUtterance = new Map(); // transcript line id -> [{id, label, declined}] of DQs that cite it
+let dqLinksSignature = "";
+let trashedDqs = []; // DQs moved to the trash (shown in the Trash view)
 let showingTrash = false;
 let lastClips = []; // the clips last drawn, for redrawing after a local change
 let lastClipsSignature = "";
@@ -1283,9 +1327,32 @@ async function refreshDqCount() {
     const dqs = (await (await fetch(CONFIG.dqsRoute)).json())[CONFIG.dqsKey];
     dqCount = dqs.filter((dq) => dq.state !== CONFIG.dqStates.declined).length;
     updateViewButtons();
+    // Which transcript lines are already in a DQ (shown on the line, so nothing is entered twice).
+    const next = new Map();
+    for (const dq of dqs) {
+      for (const item of dq.evidence) {
+        if (item.utterance_id === null) {
+          continue;
+        }
+        const list = next.get(item.utterance_id) || [];
+        if (!list.some((entry) => entry.id === dq.id)) {
+          list.push({ id: dq.id, label: eventHeatLane(dq), declined: dq.state === CONFIG.dqStates.declined });
+        }
+        next.set(item.utterance_id, list);
+      }
+    }
+    dqsByUtterance = next;
+    dqLinksSignature = JSON.stringify([...next.entries()]);
   } catch (error) {
     // Try again on the next poll.
   }
+}
+
+/** Show one DQ, opened, in the DQs view (from a transcript line's DQ marker). */
+function openDq(dqId) {
+  dqFilter = DQ_FILTER_ALL;
+  expandedDqId = dqId;
+  setView("dqs");
 }
 
 /** Fetch the latest clips (and detected calls) and redraw the transcript or trash. */
@@ -1299,13 +1366,19 @@ async function refreshTranscript() {
     if (view !== currentView) {
       return; // the user switched views while this was loading: do not draw over the new view
     }
-    if (text === lastClipsSignature && !candidatesChanged) {
+    let trashedDqsText = "";
+    if (showingTrash) {
+      trashedDqsText = await (await fetch(CONFIG.dqsRoute + "?" + CONFIG.viewQueryKey + "=" + CONFIG.viewTrash)).text();
+    }
+    const signature = text + "|" + dqLinksSignature + "|" + trashedDqsText;
+    if (signature === lastClipsSignature && !candidatesChanged) {
       return; // nothing changed: keep the page (and any playing audio) as it is
     }
     const data = JSON.parse(text);
+    trashedDqs = trashedDqsText ? JSON.parse(trashedDqsText)[CONFIG.dqsKey] : [];
     const rendered = renderClips(data[CONFIG.clipsKey]);
     if (rendered) {
-      lastClipsSignature = text;
+      lastClipsSignature = signature;
       loadMeets(); // keep the clip counts in the meet picker current
     }
   } catch (error) {

@@ -148,6 +148,16 @@ class DqStoreTests(unittest.TestCase):
         self.assertEqual((dq["event"], dq["infractions"], dq["notes"]), (None, [], "Made by hand from: \u201cheard\u201d"))
         self.assertEqual(self.store.create_dq_from_utterance(9999), [])
 
+    def test_trash_and_restore(self) -> None:
+        dq_id = self._complete_dq("12", "1")
+        self.assertTrue(self.store.trash_dq(dq_id))
+        self.assertEqual(self.store.list_dqs(None), [])
+        self.assertEqual([dq["id"] for dq in self.store.list_dqs(None, trashed=True)], [dq_id])
+        self.assertFalse(self.store.trash_dq(dq_id))  # already in the trash
+        self.assertTrue(self.store.trash_dq(dq_id, trashed=False))
+        dq = self.store.list_dqs(None)[0]
+        self.assertEqual([item["note"] for item in dq["history"]][-2:], ["moved to trash", "restored from trash"])
+
 class DqStatusTests(unittest.TestCase):
     """Accepted DQs split into incomplete and pending notification."""
 

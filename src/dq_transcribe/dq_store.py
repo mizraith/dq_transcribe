@@ -435,15 +435,37 @@ class DqStore:
             payloads.append({"notes": note, "evidence": evidence, "infractions": []})
         return [self.create_dq(payload, meet_id) for payload in payloads]
 
-    def delete_declined(self, meet_id: int) -> int:
-        """Permanently delete a closed meet's declined DQs (the trash). Overturned DQs are never deleted.
+    def trash_dq(self, dq_id: int, trashed: bool = True) -> bool:
+        """Move a DQ to the trash (a mistake, such as a duplicate) or restore it.
+
+        Unlike Declined (a decision that stays on the record), a trashed DQ leaves
+        the DQ list. It can be restored until the trash is emptied after the meet.
+
+        Returns:
+            False if there is no such DQ (or it is already where it was asked to go).
+        """
+        with self._database.transaction() as connection:
+            row = connection.execute("SELECT state, trashed_at FROM dqs WHERE id = ?", (dq_id,)).fetchone()
+            if row is None or (row["trashed_at"] is not None) == trashed:
+                return False
+            now = utc_now_iso()
+            connection.execute("UPDATE dqs SET trashed_at = ?, updated_at = ? WHERE id = ?", (now if trashed else None, now, dq_id))
+            connection.execute(
+                "INSERT INTO dq_history (dq_id, at, from_state, to_state, by_name, note) VALUES (?, ?, ?, ?, ?, ?)",
+                (dq_id, now, row["state"], row["state"], None, "moved to trash" if trashed else "restored from trash"),
+            )
+            return True
+
+    def empty_trash(self, meet_id: int) -> int:
+        """Permanently delete a closed meet's trashed and declined DQs. Overturned DQs are never deleted.
 
         Returns:
             How many were deleted.
         """
         with self._database.transaction() as connection:
             ids = [row["id"] for row in connection.execute(
-                "SELECT id FROM dqs WHERE meet_id = ? AND state = ?", (meet_id, constants.DQ_STATE_DECLINED))]
+                "SELECT id FROM dqs WHERE meet_id = ? AND (state = ? OR trashed_at IS NOT NULL)",
+                (meet_id, constants.DQ_STATE_DECLINED))]
             for dq_id in ids:
                 for table in ("dq_infractions", "dq_evidence", "dq_history"):
                     connection.execute(f"DELETE FROM {table} WHERE dq_id = ?", (dq_id,))
@@ -478,13 +500,19 @@ class DqStore:
             self.change_state(dq["id"], constants.DQ_STATE_NOTIFIED, by_name)
         return [dq["id"] for dq in ready]
 
-    def list_dqs(self, meet_id: int | None) -> list[dict[str, Any]]:
-        """A meet's DQs (all DQs if None), sorted by event, heat, lane, with infractions, evidence and history."""
+    def list_dqs(self, meet_id: int | None, trashed: bool = False) -> list[dict[str, Any]]:
+        """A meet's DQs (all DQs if None), sorted by event, heat, lane, with infractions, evidence and history.
+
+        Args:
+            meet_id: The meet (None = every meet).
+            trashed: List the DQs in the trash instead (deleted by mistake, restorable).
+        """
+        trash_filter = "trashed_at IS NOT NULL" if trashed else "trashed_at IS NULL"
         with self._database.connection() as connection:
             if meet_id is None:
-                rows = connection.execute("SELECT * FROM dqs")
+                rows = connection.execute(f"SELECT * FROM dqs WHERE {trash_filter}")
             else:
-                rows = connection.execute("SELECT * FROM dqs WHERE meet_id = ?", (meet_id,))
+                rows = connection.execute(f"SELECT * FROM dqs WHERE meet_id = ? AND {trash_filter}", (meet_id,))
             dqs = [dict(row) for row in rows]
             for dq in dqs:
                 dq["infractions"] = [
@@ -573,7 +601,7 @@ def _text_fields(payload: dict[str, Any]) -> dict[str, str | None]:
 # Columns added to dqs after the first release (added on start-up if missing).
 _ADDED_DQ_COLUMNS = {
     "notified_at": "TEXT", "notified_by": "TEXT", "protested_at": "TEXT",
-    "protest_count": "INTEGER NOT NULL DEFAULT 0", "ruled_by": "TEXT",
+    "protest_count": "INTEGER NOT NULL DEFAULT 0", "ruled_by": "TEXT", "trashed_at": "TEXT",
 }
 
 

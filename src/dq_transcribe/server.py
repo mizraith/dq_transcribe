@@ -74,6 +74,8 @@ _MAX_STORED_NAME_CHARS = 80
 _MEET_ASSIGN_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_ASSIGN_SUFFIX)}$")
 _NON_FILENAME_CHARACTERS = re.compile(r"[^a-z0-9]+")
 _DQ_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_DQS)}/(\d+)$")
+_DQ_TRASH_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_DQS)}/(\d+){re.escape(constants.DQ_TRASH_SUFFIX)}$")
+_DQ_RESTORE_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_DQS)}/(\d+){re.escape(constants.DQ_RESTORE_SUFFIX)}$")
 _DQ_STATE_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_DQS)}/(\d+){re.escape(constants.DQ_STATE_SUFFIX)}$")
 
 
@@ -174,6 +176,8 @@ def build_web_config() -> dict[str, Any]:
         "maxProtestCycles": constants.MAX_PROTEST_CYCLES,
         "protestWindowMinutes": constants.PROTEST_WINDOW_MINUTES,
         "notifyEventRoute": constants.ROUTE_NOTIFY_EVENT,
+        "dqTrashSuffix": constants.DQ_TRASH_SUFFIX,
+        "dqRestoreSuffix": constants.DQ_RESTORE_SUFFIX,
         "dqFromUtteranceRoute": constants.ROUTE_DQ_FROM_UTTERANCE,
         "utteranceIdKey": constants.REQUEST_KEY_UTTERANCE_ID,
         "textKey": constants.REQUEST_KEY_TEXT,
@@ -372,7 +376,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
             self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_CLIPS: clips})
         elif path == constants.ROUTE_DQS:
-            dqs = self.server.dq_store.list_dqs(database.get_active_meet_id())
+            trashed = parse_qs(url.query).get(constants.QUERY_KEY_VIEW, [""])[0] == constants.VIEW_TRASH
+            dqs = self.server.dq_store.list_dqs(database.get_active_meet_id(), trashed=trashed)
             self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_DQS: dqs})
         elif path == constants.ROUTE_CANDIDATES:
             candidates = self.server.dq_store.candidates(database.get_active_meet_id())
@@ -437,6 +442,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_dq_from_utterance()
         elif (match := _DQ_STATE_PATTERN.match(path)) is not None:
             self._handle_dq_state(int(match.group(1)))
+        elif (match := _DQ_TRASH_PATTERN.match(path)) is not None:
+            self._handle_dq_trash(int(match.group(1)), trashed=True)
+        elif (match := _DQ_RESTORE_PATTERN.match(path)) is not None:
+            self._handle_dq_trash(int(match.group(1)), trashed=False)
         elif (match := _DQ_PATTERN.match(path)) is not None:
             self._handle_update_dq(int(match.group(1)))
         elif (match := _MEET_PATTERN.match(path)) is not None:
@@ -678,7 +687,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             if audio_path is not None:
                 audio_path.unlink(missing_ok=True)
                 deleted_clips += 1
-        deleted_dqs = self.server.dq_store.delete_declined(meet_id)
+        deleted_dqs = self.server.dq_store.empty_trash(meet_id)
         LOGGER.info("Emptied the trash of meet %d: %d clips, %d DQs", meet_id, deleted_clips, deleted_dqs)
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_DELETED_CLIPS: deleted_clips, constants.RESPONSE_KEY_DELETED_DQS: deleted_dqs})
 
@@ -824,6 +833,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json_error(HTTPStatus.NOT_FOUND, "No such transcript line")
             return
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_DQ_IDS: dq_ids})
+
+    def _handle_dq_trash(self, dq_id: int, trashed: bool) -> None:
+        """Move a DQ to the trash or restore it."""
+        if not self.server.dq_store.trash_dq(dq_id, trashed):
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such DQ, or it is already there")
+            return
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
 
     def _handle_notify_event(self) -> None:
         """Notify an event's DQs that are pending notification: {"event", "by", "include_not_ready"}."""

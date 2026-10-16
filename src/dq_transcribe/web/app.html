@@ -57,6 +57,15 @@
     #toast { position: fixed; left: 50%; bottom: 1.5rem; transform: translate(-50%, 2rem); opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; padding: 0.8rem 1.4rem; border-radius: 0.6rem; font-size: 1.1rem; font-weight: 600; color: #fff; background: #166534; box-shadow: 0 0.3rem 1rem rgba(0,0,0,0.25); z-index: 10; }
     #toast.show { opacity: 1; transform: translate(-50%, 0); }
     #toast.error { background: #b91c1c; }
+    #toast.with-action { pointer-events: auto; display: flex; align-items: center; gap: 1rem; }
+    #toast .toast-action { font-size: 1rem; font-weight: 700; padding: 0.4rem 1rem; border: 2px solid #fff; border-radius: 0.4rem; background: transparent; color: #fff; }
+    .dq-card { position: relative; overflow: hidden; }
+    .dq-card-body { position: relative; background: var(--card); transition: transform 0.15s ease-out; }
+    .dq-card.swiped .dq-card-body { transform: translateX(-130px); }
+    .dq-swipe-trash { position: absolute; top: 0; right: 0; bottom: 0; width: 130px; border: 0; background: #b91c1c; color: #fff; font-size: 0.95rem; font-weight: 700; }
+    .dq-summary { touch-action: pan-y; }
+    .dq-editor .dq-trash-link { margin-right: auto; font-size: 0.9rem; padding: 0.5rem 0.8rem; border: 1px solid #fca5a5; background: #fff; color: #b91c1c; border-radius: 0.5rem; }
+    .event-actions .event-reprint { min-height: 2.2rem; padding: 0.3rem 0.55rem; font-size: 0.95rem; border: 1px solid var(--line); background: #fff; opacity: 0.75; }
     .dq-card.flash { animation: dq-flash 1.6s ease-out; }
     @keyframes dq-flash { from { box-shadow: 0 0 0 0.4rem #86efac; } to { box-shadow: 0 0 0 0 transparent; } }
     .code-chips { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 0.4rem; }
@@ -168,6 +177,15 @@
     .clip button { font-size: 0.85rem; padding: 0.2rem 0.6rem; }
     .utterance-text { display: block; width: 100%; box-sizing: border-box; font: inherit; margin-top: 0.4rem; padding: 0.4rem 0.5rem; border: 1px solid var(--line); border-radius: 0.4rem; resize: vertical; }
     .utterance-text.saved { border-color: var(--go); }
+    .utterance-line.has-dq .utterance-text { border-left: 4px solid var(--go); }
+    .utterance-dq.again { border-color: #d1d5db; background: #f9fafb; color: #6b7280; font-weight: 600; }
+    .utterance-dqs { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.25rem 0 0.2rem; }
+    .utterance-dq-marker { font-size: 0.85rem; font-weight: 700; padding: 0.25rem 0.6rem; border: 0; border-radius: 0.8rem; background: #dcfce7; color: #166534; }
+    .utterance-dq-marker.declined { background: #e5e7eb; color: #4b5563; text-decoration: line-through; }
+    .trashed-dqs { background: var(--card); border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.6rem 0.8rem; margin-bottom: 0.8rem; }
+    .trashed-dqs h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+    .trashed-dq { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px dashed var(--line); }
+    .trashed-dq button { margin-left: auto; font-size: 0.95rem; padding: 0.4rem 0.9rem; border-radius: 0.4rem; }
     .utterance-line { display: flex; gap: 0.4rem; align-items: flex-start; }
     .utterance-line .utterance-text { flex: 1; }
     .utterance-dq { margin-top: 0.4rem; flex: none; font-size: 0.9rem; font-weight: 700; padding: 0.45rem 0.6rem; min-height: 2.4rem; border: 1px solid #93c5fd; border-radius: 0.4rem; background: #eff6ff; color: #1e40af; }
