@@ -530,7 +530,12 @@ ROUTE_AUTO_DQS = "/api/auto-dqs"  # GET {"enabled"}; POST {"enabled": true|false
 
 # Printed DQ summary of one event for the Meet Manager operator (offered at Notify event).
 EVENT_SUMMARY_FILENAME = "event_summary.html"
-ROUTE_EVENT_SUMMARY = "/event-summary"  # GET ?event=12 (active meet)
+ROUTE_EVENT_SUMMARY = "/event-summary"  # GET ?event=12 (displayed meet); no event: a page to pick one
+# For the Admin Assistant's Reports: ?all=1 lists every DQ with its status; ?suite_meet_id=3 picks the meet.
+# The Reports link: http://localhost:8000/event-summary?all=1&suite_meet_id=<the main page's meet id>
+QUERY_KEY_ALL_STATUSES = "all"
+QUERY_KEY_SUITE_MEET_ID = "suite_meet_id"
+EVENT_PICKER_FILENAME = "event_picker.html"
 RESPONSE_KEY_ADDED_TO_EXISTING = "added_to_existing"  # POST /api/dqs: the call was added to the swimmer's DQ
 # A new call waits for a person when its event is already notified, not in the meet file, or more
 # than REVIEW_EVENTS_BEHIND events behind the lowest event of the latest REVIEW_RECENT_DQ_COUNT DQs

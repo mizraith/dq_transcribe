@@ -31,6 +31,9 @@
     td.none { color: #6b7280; text-align: center; }
     tr.struck td { text-decoration: line-through; color: #6b7280; }
     .pending { margin-top: 0.2in; font-weight: 700; color: #b91c1c; }
+    .all-note { margin-top: 0.2in; font-size: 10pt; color: #374151; }
+    td.status { font-size: 10pt; font-weight: 700; width: 1.1in; }
+    tr.struck td.status { text-decoration: none; }
     .footer { margin-top: 0.3in; font-size: 8pt; color: #6b7280; }
     @media print { body { background: #fff; } .toolbar { display: none; } .page { box-shadow: none; margin: 0; padding: 0; max-width: none; } }
   </style>
@@ -38,10 +41,10 @@
 <body>
   <div class="toolbar"><button type="button" onclick="window.print()">Print</button><span>For the Meet Manager operator: enter each code and invalidate the time.</span></div>
   <section class="page">
-    <h1>Event ${event} DQs (${count})</h1>
+    <h1>${heading}</h1>
     <div class="meet">${event_label} &middot; ${meet_name}</div>
     <table>
-      <thead><tr><th>Heat</th><th>Lane</th><th>Swimmer</th><th>Club</th><th>Code</th><th>Infraction</th><th>Official</th><th>Entered</th></tr></thead>
+      <thead>${head}</thead>
       <tbody>${rows}</tbody>
     </table>
     ${overturned}

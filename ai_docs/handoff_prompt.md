@@ -5,8 +5,9 @@ For the separate Officials Sign-In app, use `ai_docs/officials_signin/HANDOFF_PR
 
 ---
 
-You are continuing work on **dq_transcribe**, part of the owner's *Swimming_Admin_Assistant*
-project, in the private repo `mizraith/dq_transcribe`. It records FRS radio calls between swim
+You are continuing work on **DQ Transcribe** (package and command `dq_transcribe`), a sub-app of
+the owner's **Admin Assistant** suite (claude.ai project *Swimming_Admin_Assistant*), in the
+private repo `mizraith/dq_transcribe`. It records FRS radio calls between swim
 officials on a tablet, transcribes them locally, finds DQ calls, and manages DQs through
 notification and protests.
 
@@ -37,11 +38,35 @@ automate first, fewest taps), `ai_docs/guidelines.md` (standards, safety) and
 - Tests: `PYTHONPATH=src:tests python3 -m unittest discover -s tests` (all pass). Keep new test
   methods inside their class, above the `__main__` guard.
 
+**State on 2026-10-16 (installed on the tablet): Admin Assistant suite.** See
+`ai_docs/officials_signin/DQ_SUITE_HANDOFF.md` (owned by the Officials Sign-In chat; do not edit
+`src/officials_signin/**`, `scripts/start_signin.sh`, `scripts/start_admin_assistant.sh` or
+`ai_docs/officials_signin/**`). The main page and the current meet/session live on the
+Officials Sign-In server (:8010, `/api/suite/current`, `/select`, `/meets`). DQ's page has the
+suite top bar (☰, DQ Transcribe, meet, session drop-down, Transcript/DQs/Trash) and ☰ menu
+(Meets & Main Page, Downloads, DQ meet setup, Mic test, Admin Assistant ›). DQ follows the
+suite's meet (`POST /api/suite-link`; `meets.suite_meet_id`); capture records to the meet and
+session fixed at Start until Stop. Automatic DQs (`auto_dq.py`), the coach page on the Wi-Fi
+(`coach_server.py`, :8020), printout requests, transcript workflow filter (Processing /
+Transcribed / DQ made / Needs you), event DQ summary (`/event-summary`; `?all=1` = every
+status, for the suite's Reports) are all in `ai_docs/memory.md`.
+
 **Not verified yet:** the Meet Manager database reader against a real file (table names are
 from documentation); real PDF/HTML heat sheets (parser written from Hy-Tek's usual layout);
 radio audio through an attenuator; multi-hour capture (Friday 2026-10-16).
 
-**Next (owner's order):** check the owner's real Meet Manager files (database, PDF, HTML) and
+**Next steps added 2026-10-16 (owner):**
+1. **Move to a new, renamed repository** for the Admin Assistant suite (the repo now holds
+   more than dq_transcribe). Plan it with the owner and the Officials Sign-In chat: new name,
+   `git` history kept (push the whole history to the new remote), the tablet's clone and
+   device agent re-pointed, `scripts/*` paths and `REPO_DIRECTORY` in `start_dq.sh` updated,
+   docs links updated. Do it between meets, never on a meet day.
+2. **Owner clones the repo locally** to review the code, layout and file names (WSL on
+   Windows, not PowerShell): `git clone https://github.com/mizraith/dq_transcribe.git` (or the new
+   name after step 1), then read `README.md`, `ai_docs/` and `src/`. Collect naming/layout
+   changes as a list for the assistant.
+
+**Next (owner's order, before 2026-10-16):** check the owner's real Meet Manager files (database, PDF, HTML) and
 fix the importers; then regrouping turns between conversations (per-utterance group override,
 drag plus one-tap up/down) and merge/split DQs; then sessions (from the Meet Manager data if
 present). After Friday: offline replay-and-score harness on the recorded audio.

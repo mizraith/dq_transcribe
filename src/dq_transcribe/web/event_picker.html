@@ -1,0 +1,46 @@
+<!doctype html>
+<!--
+  "Print DQ summary for event ___": type an event number (or tap an event that has
+  DQs) to open its printable summary. Opened from the Admin Assistant's Reports.
+  Filled in by dq_transcribe.event_summary.render_event_picker. Plain HTML form, no script.
+  This file is a string.Template: never use a literal dollar sign here.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+  <style>
+    body { margin: 0; background: #f4f5f7; color: #1f2430; font-family: system-ui, sans-serif; font-size: 18px; }
+    header { padding: 0.8rem 1rem; background: #111827; color: #fff; }
+    header h1 { margin: 0; font-size: 1.15rem; }
+    header span { color: #cbd5e1; font-weight: 600; }
+    main { max-width: 44rem; margin: 1rem auto; padding: 0 1rem; }
+    .ask { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; background: #fff; border: 1px solid #d7dbe2; border-radius: 0.8rem; padding: 1rem; }
+    .ask input { width: 6rem; font-size: 1.4rem; padding: 0.5rem; text-align: center; border: 1px solid #d7dbe2; border-radius: 0.5rem; }
+    .ask button { font-size: 1.1rem; min-height: 3rem; padding: 0 1.4rem; border: 0; border-radius: 0.6rem; background: #1d4ed8; color: #fff; font-weight: 700; }
+    h2 { font-size: 1rem; margin: 1.4rem 0 0.6rem; color: #555b66; }
+    .events { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.5rem; }
+    .events button { text-align: left; min-height: 3.6rem; padding: 0.5rem 0.8rem; border: 1px solid #d7dbe2; border-radius: 0.6rem; background: #fff; font-size: 1.05rem; font-weight: 700; }
+    .events small { display: block; font-weight: 400; font-size: 0.8rem; color: #555b66; }
+  </style>
+</head>
+<body>
+  <header><h1>${title} <span>${meet_name}</span></h1></header>
+  <main>
+    <form action="${route}" method="get">
+      ${hidden}
+      <div class="ask">
+        <label for="event">Event #</label>
+        <input id="event" name="${event_key}" inputmode="numeric" autocomplete="off" autofocus>
+        <button type="submit">Show summary</button>
+      </div>
+    </form>
+    <h2>Or tap an event (every DQ, whatever its status)</h2>
+    <form action="${route}" method="get">
+      ${hidden}
+      <div class="events">${buttons}</div>
+    </form>
+  </main>
+</body>
+</html>

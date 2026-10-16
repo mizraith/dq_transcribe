@@ -797,7 +797,14 @@ listing that dq_transcribe ingests**.
   signing in again is one tap and club/zone/years are pre-filled.
 - **Pre-sign-up:** one tap per extra session ("also working: Sat PM").
 
-## 9.1 Built so far (2026-10-15)
+## 9.1 Built so far (2026-10-15, updated 2026-10-16)
+
+- **2026-10-16:** DQ Transcribe joined the **Admin Assistant** suite (shared meet and
+  session from the main page, suite top bar and menu, capture target fixed at Start).
+  **Event DQ summary for the Reports:** `http://localhost:8000/event-summary?all=1&suite_meet_id=<id>`
+  asks for the event number (or offers each event with DQs) and prints every DQ of the event
+  with a **Status** column (Called, Incomplete, Pending notification, Notified, Declined, ...),
+  for working "blind" from paper. The version offered at Notify event lists only DQs to enter.
 
 - Meet Manager import (database, PDF, HTML, text), versioned; auto-fill swimmer/club; event
   strokes pick slip codes. Database reader unverified until the owner's file arrives.
@@ -823,6 +830,13 @@ listing that dq_transcribe ingests**.
 3. Get the Hy-Tek Meet Manager file for Friday's meet.
 4. Friday 2026-10-16: capture 2–3 hours, and keep the event/heat/lane list of every
    DQ (with times where possible).
+
+**Added 2026-10-16 (owner):**
+5. **New repository.** Move the code into a new, renamed repository for the Admin Assistant
+   suite (history kept; tablet clone, device agent, start scripts and docs re-pointed). Plan
+   it with the Officials Sign-In chat; do it between meets.
+6. **Review the code locally.** Clone the repository on your computer (WSL) to review the
+   code, layout and file names; send the assistant a list of changes.
 
 **Assistant:** after Friday, review the audio (phase 1). Meanwhile, design the
 touch-friendly call-linking workflow and the DQ data model.

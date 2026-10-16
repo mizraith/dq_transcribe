@@ -354,5 +354,31 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.database.get_active_meet_id(), displayed)  # recording does not move the display
 
 
+    def test_event_summary_with_every_status_for_the_reports(self) -> None:
+        meet_id = self.database.link_suite_meet(7, "Candy Meet", "2026-10-16")
+        self.database.create_meet("Displayed meet", "2026-10-01")  # the summary must not use the displayed meet
+        store = self.server.dq_store
+        complete = {"event": "5", "heat": "1", "swimmer": "Pat Example", "club": "PASA", "official": "Lee", "referee": "Kim",
+                    "infractions": [{"description": "Kick: scissors", "code": "3C"}]}
+        notified = store.create_dq({**complete, "lane": "2"}, meet_id)
+        store.change_state(notified, constants.DQ_STATE_ACCEPTED)
+        store.change_state(notified, constants.DQ_STATE_NOTIFIED, "Admin Official")
+        store.create_dq({"event": "5", "heat": "1", "lane": "4", "infractions": [{"description": "One hand touch"}]}, meet_id)
+        declined = store.create_dq({**complete, "lane": "6"}, meet_id)
+        store.change_state(declined, constants.DQ_STATE_DECLINED, "Deck Referee")
+        route = f"{constants.ROUTE_EVENT_SUMMARY}?{constants.QUERY_KEY_SUITE_MEET_ID}=7&{constants.QUERY_KEY_ALL_STATUSES}=1"
+        page = self._request("GET", route + f"&{constants.QUERY_KEY_EVENT}=05").read().decode()
+        self.assertIn("Event 5: all DQs (3)", page)
+        for label in ("Notified", "Called", "Declined"):
+            self.assertIn(f">{label}<", page)
+        self.assertNotIn("${", page)
+        picker = self._request("GET", route).read().decode()
+        self.assertIn("Print DQ summary for event", picker)
+        self.assertIn('value="5"', picker)
+        self.assertIn('name="suite_meet_id" value="7"', picker)
+        missing = self._request("GET", f"{constants.ROUTE_EVENT_SUMMARY}?{constants.QUERY_KEY_SUITE_MEET_ID}=99")
+        self.assertEqual(missing.status, 404)
+
+
 if __name__ == "__main__":
     unittest.main()

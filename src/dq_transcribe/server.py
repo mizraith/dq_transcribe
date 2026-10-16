@@ -34,12 +34,13 @@ from dq_transcribe.grouping import normalize_timestamp
 from dq_transcribe.meet_archive import archive_filename, build_meet_archive
 from dq_transcribe.auto_dq import AutoDqCreator
 from dq_transcribe.coach_server import CoachPage
-from dq_transcribe.event_summary import render_event_summary
+from dq_transcribe.event_summary import render_event_picker, render_event_summary
 from dq_transcribe.demo_data import DEMO_MEET_NAME
 from dq_transcribe.officials_roster import RosterError, read_roster
 from dq_transcribe.slip_page import club_sort_key, print_requests_toolbar, render_slips
 from dq_transcribe.meet_files import MeetFileError, read_meet_file
 from dq_transcribe.meet_files.meet_sheet import download_address, read_meet_sheet_file, today
+from dq_transcribe.meet_files.model import normalize_event_number
 from dq_transcribe.meet_files.store import MeetProgramStore
 from dq_transcribe.transcript import format_transcript_text
 from dq_transcribe.worker import TranscriptionWorker
@@ -883,15 +884,41 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_slips(dqs, title, layout=layout))
 
     def _send_event_summary(self, query: dict[str, list[str]]) -> None:
-        """The printed DQ summary of one event of the active meet (``?event=12``)."""
-        event = (query.get(constants.QUERY_KEY_EVENT) or [""])[0].strip()
-        meet_id = self.server.database.get_active_meet_id()
-        meet = self.server.database.get_meet(meet_id) if meet_id is not None else None
-        if not event or meet is None:
-            self._send_json_error(HTTPStatus.BAD_REQUEST, "Say which event of the active meet: ?event=12")
+        """The printed DQ summary of one event.
+
+        ``?event=12`` for the displayed meet's event 12 (the version offered at Notify
+        event: DQs to enter in Meet Manager). ``&all=1`` lists every DQ of the event with
+        its status (the Admin Assistant's Reports printout). ``&suite_meet_id=3`` picks
+        the meet linked to the main page's meet 3 instead of the displayed one.
+        Without an event, a page asks for the event number.
+        """
+        first = lambda key: (query.get(key) or [""])[0].strip()  # noqa: E731
+        event = normalize_event_number(first(constants.QUERY_KEY_EVENT)) if first(constants.QUERY_KEY_EVENT) else ""
+        all_statuses = first(constants.QUERY_KEY_ALL_STATUSES) not in ("", "0")
+        database = self.server.database
+        meet_id = database.get_active_meet_id()
+        suite_meet = first(constants.QUERY_KEY_SUITE_MEET_ID)
+        if suite_meet.isdigit():
+            linked = next((meet for meet in database.list_meets() if meet.get("suite_meet_id") == int(suite_meet)), None)
+            meet_id = linked["id"] if linked else None
+        meet = database.get_meet(meet_id) if meet_id is not None else None
+        if meet is None:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No DQ meet for that meet yet: open it in DQ Transcribe first")
             return
-        dqs = [dq for dq in self.server.dq_store.list_dqs(meet_id) if (dq["event"] or "") == event]
-        self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_event_summary(meet["name"], event, dqs))
+        dqs = self.server.dq_store.list_dqs(meet_id)
+        if not event:
+            counts: dict[str, list[dict[str, Any]]] = {}
+            for dq in dqs:
+                if dq["event"]:
+                    counts.setdefault(normalize_event_number(dq["event"]), []).append(dq)
+            events = [(number, next((dq.get("event_label") or "" for dq in items), ""), len(items)) for number, items in counts.items()]
+            keep = {key: value for key, value in ((constants.QUERY_KEY_ALL_STATUSES, "1" if all_statuses else ""),
+                                                  (constants.QUERY_KEY_SUITE_MEET_ID, suite_meet)) if value}
+            self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_event_picker(meet["name"], events, keep))
+            return
+        event_dqs = [dq for dq in dqs if normalize_event_number(dq["event"] or "") == event]
+        self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE,
+                         render_event_summary(meet["name"], event, event_dqs, all_statuses=all_statuses))
 
     def _send_font(self, filename: str) -> None:
         """Send a bundled font file (only plain file names inside web/fonts/)."""
