@@ -799,6 +799,12 @@ listing that dq_transcribe ingests**.
 
 ## 9.1 Built so far (2026-10-15, updated 2026-10-16)
 
+- **ALPHA (2026-10-16, git tag `v0.2.0-alpha`, version 0.2.0a1):** first tagged release of
+  the Admin Assistant suite with DQ Transcribe: suite top bar and shared meet/session, automatic
+  DQs (human gatekeeper at Notify), merged repeat/partial calls, coach page with QR code and
+  printout requests, event DQ Summary/Report printouts (also in the main page's Reports),
+  status colours (only Protested is red). Used live at the Candy Meet that evening.
+
 - **2026-10-16:** DQ Transcribe joined the **Admin Assistant** suite (shared meet and
   session from the main page, suite top bar and menu, capture target fixed at Start).
   **Event DQ summary for the Reports:** `http://localhost:8000/event-summary?all=1&suite_meet_id=<id>`
@@ -837,6 +843,19 @@ listing that dq_transcribe ingests**.
    it with the Officials Sign-In chat; do it between meets.
 6. **Review the code locally.** Clone the repository on your computer (WSL) to review the
    code, layout and file names; send the assistant a list of changes.
+
+**Added 2026-10-16 (owner, at the ALPHA tag):**
+7. **Packaging.** Turn the suite into something installable on a fresh device: one install
+   script per platform, pinned whisper.cpp/llama.cpp, model downloads with checksums, a health
+   check, and a single "start the Admin Assistant" command (see section 9a). Includes the
+   Officials Sign-In app, so plan it with that chat.
+8. **Icon.** An app icon for the Admin Assistant (and one per sub-app if wanted): browser tab
+   favicon, home-screen / installed-web-app icon (web app manifest), and the printed QR sign.
+   Owner chooses the design.
+9. **Test on a Mac.** Install and run the suite on macOS with the built-in Terminal (Apple's
+   Command Line Tools, Homebrew only if unavoidable): run the test suite, capture from the Mac
+   mic and a USB audio adapter, run both whisper passes, the coach page on the Wi-Fi, and print
+   a slip and an event summary. Record what had to change in section 9a.
 
 **Assistant:** after Friday, review the audio (phase 1). Meanwhile, design the
 touch-friendly call-linking workflow and the DQ data model.

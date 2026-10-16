@@ -8,4 +8,4 @@ The core package is kept platform-neutral so it can run on an Android tablet
 own clearly named module, not in the core.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0a1"

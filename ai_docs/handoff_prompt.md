@@ -65,6 +65,15 @@ radio audio through an attenuator; multi-hour capture (Friday 2026-10-16).
    Windows, not PowerShell): `git clone https://github.com/mizraith/dq_transcribe.git` (or the new
    name after step 1), then read `README.md`, `ai_docs/` and `src/`. Collect naming/layout
    changes as a list for the assistant.
+3. **Packaging** (product_plan 9a and 9b step 7): per-platform install scripts, pinned engines,
+   model checksums, health check, one start command for the whole suite.
+4. **Icon** for the Admin Assistant (favicon, web app manifest / home-screen icon, QR sign).
+5. **Test on a Mac** with the built-in Terminal: tests, capture, both whisper passes, coach page,
+   printing. Write down what had to change.
+
+**Release:** `v0.2.0-alpha` (version 0.2.0a1, tagged 2026-10-16) is the ALPHA of the suite with
+DQ Transcribe, installed on the tablet for the Candy Meet. Bump `__version__` and
+`pyproject.toml` together; tag releases as `vX.Y.Z-<stage>`.
 
 **Next (owner's order, before 2026-10-16):** check the owner's real Meet Manager files (database, PDF, HTML) and
 fix the importers; then regrouping turns between conversations (per-utterance group override,
