@@ -1,0 +1,31 @@
+task: 20261016T013654Z_create_candy_meet
+started: 2026-10-15T18:37:13-07:00
+finished: 2026-10-15T18:37:15-07:00
+work_repo_commit: 139b358
+exit_code: 0
+--- output ---
+fetched 135169 bytes
+{
+ "meet_id": 3,
+ "sheet": {
+  "name": "All Treats No Tricks Candy Meet Block Party",
+  "start_date": "2026-10-16",
+  "events": 26,
+  "entries": 538,
+  "sessions": [
+   {
+    "name": "Candy Meet",
+    "day": "2026-10-16",
+    "start_time": "16:45"
+   }
+  ],
+  "officials": [],
+  "missing": [
+   "officials (add them, or import from Sign-In)"
+  ],
+  "file_format": "meet_manager_database"
+ }
+}
+3 All Treats No Tricks Candy Meet Block Party 2026-10-16 ACTIVE
+2 Workflow demo (test data) 2026-10-15 
+1 10/14 Test 2026-10-14 
