@@ -236,6 +236,11 @@ class TidyNameTests(unittest.TestCase):
     def test_nickname_quotes_kept_and_title_case(self) -> None:
         self.assertEqual(tidy_name('MARY-JO "MJ" O\'NEIL ,'), 'Mary-Jo "Mj" O\'Neil')
 
+    def test_unmatched_quote_at_an_end_is_dropped(self) -> None:
+        self.assertEqual(tidy_name('"MARK "RED" BYER'), 'Mark "Red" Byer')
+        self.assertEqual(tidy_name('MARK "RED" BYER"'), 'Mark "Red" Byer')
+        self.assertEqual(tidy_name('"RED" BYER'), '"Red" Byer')
+
     def test_stray_symbols_dropped(self) -> None:
         self.assertEqual(tidy_name("PAT | EXAMPLE @"), "Pat Example")
 

@@ -59,6 +59,7 @@ _LSC_CLUB_PATTERN = re.compile(
 _OFFICIAL_PATTERN = re.compile(constants.CARD_OFFICIAL_PATTERN, _FLAGS)
 _GOOD_STANDING_BANNER_PATTERN = re.compile(constants.CARD_GOOD_STANDING_BANNER_PATTERN, _FLAGS)
 _NAME_CHARACTERS = re.compile(r"[^A-Za-z\"'’.\- ]")
+_QUOTE = '"'
 _LETTER_RUN = re.compile(r"[A-Za-z]+")
 _NAME_WORD = re.compile(r"[A-Za-z][A-Za-z'’.\-]*")
 
@@ -158,7 +159,14 @@ def tidy_name(raw_name: str) -> str:
     words = [word for word in cleaned.split() if any(character.isalpha() for character in word)]
     # Capitalise each run of letters, so hyphenated names and O' names come out right.
     tidied_words = [_LETTER_RUN.sub(lambda match: match.group(0).capitalize(), word) for word in words]
-    return " ".join(tidied_words)[: constants.NAME_MAX_LENGTH]
+    tidied = " ".join(tidied_words)
+    # A nickname has two quotes; an odd one at either end is OCR noise ('"Mark "Red" Byer').
+    if tidied.count(_QUOTE) % 2 == 1:
+        if tidied.startswith(_QUOTE):
+            tidied = tidied[1:]
+        elif tidied.endswith(_QUOTE):
+            tidied = tidied[:-1]
+    return tidied.strip()[: constants.NAME_MAX_LENGTH]
 
 
 def _pair_date_columns(lines: list[str]) -> dict[str, str]:
