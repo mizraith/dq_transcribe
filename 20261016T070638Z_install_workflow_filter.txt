@@ -1,0 +1,16 @@
+task: 20261016T070638Z_install_workflow_filter
+started: 2026-10-16T00:06:59-07:00
+finished: 2026-10-16T00:07:19-07:00
+work_repo_commit: eeb8a23
+exit_code: 0
+--- output ---
+{"meet_id": 2}
+running eeb8a23
+2026-10-16 00:07:01,465 Coach page on port 8020
+2026-10-16 00:07:01,969 whisper-server ready: ggml-base
+2026-10-16 00:07:02,470 whisper-server ready: ggml-small.en
+admin page 200
+{"enabled": true}
+3 All Treats No Tricks Candy Meet Block Party 2026-10-16 0 clips 
+1 10/14 Test 2026-10-14 29 clips 
+2 DEMO MEET 1999-10-31 229 clips ACTIVE
