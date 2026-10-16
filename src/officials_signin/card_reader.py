@@ -84,6 +84,7 @@ class CardReading:
         labels_found: How many card labels were recognised (0 means the text is
             probably not a membership card, or the image is mirrored).
         date_votes: For each date field, how many OCR passes agreed on its value.
+        name_votes: How many OCR passes read exactly the chosen name.
     """
 
     name: str | None = None
@@ -98,6 +99,7 @@ class CardReading:
     good_standing_banner: bool = False
     labels_found: int = 0
     date_votes: dict[str, int] = field(default_factory=dict)
+    name_votes: int = 0
 
     @property
     def missing_fields(self) -> list[str]:
@@ -272,6 +274,7 @@ def parse_card_text(text: str) -> CardReading:
         if getattr(reading, field_name) is None:
             setattr(reading, field_name, iso_date)
     reading.date_votes = {name: 1 for name in _DATE_FIELDS if getattr(reading, name) is not None}
+    reading.name_votes = 1 if reading.name is not None else 0
 
     member_match = _MEMBER_ID_PATTERN.search(text)
     if member_match is not None:
@@ -335,7 +338,9 @@ def merge_readings(readings: list[CardReading]) -> CardReading:
         the best single pass.
     """
     merged = CardReading()
-    merged.name = _best_name([reading.name for reading in readings])
+    names = [reading.name for reading in readings]
+    merged.name = _best_name(names)
+    merged.name_votes = sum(1 for name in names if name is not None and name == merged.name)
     merged.member_id = _most_common(reading.member_id for reading in readings)
     for field_name in _DATE_FIELDS:
         value, votes = _vote(getattr(reading, field_name) for reading in readings)

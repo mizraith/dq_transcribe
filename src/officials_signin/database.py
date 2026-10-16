@@ -441,8 +441,9 @@ class Database:
     ) -> int:
         """Create or update an official from the sign-in form and any card reading.
 
-        Values from the card (name, member ID, LSC, club) win over stored ones.
-        Values left empty on the form keep what is stored.
+        The name shown on the sign-in sheet wins (it may be a correction of the
+        card's OCR). Member ID, LSC and club from the card win over stored ones.
+        Values left empty keep what is stored.
 
         Args:
             official_id: Existing official, or None to create one.
@@ -458,8 +459,10 @@ class Database:
         Raises:
             SigninError: If a new official has no name, or the ID is unknown.
         """
+        # The name on the sign-in sheet wins: the admin saw it (and could fix an OCR
+        # slip). The card's name is only a fallback when the sheet sent none.
         card_name = None if reading is None else reading.name
-        chosen_name = (card_name or name or "").strip()[: constants.NAME_MAX_LENGTH]
+        chosen_name = (name or card_name or "").strip()[: constants.NAME_MAX_LENGTH]
         now = utc_now_iso()
         since_year = years_to_since_year(years_certified, today)
         card_json = None if reading is None else json.dumps(reading.to_dict())

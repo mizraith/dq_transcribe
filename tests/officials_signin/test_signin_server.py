@@ -105,7 +105,7 @@ class SigninServerTests(unittest.TestCase):
 
     def test_card_reading_reports_fields_and_validation(self) -> None:
         self.set_up_meet()
-        reply = self.read_card(CLEAN_CARD_TEXT)
+        reply = self.read_card(CLEAN_CARD_TEXT, passes=2)
         self.assertTrue(reply[constants.KEY_VALIDATED])
         self.assertTrue(reply[constants.KEY_CARD][constants.CARD_FIELD_COMPLETE])
         self.assertEqual(reply[constants.KEY_CARD][constants.KEY_ZONE], constants.ZONE_WESTERN)
@@ -131,6 +131,34 @@ class SigninServerTests(unittest.TestCase):
         self.assertEqual(again[constants.KEY_MATCH][constants.KEY_NAME], 'Pat "Skip" Example')
         self.assertEqual(again[constants.KEY_MATCH][constants.KEY_ROLES], ["Stroke & Turn Judge", "Starter"])
         self.assertNotIn(constants.KEY_MEMBER_ID, again[constants.KEY_MATCH])
+
+    def test_new_name_needs_two_matching_passes(self) -> None:
+        self.set_up_meet()
+        once = self.read_card(CLEAN_CARD_TEXT)
+        self.assertFalse(once[constants.KEY_CARD][constants.CARD_FIELD_COMPLETE])
+        garbled = CLEAN_CARD_TEXT.replace('PAT "SKIP" EXAMPLE', 'WIARN SKIP EXAMPLE')
+        _, mixed, _ = self.request("POST", constants.ROUTE_CARD_READING, {constants.KEY_TEXTS: [garbled, CLEAN_CARD_TEXT]})
+        self.assertFalse(mixed[constants.KEY_CARD][constants.CARD_FIELD_COMPLETE])
+        twice = self.read_card(CLEAN_CARD_TEXT, passes=2)
+        self.assertTrue(twice[constants.KEY_CARD][constants.CARD_FIELD_COMPLETE])
+
+    def test_known_official_keeps_stored_name_despite_ocr_slip(self) -> None:
+        self.set_up_meet()
+        reading = self.read_card(CLEAN_CARD_TEXT, passes=2)
+        _, first, _ = self.request("POST", constants.ROUTE_SIGNINS, {
+            constants.KEY_NAME: 'Pat "Skip" Example', constants.KEY_ROLES: ["Starter"],
+            constants.KEY_CARD: reading[constants.KEY_CARD],
+        })
+        garbled = CLEAN_CARD_TEXT.replace('PAT "SKIP" EXAMPLE', 'WIARN SKIP EXAMPLE')
+        again = self.read_card(garbled)  # one blurry pass, matched by member ID
+        self.assertTrue(again[constants.KEY_CARD][constants.CARD_FIELD_COMPLETE])
+        self.assertEqual(again[constants.KEY_MATCH][constants.KEY_NAME], 'Pat "Skip" Example')
+        self.request("POST", constants.ROUTE_SIGNINS, {
+            constants.KEY_OFFICIAL_ID: first[constants.KEY_OFFICIAL_ID], constants.KEY_NAME: 'Pat "Skip" Example',
+            constants.KEY_ROLES: ["Starter"], constants.KEY_CARD: again[constants.KEY_CARD],
+        })
+        _, officials, _ = self.request("GET", constants.ROUTE_OFFICIALS)
+        self.assertEqual([item[constants.KEY_NAME] for item in officials[constants.KEY_OFFICIALS]], ['Pat "Skip" Example'])
 
     def test_roster_has_one_line_per_role(self) -> None:
         self.set_up_meet()

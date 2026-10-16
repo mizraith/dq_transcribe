@@ -451,6 +451,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         # report "not complete" so the camera keeps reading to confirm it.
         if result.unconfirmed:
             card[constants.CARD_FIELD_COMPLETE] = False
+        # A new official's name read only once may be garbled ("WIARN" for "MARK"):
+        # keep reading until two passes agree. A known official keeps their stored name.
+        if match is None and reading.name is not None and reading.name_votes < constants.CARD_NAME_CONFIRMATIONS:
+            card[constants.CARD_FIELD_COMPLETE] = False
         self._send_json(
             HTTPStatus.OK,
             {

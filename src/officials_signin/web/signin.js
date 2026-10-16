@@ -1001,7 +1001,8 @@ function openSheet(official, card, cardResult) {
     laterSessionIds: [],
     official: official,
   };
-  sheetName.value = (card && card[KEYS.cardName]) || (official ? official[KEYS.name] : typedName);
+  // A known official keeps their stored name (an OCR slip must not rename them).
+  sheetName.value = official ? official[KEYS.name] : ((card && card[KEYS.cardName]) || typedName);
   sheetYears.value = official && official[KEYS.yearsCertified] !== null ? official[KEYS.yearsCertified] : "";
   const clubSource = card || official;
   sheetClub.textContent = clubSource ? describeOfficial(clubSource) : "";

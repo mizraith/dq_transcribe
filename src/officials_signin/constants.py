@@ -134,10 +134,15 @@ CARD_FIELD_COMPLETE = "complete"
 CARD_FIELD_MISSING = "missing"
 CARD_FIELD_LABELS_FOUND = "labels_found"
 CARD_FIELD_DATE_VOTES = "date_votes"
+CARD_FIELD_NAME_VOTES = "name_votes"
 # OCR can misread a digit (2027 read as 2021). A date that would send the official
 # to the admin as expired must be read the same way this many times before the
 # scanner stops; until then it keeps reading.
 CARD_EXPIRED_DATE_CONFIRMATIONS = 2
+# A new official's name must also be read the same way this many times (one blurry
+# pass read "MARK" as "WIARN" and "MARY"). A card that matches a known official by
+# member ID needs no name confirmation: the stored name is used.
+CARD_NAME_CONFIRMATIONS = 2
 
 # Fields that must be read before the camera stops looking. The good-standing date
 # may instead be covered by the green "In good standing" banner (see card_reader).
@@ -232,7 +237,7 @@ OCR_ORIENTATIONS = ((0, False), (90, False), (270, False), (0, True))
 OCR_SCREEN_BRIGHT_PERCENTILE = 0.6
 OCR_SCREEN_MIN_BRIGHT_SHARE = 0.35
 OCR_SCREEN_MIN_AREA_SHARE = 0.12
-OCR_SCREEN_MARGIN_SHARE = 0.02
+OCR_SCREEN_MARGIN_SHARE = 0.05  # generous: a tight crop cut off the date column on the tablet
 # Once an orientation shows card words it is kept; after this many passes in a row
 # without card words (the phone was turned or taken away) the search starts again.
 OCR_ORIENTATION_UNLOCK_MISSES = 2
