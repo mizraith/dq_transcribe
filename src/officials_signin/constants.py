@@ -51,6 +51,13 @@ ROUTE_MEET_PREFIX = "/api/meets/"  # POST /api/meets/<id>/open: make that meet t
 MEET_OPEN_SUFFIX = "/open"
 MEET_ARCHIVE_SUFFIX = "/archive"  # POST /api/meets/<id>/archive {archived: true|false}
 MEET_DELETE_SUFFIX = "/delete"  # POST /api/meets/<id>/delete: an archived meet, its sessions and sign-ins
+# GET /api/meets/<id>/zip (or ROUTE_MEET_ZIP for the open meet): the meet as a zip file
+# (pages, CSV, rosters; never member IDs). See export.py.
+MEET_ZIP_SUFFIX = "/zip"
+ROUTE_MEET_ZIP = "/meet.zip"
+MEET_ZIP_FILENAME_FORMAT = "{meet_slug}_{start_date}_officials_saved_{saved}.zip"
+ZIP_CONTENT_TYPE = "application/zip"
+KEY_SAVED_AT = "saved_at"
 KEY_ARCHIVED = "archived"
 # POST {id or null, name, start_date, sessions: [{id or null, name, date, ...}]}: create or
 # change a meet and all its sessions at once (Meet setup's Save).

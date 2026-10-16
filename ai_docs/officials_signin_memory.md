@@ -5,6 +5,19 @@ within each section.
 
 ## Decisions
 
+- **2026-10-16 (00:40): ☰ menu, session drop-down, Print on the left, meet zip.**
+  - Top bar: ☰ menu at the left (Meets, Meet setup, Print meet summary, Save meet (zip
+    file), Coaches once that page exists), then the title, meet name, a **session
+    drop-down** ("Saturday Finals · 20" = signed in), the officials meeting time, and
+    Teams on the right. Keeps the bar tidy with 4-5 sessions.
+  - The Print panel (session summary, team page, roster) moved to the left column under
+    the sign-in desk, so it is reachable without scrolling past the list.
+  - **Save meet (zip)** (`export.py`, `/meet.zip` for the open meet,
+    `/api/meets/<id>/zip` from the Meets list, shown on archived meets): README, meet
+    summary, a page per session (+ team page when built), signins.csv, roster JSON per
+    session and meet.json. Pages carry their own styles so they open without the app.
+    **No member IDs** in any file (roster files carry null). Archive only hides a meet; it
+    does not save anything, so "Save zip" comes first when keeping a record.
 - **2026-10-16 (00:25): Team Lead star, reorder within a team, jurisdiction box.**
   - Each name on a team has a ☆ star (★ Lead when set); tap it to make that person the
     lead (one per team). The lead is still the admin's choice, not "whoever is on top".

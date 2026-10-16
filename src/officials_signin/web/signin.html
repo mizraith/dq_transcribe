@@ -34,12 +34,13 @@
     header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; padding: 0.6rem 1rem; background: #111827; color: #fff; }
     header h1 { font-size: 1.1rem; margin: 0 0.6rem 0 0; }
     #meet-name { font-weight: 600; color: #cbd5e1; }
-    #session-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-    #teams-button, #teams-button[hidden] + #setup-button { margin-left: auto; }
-    .session-chip { min-height: 2.6rem; padding: 0.3rem 0.9rem; border-radius: 1.3rem; background: #1f2937; color: #e5e7eb; border-color: #374151; }
-    .session-chip.on { background: #fff; color: #111827; font-weight: 700; }
-    .session-chip .count { display: inline-block; margin-left: 0.4rem; padding: 0 0.4rem; border-radius: 0.7rem; background: #374151; color: #fff; font-size: 0.85rem; }
-    .session-chip.on .count { background: #111827; }
+    #teams-button { margin-left: auto; }
+    .menu-button { font-size: 1.4rem; min-width: 3rem; padding: 0 0.7rem; }
+    .session-picker select { min-height: 2.6rem; padding: 0.3rem 2rem 0.3rem 0.8rem; border-radius: 1.3rem; background: #fff; color: #111827; font-weight: 700; border: 0; max-width: 20rem; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .main-menu { position: fixed; top: 3.6rem; left: 0.6rem; z-index: 8; display: flex; flex-direction: column; min-width: 16rem; background: var(--card); border: 1px solid var(--line); border-radius: 0.8rem; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25); padding: 0.4rem; }
+    .main-menu button, .main-menu a { display: block; text-align: left; border: 0; border-radius: 0.5rem; background: none; min-height: 3rem; padding: 0.7rem 0.9rem; color: var(--ink); text-decoration: none; font: inherit; }
+    .main-menu button:hover, .main-menu a:hover { background: var(--accent-soft); }
     header .header-button { background: transparent; color: #e5e7eb; border-color: #4b5563; min-height: 2.6rem; }
 
     #layout { display: grid; grid-template-columns: minmax(20rem, 1.1fr) 1fr; gap: 1rem; padding: 1rem; height: calc(100vh - 3.8rem); }
@@ -209,15 +210,24 @@
     <button id="demo-exit" type="button">Exit demo</button>
   </div>
   <header>
+    <button id="menu-button" class="header-button menu-button" type="button" aria-label="Menu" aria-expanded="false" aria-controls="main-menu">☰</button>
     <h1>${app_title}</h1>
     <span id="meet-name"></span>
-    <div id="session-chips"></div>
+    <label class="session-picker" id="session-picker" hidden>
+      <span class="visually-hidden">Session</span>
+      <select id="session-select" title="Session (number signed in)"></select>
+    </label>
     <span id="meeting-time" hidden></span>
     <button id="teams-button" class="header-button" type="button" hidden>Teams</button>
-    <a id="coaches-link" class="header-button" href="#" hidden>Coaches</a>
-    <button id="meets-button" class="header-button" type="button">Meets</button>
-    <button id="setup-button" class="header-button" type="button">Meet setup</button>
   </header>
+  <!-- The ☰ menu: things used now and then, kept out of the top bar. -->
+  <nav id="main-menu" class="main-menu" hidden>
+    <button id="meets-button" type="button">Meets…</button>
+    <button id="setup-button" type="button">Meet setup…</button>
+    <a id="print-meet-link" href="#" target="_blank">Print meet summary</a>
+    <a id="meet-zip-link" href="#">Save meet (zip file)</a>
+    <a id="coaches-link" href="#" hidden>Coaches sign-in</a>
+  </nav>
 
   <div id="layout">
     <section>
@@ -229,7 +239,15 @@
       </div>
       <div class="panel" id="no-session-panel" hidden>
         <h2>Get started</h2>
-        <p>Set up the meet and its first session in <strong>Meet setup</strong>, then officials can sign in.</p>
+        <p>Set up the meet and its first session in <strong>Meet setup</strong> (in the ☰ menu), then officials can sign in.</p>
+      </div>
+      <div class="panel roster-links" id="print-panel">
+        <h2>Print</h2>
+        <a id="print-session-link" class="button-link" href="#" target="_blank">Session summary</a>
+        <a id="team-display-link" class="button-link" href="#" target="_blank">Team page</a>
+        <h2 class="roster-heading">Roster for dq_transcribe</h2>
+        <a id="roster-link" href="#" target="_blank">View roster.json</a>
+        <a id="roster-download-link" href="#">Download</a>
       </div>
     </section>
 
@@ -237,15 +255,6 @@
       <div class="panel">
         <h2 id="signins-title">Signed in</h2>
         <div id="signins"></div>
-      </div>
-      <div class="panel roster-links">
-        <h2>Print</h2>
-        <a id="print-session-link" class="button-link" href="#" target="_blank">Session summary</a>
-        <a id="print-meet-link" class="button-link" href="#" target="_blank">Meet summary</a>
-        <a id="team-display-link" class="button-link" href="#" target="_blank">Team page</a>
-        <h2 class="roster-heading">Roster for dq_transcribe</h2>
-        <a id="roster-link" href="#" target="_blank">View roster.json</a>
-        <a id="roster-download-link" href="#">Download</a>
       </div>
     </section>
   </div>

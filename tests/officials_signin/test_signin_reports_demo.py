@@ -7,10 +7,12 @@ Run from the repo root with:
 from __future__ import annotations
 
 import http.client
+import io
 import json
 import random
 import sys
 import types
+import zipfile
 import tempfile
 import threading
 import unittest
@@ -470,6 +472,40 @@ class DemoServerTests(unittest.TestCase):
         self.meet_action(old_meet, constants.MEET_ARCHIVE_SUFFIX, {constants.KEY_ARCHIVED: True})
         self.meet_action(old_meet, constants.MEET_OPEN_SUFFIX)
         self.assertFalse(next(m for m in self.database.list_meets() if m[constants.KEY_ID] == old_meet)[constants.KEY_ARCHIVED])
+
+    def test_meet_zip_has_everything_but_member_ids(self) -> None:
+        meet_id = self.database.list_meets()[0][constants.KEY_ID]
+        session = self.database.add_session("Friday PM", "2026-10-16", "13:00", "PM", "12:00")
+        official = self.database.save_official(None, "Pat Sample", 3, None, None, MEET_DATE)
+        with self.database._connect() as connection:  # noqa: SLF001 (as a card read would store it)
+            connection.execute("UPDATE officials SET member_id = ? WHERE id = ?", (SECRET_MEMBER_ID, official))
+        self.database.sign_in(official, [session], [constants.TEAM_POOL_ROLE], False,
+                              {session: Validation(True, constants.VALIDATION_CAMERA, [])})
+        for path in (constants.ROUTE_MEET_ZIP, f"{constants.ROUTE_MEET_PREFIX}{meet_id}{constants.MEET_ZIP_SUFFIX}"):
+            status, body, headers = self.request("GET", path)
+            self.assertEqual(status, 200, path)
+            self.assertIn("real-meet_2026-10-16_officials_saved_", headers["Content-Disposition"])
+            archive = zipfile.ZipFile(io.BytesIO(body))
+            names = archive.namelist()
+            for wanted in ("real-meet/README.txt", "real-meet/meet_summary.html", "real-meet/signins.csv",
+                           "real-meet/meet.json", "real-meet/sessions/01_friday-pm_officials.html",
+                           "real-meet/rosters/01_friday-pm.json"):
+                self.assertIn(wanted, names)
+            for name in names:
+                self.assertNotIn(SECRET_MEMBER_ID.encode(), archive.read(name), name)
+            self.assertIn("Pat Sample", archive.read("real-meet/signins.csv").decode())
+            roster = json.loads(archive.read("real-meet/rosters/01_friday-pm.json"))
+            self.assertIsNone(roster[constants.ROSTER_KEY_OFFICIALS][0][constants.KEY_MEMBER_ID])
+            self.assertIn(b"<style>", archive.read("real-meet/meet_summary.html"))  # opens without the app
+
+    def test_demo_zip_comes_from_the_demo(self) -> None:
+        cookie = self.start_demo()
+        self.request("POST", constants.ROUTE_TEAMS_BUILD, {}, cookie=cookie)
+        status, body, _ = self.request("GET", constants.ROUTE_MEET_ZIP, cookie=cookie)
+        self.assertEqual(status, 200)
+        names = zipfile.ZipFile(io.BytesIO(body)).namelist()
+        self.assertTrue(any(name.endswith("_teams.html") for name in names))
+        self.assertTrue(all(name.startswith("demo-invitational/") for name in names))
 
     def test_exit_clears_the_cookie(self) -> None:
         cookie = self.start_demo()

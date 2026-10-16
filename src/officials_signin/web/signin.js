@@ -26,7 +26,8 @@ const REMOVE_CONFIRM_SECONDS = 3;
 
 const element = function (id) { return document.getElementById(id); };
 const meetNameText = element("meet-name");
-const sessionChips = element("session-chips");
+const sessionSelect = element("session-select");
+const mainMenu = element("main-menu");
 const captureButton = element("capture-button");
 const searchInput = element("search");
 const matchList = element("matches");
@@ -146,16 +147,16 @@ async function refresh() {
 
 function drawHeader() {
   meetNameText.textContent = pageState.meet ? pageState.meet[KEYS.name] : "No meet yet";
-  sessionChips.replaceChildren();
+  // The session drop-down: "Friday PM · 18" (18 signed in); picking one makes it the session.
+  sessionSelect.replaceChildren();
   pageState.sessions.forEach(function (session) {
-    const chip = makeButton(session[KEYS.name], "session-chip", function () { chooseSession(session[KEYS.id]); });
-    chip.classList.toggle("on", session[KEYS.id] === pageState.activeSessionId);
-    const count = document.createElement("span");
-    count.className = "count";
-    count.textContent = String(session[KEYS.signinCount]);
-    chip.appendChild(count);
-    sessionChips.appendChild(chip);
+    const option = document.createElement("option");
+    option.value = String(session[KEYS.id]);
+    option.textContent = session[KEYS.name] + "  ·  " + session[KEYS.signinCount];
+    option.selected = session[KEYS.id] === pageState.activeSessionId;
+    sessionSelect.appendChild(option);
   });
+  element("session-picker").hidden = pageState.sessions.length === 0;
   const ready = pageState.activeSessionId !== null;
   element("teams-button").hidden = !ready;
   deskPanel.hidden = !ready;
@@ -172,6 +173,8 @@ function drawHeader() {
   const sessionQuery = "?" + KEYS.sessionId + "=" + pageState.activeSessionId;
   element("print-session-link").href = ROUTES.printSession + sessionQuery;
   element("print-meet-link").href = ROUTES.printMeet;
+  element("meet-zip-link").href = ROUTES.meetZip;
+  element("print-panel").hidden = !ready;
   element("team-display-link").href = ROUTES.teamDisplay + sessionQuery;
   element("roster-link").href = ROUTES.roster;
   element("roster-download-link").href = ROUTES.rosterDownload;
@@ -1255,7 +1258,12 @@ function meetRow(meet, isCurrent) {
     here.textContent = "Open now";
     actions.appendChild(here);
   } else if (meet[KEYS.archived]) {
+    const zip = document.createElement("a");
+    zip.className = "button-link";
+    zip.href = ROUTES.meetPrefix + meet[KEYS.id] + ROUTES.meetZipSuffix;
+    zip.textContent = "Save zip";
     actions.append(
+      zip,
       makeButton("Restore", "", function () { archiveMeet(meet, false); }),
       makeButton("Delete…", "danger", function () { askDeleteMeet(meet); })
     );
@@ -1325,7 +1333,7 @@ function askDeleteMeet(meet) {
   element("meet-delete-detail").textContent = "Its " + meet[KEYS.sessionCount] + " session"
     + (meet[KEYS.sessionCount] === 1 ? "" : "s") + " and " + signins + " sign-in" + (signins === 1 ? "" : "s")
     + " (teams included) will be deleted. The officials stay in the app for next time. This cannot be undone. "
-    + "To keep a record, open it and print the meet summary first.";
+    + "To keep a record, tap Save zip first (pages, spreadsheet and rosters).";
   const warning = element("meet-delete-warning");
   warning.hidden = false;
   warning.scrollIntoView({ block: "nearest" });
@@ -1661,6 +1669,30 @@ sheetName.addEventListener("input", function () { markNameForChecking(false); })
 element("sheet-cancel").addEventListener("click", function () { sheetOverlay.hidden = true; });
 element("sheet-submit").addEventListener("click", submitSheet);
 element("setup-button").addEventListener("click", function () { openSetup(false); });
+// --- The ☰ menu ------------------------------------------------------------------
+
+function setMenuOpen(open) {
+  if (open) {
+    // Just under the top bar, wherever it is (the demo banner pushes it down).
+    mainMenu.style.top = (document.querySelector("header").getBoundingClientRect().bottom + 4) + "px";
+  }
+  mainMenu.hidden = !open;
+  element("menu-button").setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+element("menu-button").addEventListener("click", function (event) {
+  event.stopPropagation();
+  setMenuOpen(mainMenu.hidden);
+});
+// Any choice in the menu, a tap elsewhere or Escape closes it.
+mainMenu.addEventListener("click", function () { setMenuOpen(false); });
+document.addEventListener("click", function (event) {
+  if (!mainMenu.hidden && !mainMenu.contains(event.target)) { setMenuOpen(false); }
+});
+document.addEventListener("keydown", function (event) { if (event.key === "Escape") { setMenuOpen(false); } });
+element("meet-zip-link").addEventListener("click", function () { showToast("Saving the meet as a zip file…"); });
+sessionSelect.addEventListener("change", function () { chooseSession(Number(sessionSelect.value)); });
+
 element("meets-button").addEventListener("click", function () { openMeetOverview(false); });
 element("setup-meets").addEventListener("click", function () {
   closeSetup();

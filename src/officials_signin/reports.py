@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from html import escape
+from pathlib import Path
 from typing import Any
 
 from officials_signin import constants
@@ -39,8 +40,44 @@ _CLOCK_FORMAT = "%H:%M"
 _NO_VALUE = "—"
 
 
-def _page(title: str, body: str, body_class: str = "", extra_links: str = "") -> bytes:
-    """Wrap a page body in the shared HTML shell (``extra_links``: more toolbar links, as HTML)."""
+_STANDALONE_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>
+{stylesheet}
+</style>
+</head>
+<body class="{body_class}">
+{body}
+<div class="footer">Saved {printed}</div>
+</body>
+</html>
+"""
+_STYLESHEET_PATH = Path(__file__).parent / "web" / constants.PRINT_STYLESHEET_FILENAME
+
+
+def _page(title: str, body: str, body_class: str = "", extra_links: str = "", standalone: bool = False) -> bytes:
+    """Wrap a page body in the shared HTML shell.
+
+    Args:
+        title: Page title.
+        body: The page body (already escaped HTML).
+        body_class: CSS class for ``<body>``.
+        extra_links: More toolbar links, as HTML.
+        standalone: For a saved file (the meet zip): the stylesheet inside the page and
+            no toolbar, so it opens on any computer without the app.
+    """
+    if standalone:
+        return _STANDALONE_PAGE.format(
+            title=escape(title),
+            stylesheet=_STYLESHEET_PATH.read_text(encoding="utf-8"),
+            body_class=body_class,
+            body=body,
+            printed=escape(_printed_now()),
+        ).encode("utf-8")
     return _PAGE.format(
         extra_links=extra_links,
         title=escape(title),
@@ -142,13 +179,16 @@ def _session_table(signins: list[dict[str, Any]], compact: bool) -> str:
     return f"<table class='{table_class}'><thead>{header}</thead><tbody>{''.join(rows)}</tbody></table>"
 
 
-def render_session_summary(meet: dict[str, Any], session: dict[str, Any], signins: list[dict[str, Any]]) -> bytes:
+def render_session_summary(
+    meet: dict[str, Any], session: dict[str, Any], signins: list[dict[str, Any]], standalone: bool = False
+) -> bytes:
     """One page: every official of a session with role, team or job, club, zone, years and check.
 
     Args:
         meet: The meet (name, start_date).
         session: The session row.
         signins: ``Database.list_signins`` for the session.
+        standalone: A self-contained file for the meet zip (see ``_page``).
 
     Returns:
         The HTML page.
@@ -159,15 +199,18 @@ def render_session_summary(meet: dict[str, Any], session: dict[str, Any], signin
         f"<p class='subtitle'>{escape(session_subtitle(session, len(signins)))}</p>"
         f"{_session_table(signins, compact=False)}"
     )
-    return _page(title + " (officials)", body)
+    return _page(title + " (officials)", body, standalone=standalone)
 
 
-def render_meet_summary(meet: dict[str, Any], sessions: list[tuple[dict[str, Any], list[dict[str, Any]]]]) -> bytes:
+def render_meet_summary(
+    meet: dict[str, Any], sessions: list[tuple[dict[str, Any], list[dict[str, Any]]]], standalone: bool = False
+) -> bytes:
     """Every session of a meet, one after another (no page per session), compact tables.
 
     Args:
         meet: The meet.
         sessions: ``(session, signins)`` pairs in session order.
+        standalone: A self-contained file for the meet zip (see ``_page``).
 
     Returns:
         The HTML page.
@@ -188,11 +231,15 @@ def render_meet_summary(meet: dict[str, Any], sessions: list[tuple[dict[str, Any
         f"{'' if len(sessions) == 1 else 's'} · {len(people)} different officials</p>"
         + "".join(blocks)
     )
-    return _page(meet[constants.KEY_NAME] + " (meet summary)", body)
+    return _page(meet[constants.KEY_NAME] + " (meet summary)", body, standalone=standalone)
 
 
 def render_team_display(
-    meet: dict[str, Any], session: dict[str, Any], view: dict[str, Any], signin_count: int | None = None
+    meet: dict[str, Any],
+    session: dict[str, Any],
+    view: dict[str, Any],
+    signin_count: int | None = None,
+    standalone: bool = False,
 ) -> bytes:
     """Big-screen team page (fits one printed page): teams, jobs off the teams, jurisdiction, rotation.
 
@@ -201,6 +248,7 @@ def render_team_display(
         session: The session row.
         view: ``teams.build_team_view`` for the session.
         signin_count: Everyone signed in to the session (default: those shown on the page).
+        standalone: A self-contained file for the meet zip (see ``_page``).
 
     Returns:
         The HTML page.
@@ -265,7 +313,7 @@ def render_team_display(
     back_to_teams = (
         f"<a href='/?{constants.OPEN_QUERY_KEY}={constants.OPEN_TEAMS_VALUE}'>Back to Teams</a>"
     )
-    return _page(title, body, body_class="display", extra_links=back_to_teams)
+    return _page(title, body, body_class="display", extra_links=back_to_teams, standalone=standalone)
 
 
 def jurisdiction_box(view: dict[str, Any]) -> str:

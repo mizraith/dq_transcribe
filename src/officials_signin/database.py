@@ -258,6 +258,20 @@ class Database:
             ).fetchall()
         return [dict(row, archived=bool(row["archived"])) for row in rows]
 
+    def get_meet(self, meet_id: int) -> dict[str, Any] | None:
+        """One meet (``id``, ``name``, ``start_date``), or None."""
+        with self._connect() as connection:
+            row = connection.execute("SELECT id, name, start_date FROM meets WHERE id = ?", (meet_id,)).fetchone()
+        return None if row is None else dict(row)
+
+    def list_sessions(self, meet_id: int) -> list[dict[str, Any]]:
+        """Every session of a meet (all columns), in date and start-time order."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM sessions WHERE meet_id = ? ORDER BY date, start_time, id", (meet_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def set_meet_archived(self, meet_id: int, archived: bool) -> None:
         """Archive a finished meet (hidden from the main Meets list) or bring it back.
 

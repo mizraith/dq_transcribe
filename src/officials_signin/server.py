@@ -32,6 +32,7 @@ from officials_signin import constants
 from officials_signin.card_reader import CardReading, check_card, read_card
 from officials_signin.database import Database, SessionFields, SigninError, Validation, not_checked_validation
 from officials_signin.demo import DemoSize, build_demo, default_demo_size, planned_session_names, stored_demo_size
+from officials_signin.export import build_meet_zip
 from officials_signin.reports import render_meet_summary, render_session_summary, render_team_display
 from officials_signin.roster import build_roster, roster_download_filename
 from officials_signin.teams import (
@@ -56,6 +57,9 @@ _MEET_ACTION_PATTERN = re.compile(
     rf"^{re.escape(constants.ROUTE_MEET_PREFIX)}(\d+)"
     rf"({re.escape(constants.MEET_OPEN_SUFFIX)}|{re.escape(constants.MEET_ARCHIVE_SUFFIX)}"
     rf"|{re.escape(constants.MEET_DELETE_SUFFIX)})$"
+)
+_MEET_ZIP_PATTERN = re.compile(
+    rf"^{re.escape(constants.ROUTE_MEET_PREFIX)}(\d+){re.escape(constants.MEET_ZIP_SUFFIX)}$"
 )
 _SESSION_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_SESSION_PREFIX)}(\d+)$")
 _SESSION_DELETE_PATTERN = re.compile(
@@ -112,6 +116,8 @@ def build_web_config() -> dict[str, Any]:
             "meetOpenSuffix": constants.MEET_OPEN_SUFFIX,
             "meetArchiveSuffix": constants.MEET_ARCHIVE_SUFFIX,
             "meetDeleteSuffix": constants.MEET_DELETE_SUFFIX,
+            "meetZipSuffix": constants.MEET_ZIP_SUFFIX,
+            "meetZip": constants.ROUTE_MEET_ZIP,
             "diagnostics": constants.ROUTE_DIAGNOSTICS,
             "teams": constants.ROUTE_TEAMS,
             "teamsBuild": constants.ROUTE_TEAMS_BUILD,
@@ -499,6 +505,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_demo_page(current))
         elif path == constants.ROUTE_MEETS:
             self._send_meet_overview()
+        elif path == constants.ROUTE_MEET_ZIP:
+            meet = database.get_state()[constants.KEY_MEET]
+            self._send_meet_zip(database, None if meet is None else meet[constants.KEY_ID])
+        elif (match := _MEET_ZIP_PATTERN.match(path)) is not None:
+            self._send_meet_zip(self.server.database, int(match.group(1)))  # Meet overview: real meets
         elif path == constants.ROUTE_TEAMS:
             self._send_team_view()
         elif path in (constants.ROUTE_PRINT_SESSION, constants.ROUTE_TEAM_DISPLAY):
@@ -820,6 +831,18 @@ class RequestHandler(BaseHTTPRequestHandler):
         if on:
             return f"{constants.DEMO_COOKIE_NAME}={constants.DEMO_COOKIE_ON}; Path=/; SameSite=Strict"
         return f"{constants.DEMO_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Strict"
+
+    def _send_meet_zip(self, database: Database, meet_id: int | None) -> None:
+        """Download a meet as a zip file (see ``export.py``; no member IDs inside)."""
+        if meet_id is None:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No meet yet")
+            return
+        try:
+            filename, body = build_meet_zip(database, meet_id)
+        except LookupError:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such meet")
+            return
+        self._send_bytes(HTTPStatus.OK, constants.ZIP_CONTENT_TYPE, body, download_filename=filename)
 
     def _send_meet_overview(self) -> None:
         """Every real meet plus the demo meet's status, for the Meet overview.
