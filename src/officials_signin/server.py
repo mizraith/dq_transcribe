@@ -358,8 +358,10 @@ def render_page() -> bytes:
         constants.PAGE_FILENAME,
         {
             "app_title": constants.APP_TITLE,
+            "desk_stylesheet_route": constants.ROUTE_DESK_STYLESHEET,
             "script_route": constants.ROUTE_SCRIPT,
             "card_scanner_route": constants.ROUTE_CARD_SCANNER_SCRIPT,
+            "card_camera_route": constants.ROUTE_CARD_CAMERA_SCRIPT,
             "engine_script_route": constants.OCR_ENGINE_PATH + constants.OCR_ENGINE_SCRIPT_FILENAME,
         },
     )
@@ -490,6 +492,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_page())
         elif path == constants.ROUTE_SCRIPT:
             self._send_bytes(HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.SCRIPT_FILENAME))
+        elif path == constants.ROUTE_CARD_CAMERA_SCRIPT:
+            self._send_bytes(
+                HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.CARD_CAMERA_SCRIPT_FILENAME)
+            )
         elif path == constants.ROUTE_CARD_SCANNER_SCRIPT:
             self._send_bytes(
                 HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, render_script(constants.CARD_SCANNER_SCRIPT_FILENAME)
@@ -516,9 +522,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_session_page(url.query, team_display=path == constants.ROUTE_TEAM_DISPLAY)
         elif path == constants.ROUTE_PRINT_MEET:
             self._send_meet_summary()
-        elif path == constants.ROUTE_PRINT_STYLESHEET:
-            stylesheet = (_WEB_DIRECTORY / constants.PRINT_STYLESHEET_FILENAME).read_bytes()
-            self._send_bytes(HTTPStatus.OK, constants.CSS_CONTENT_TYPE, stylesheet)
+        elif path in (constants.ROUTE_PRINT_STYLESHEET, constants.ROUTE_DESK_STYLESHEET):
+            filename = (
+                constants.PRINT_STYLESHEET_FILENAME if path == constants.ROUTE_PRINT_STYLESHEET
+                else constants.DESK_STYLESHEET_FILENAME
+            )
+            self._send_bytes(HTTPStatus.OK, constants.CSS_CONTENT_TYPE, (_WEB_DIRECTORY / filename).read_bytes())
         elif path == constants.ROUTE_OFFICIALS:
             self._send_json(HTTPStatus.OK, {constants.KEY_OFFICIALS: database.list_officials(date.today())})
         elif path in (constants.ROUTE_ROSTER, constants.ROUTE_ROSTER_DOWNLOAD):

@@ -1,0 +1,120 @@
+<!doctype html>
+<!--
+  Coaches Sign-In page: the same desk as Officials Sign-In (shared styles in desk.css),
+  in a teal palette so the two are easy to tell apart. Coaches show the Membership card
+  in the USA Swimming app; the camera reads it and the coach is added to the session's
+  list. No teams; each coach can be marked Head Coach (several per club is fine).
+
+  The meet and its sessions are shared with the officials page (set them up there).
+
+  This file is a string.Template: dollar-brace placeholders are filled in by
+  officials_signin.coaches.render_page, so never use a literal dollar sign here.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${app_title}</title>
+  <link rel="stylesheet" href="${desk_stylesheet_route}">
+  <style>
+    /* Coaches palette: teal instead of the officials' blue and slate. */
+    :root {
+      --accent: #0f766e; --accent-soft: #ccfbf1; --accent-line: #5eead4; --bar: #134e4a; --paper: #f0fdfa;
+    }
+    .page-tag { padding: 0.15rem 0.6rem; border-radius: 0.5rem; background: #5eead4; color: #134e4a; font-weight: 800; font-size: 0.85rem; letter-spacing: 0.05em; }
+    .badge.head { background: #fef3c7; color: #92400e; }
+    .head-toggle { min-height: 2.6rem; padding: 0.3rem 0.7rem; font-weight: 700; color: #6b7280; }
+    .head-toggle.on { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+    #sheet-head { min-height: 3rem; margin-top: 0.4rem; }
+    #sheet-head.on { background: #fef3c7; border-color: #f59e0b; color: #92400e; font-weight: 700; }
+    .coach-counts { color: var(--muted); font-size: 0.9rem; margin: -0.3rem 0 0.6rem; }
+  </style>
+  <script src="${engine_script_route}"></script>
+  <script src="${card_scanner_route}"></script>
+  <script src="${card_camera_route}"></script>
+</head>
+<body>
+  <div id="demo-banner" hidden>
+    <strong>DEMO MEET</strong> · made-up coaches, nothing here is real
+    <button id="demo-exit" type="button">Exit demo</button>
+  </div>
+  <header>
+    <button id="menu-button" class="header-button menu-button" type="button" aria-label="Menu" aria-expanded="false" aria-controls="main-menu">☰</button>
+    <h1>${app_title}</h1>
+    <span class="page-tag">COACHES</span>
+    <span id="meet-name"></span>
+    <label class="session-picker" id="session-picker" hidden>
+      <span class="visually-hidden">Session</span>
+      <select id="session-select" title="Session (number of coaches signed in)"></select>
+    </label>
+    <a id="officials-button" class="header-button button-link" href="${officials_route}">Officials sign-in</a>
+  </header>
+  <nav id="main-menu" class="main-menu" hidden>
+    <a id="menu-officials" href="${officials_route}">Officials sign-in</a>
+    <a id="print-meet-link" href="#" target="_blank">Print coaches (whole meet)</a>
+    <a id="meet-zip-link" href="#">Save meet (zip file)</a>
+  </nav>
+
+  <div id="layout">
+    <section>
+      <div class="panel" id="desk-panel">
+        <button id="capture-button" class="primary" type="button">Capture USA Registration<small>Hold up the Membership card in the USA Swimming app</small></button>
+        <input id="search" type="search" autocomplete="off" placeholder="…or type a few letters of your name">
+        <ul id="matches"></ul>
+        <button id="new-person" type="button" hidden></button>
+      </div>
+      <div class="panel" id="no-session-panel" hidden>
+        <h2>Get started</h2>
+        <p>The meet and its sessions are set up on the <a href="${officials_route}">officials page</a>
+          (☰ menu, Meet setup). Then coaches can sign in here.</p>
+      </div>
+      <div class="panel roster-links" id="print-panel">
+        <h2>Print</h2>
+        <a id="print-session-link" class="button-link" href="#" target="_blank">Coaches this session</a>
+      </div>
+    </section>
+
+    <section>
+      <div class="panel">
+        <h2 id="signins-title">Coaches signed in</h2>
+        <div id="coach-counts" class="coach-counts"></div>
+        <div id="signins"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- The camera window is built by card_camera.js (shared with the other desk page). -->
+
+  <!-- Sign-in sheet (also used to edit a coach already in the list) -->
+  <div class="overlay" id="sheet-overlay" hidden>
+    <div class="sheet">
+      <button class="sheet-close" type="button" data-closes="sheet-cancel" aria-label="Close">✕</button>
+      <div class="sheet-grid">
+        <label>
+          <span class="sheet-label">Name</span>
+          <input id="sheet-name" type="text" autocomplete="off">
+          <span id="sheet-name-hint" class="name-hint" hidden>Read by the camera: check the spelling</span>
+        </label>
+        <label>
+          <span class="sheet-label">Club</span>
+          <input id="sheet-club" type="text" autocomplete="off" placeholder="e.g. PASA">
+        </label>
+      </div>
+      <div id="sheet-check" class="check-line"></div>
+      <button id="sheet-head" type="button">☆ Head coach</button>
+      <div id="sheet-later-block" hidden>
+        <span class="sheet-label">Also sign in for later sessions today</span>
+        <div id="sheet-later" class="chips"></div>
+      </div>
+      <div class="sheet-actions">
+        <button id="sheet-scan" class="grow" type="button">Scan card</button>
+        <button id="sheet-cancel" type="button">Cancel</button>
+        <button id="sheet-submit" class="go" type="button">Sign in</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <script src="${script_route}"></script>
+</body>
+</html>

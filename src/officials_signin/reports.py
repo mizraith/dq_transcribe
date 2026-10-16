@@ -316,6 +316,87 @@ def render_team_display(
     return _page(title, body, body_class="display", extra_links=back_to_teams, standalone=standalone)
 
 
+def _coaches_table(coaches: list[dict[str, Any]], compact: bool) -> str:
+    """Coaches of one session by club (head coaches first in each club), as a table."""
+    ordered = sorted(
+        coaches,
+        key=lambda coach: ((coach[constants.KEY_CLUB] or "~").lower(), not coach[constants.KEY_HEAD_COACH],
+                           coach[constants.KEY_NAME].lower()),
+    )
+    header = "<tr><th>Club</th><th>Name</th><th>Head coach</th>" + ("" if compact else "<th>Check</th>") + "</tr>"
+    rows = []
+    for coach in ordered:
+        club = coach[constants.KEY_CLUB] or _NO_VALUE
+        if coach[constants.KEY_LSC] and coach[constants.KEY_CLUB]:
+            club = f"{coach[constants.KEY_LSC]}-{coach[constants.KEY_CLUB]}"
+        cells = [
+            f"<td>{escape(club)}</td>",
+            f"<td>{escape(coach[constants.KEY_NAME])}</td>",
+            f"<td>{'★ Head coach' if coach[constants.KEY_HEAD_COACH] else ''}</td>",
+        ]
+        if not compact:
+            needs = "" if coach[constants.KEY_VALIDATED] else "needs"
+            cells.append(f"<td class='{needs}'>{escape(check_text(coach))}</td>")
+        rows.append("<tr>" + "".join(cells) + "</tr>")
+    if not rows:
+        rows.append("<tr><td colspan='4'>No coaches signed in.</td></tr>")
+    return f"<table class='{'compact' if compact else ''}'><thead>{header}</thead><tbody>{''.join(rows)}</tbody></table>"
+
+
+def _coach_counts_text(coaches: list[dict[str, Any]]) -> str:
+    """``12 coaches · 4 head coaches · 6 clubs``."""
+    heads = sum(1 for coach in coaches if coach[constants.KEY_HEAD_COACH])
+    clubs = len({coach[constants.KEY_CLUB] for coach in coaches if coach[constants.KEY_CLUB]})
+    return (
+        f"{len(coaches)} coach{'' if len(coaches) == 1 else 'es'} · {heads} head coach{'' if heads == 1 else 'es'}"
+        f" · {clubs} club{'' if clubs == 1 else 's'}"
+    )
+
+
+def render_coaches_session(
+    meet: dict[str, Any], session: dict[str, Any], coaches: list[dict[str, Any]], standalone: bool = False
+) -> bytes:
+    """One page: the coaches of a session, by club, head coaches marked.
+
+    Args:
+        meet: The meet.
+        session: The session row.
+        coaches: ``coaches.list_coach_signins`` for the session.
+        standalone: A self-contained file for the meet zip (see ``_page``).
+
+    Returns:
+        The HTML page.
+    """
+    title = f"{meet[constants.KEY_NAME]}: {session[constants.KEY_NAME]}"
+    subtitle = session_subtitle(session, len(coaches)).rsplit(" · ", 1)[0] + " · " + _coach_counts_text(coaches)
+    body = f"<h1>{escape(title)}: coaches</h1><p class='subtitle'>{escape(subtitle)}</p>{_coaches_table(coaches, compact=False)}"
+    return _page(title + " (coaches)", body, standalone=standalone)
+
+
+def render_coaches_meet(
+    meet: dict[str, Any], sessions: list[tuple[dict[str, Any], list[dict[str, Any]]]], standalone: bool = False
+) -> bytes:
+    """Every session's coaches, one after another (no page per session).
+
+    Args:
+        meet: The meet.
+        sessions: ``(session, coach sign-ins)`` pairs in session order.
+        standalone: A self-contained file for the meet zip (see ``_page``).
+
+    Returns:
+        The HTML page.
+    """
+    blocks = [
+        "<div class='session-block'>"
+        f"<h2>{escape(session[constants.KEY_NAME])}</h2>"
+        f"<p class='subtitle'>{escape(_day(session[constants.KEY_DATE]))} · {escape(_coach_counts_text(coaches))}</p>"
+        f"{_coaches_table(coaches, compact=True)}</div>"
+        for session, coaches in sessions
+    ]
+    body = f"<h1>{escape(meet[constants.KEY_NAME])}: coaches</h1>" + "".join(blocks)
+    return _page(meet[constants.KEY_NAME] + " (coaches)", body, standalone=standalone)
+
+
 def jurisdiction_box(view: dict[str, Any]) -> str:
     """The Jurisdiction box for the team page: lanes at the start and turn ends.
 

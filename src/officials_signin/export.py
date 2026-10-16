@@ -7,6 +7,7 @@ The zip holds everything about a meet in files that open without the app:
 - ``sessions/NN_<session>_officials.html``: one page per session (the session summary).
 - ``sessions/NN_<session>_teams.html``: the team page, for sessions with teams.
 - ``signins.csv``: one row per official per session, for a spreadsheet.
+- ``coaches.csv``: the coaches of every session (club, head coach, check).
 - ``rosters/NN_<session>.json``: the roster file dq_transcribe reads, per session.
 - ``meet.json``: the meet and its sessions' settings (lanes, teams, rotation...).
 
@@ -25,6 +26,7 @@ from datetime import datetime
 from typing import Any
 
 from officials_signin import constants
+from officials_signin.coaches import ensure_tables, list_coach_signins
 from officials_signin.database import Database
 from officials_signin.reports import check_text, render_meet_summary, render_session_summary, render_team_display
 from officials_signin.roster import build_roster
@@ -38,6 +40,7 @@ Saved by Officials Sign-In on {saved_at}.
 meet_summary.html      Every session's officials (open in a browser, print if needed).
 sessions/              Each session's officials page, and its team page when teams were built.
 signins.csv            One row per official per session (opens in a spreadsheet).
+coaches.csv            The coaches of every session (club, head coach).
 rosters/               The roster files dq_transcribe reads, one per session.
 meet.json              The meet and its sessions' settings.
 
@@ -85,6 +88,23 @@ def _csv_rows(session: dict[str, Any], signins: list[dict[str, Any]]) -> list[li
             check_text(signin),
         ])
     return rows
+
+
+def _coaches_csv(database: Database, sessions: list[dict[str, Any]]) -> str:
+    """The coaches of every session (club, name, head coach, check), for a spreadsheet."""
+    ensure_tables(database)
+    text = io.StringIO()
+    writer = csv.writer(text)
+    writer.writerow(("Session", "Date", "Club", "LSC", "Name", "Head coach", "Checked"))
+    for session in sessions:
+        coaches = list_coach_signins(database, session[constants.KEY_ID])
+        for coach in sorted(coaches, key=lambda item: ((item[constants.KEY_CLUB] or "~"), item[constants.KEY_NAME].lower())):
+            writer.writerow((
+                session[constants.KEY_NAME], session[constants.KEY_DATE], coach[constants.KEY_CLUB] or "",
+                coach[constants.KEY_LSC] or "", coach[constants.KEY_NAME],
+                "yes" if coach[constants.KEY_HEAD_COACH] else "", check_text(coach),
+            ))
+    return text.getvalue()
 
 
 def build_meet_zip(database: Database, meet_id: int, saved_at: datetime | None = None) -> tuple[str, bytes]:
@@ -137,6 +157,7 @@ def build_meet_zip(database: Database, meet_id: int, saved_at: datetime | None =
             )
             writer.writerows(_csv_rows(session, signins))
         archive.writestr(f"{folder}/signins.csv", csv_text.getvalue())
+        archive.writestr(f"{folder}/coaches.csv", _coaches_csv(database, sessions))
         archive.writestr(f"{folder}/meet.json", json.dumps({
             constants.KEY_MEET: meet,
             constants.KEY_SESSIONS: sessions,

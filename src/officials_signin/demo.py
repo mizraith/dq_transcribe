@@ -7,7 +7,8 @@ time a demo is started or reset.
 
 The size is set per session (``DemoSize``): how many stroke & turn judges and
 trainees sign in to each session, plus, when ticked, the corner officials and the
-admin in every session. People are shared between sessions, as at a real meet: a
+admin in every session (and a few made-up coaches per club for the coaches page).
+People are shared between sessions, as at a real meet: a
 session with fewer judges than another gets a random selection of the same crew.
 
 Names are invented from short first/last-name lists; clubs use made-up codes
@@ -24,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from officials_signin import constants
+from officials_signin.coaches import forget_tables, seed_demo_coaches
 from officials_signin.database import Database, Validation, not_checked_validation
 
 _SQLITE_SIDE_FILE_SUFFIXES = ("-wal", "-shm")
@@ -172,6 +174,7 @@ def build_demo(database_path: Path, size: DemoSize, first_day: date, seed: int |
     for suffix in ("", *_SQLITE_SIDE_FILE_SUFFIXES):
         Path(str(database_path) + suffix).unlink(missing_ok=True)
     database = Database(database_path)
+    forget_tables(database)  # a new file: the coaches tables must be created again
     database.initialize()
     generator = random.Random(seed)
     meet_id = database.create_meet(constants.DEMO_MEET_NAME, first_day.isoformat())
@@ -190,7 +193,9 @@ def build_demo(database_path: Path, size: DemoSize, first_day: date, seed: int |
     judge_pool = max(session.judges for session in size.sessions)
     trainee_pool = max(session.trainees for session in size.sessions)
     corner_roles = list(constants.DEMO_SPECIAL_ROLES) if size.corner_officials else []
-    names = iter(fake_names(len(corner_roles) + judge_pool + trainee_pool, generator))
+    official_count = len(corner_roles) + judge_pool + trainee_pool
+    all_names = fake_names(official_count + constants.DEMO_COACH_NAME_POOL, generator)
+    names = iter(all_names[:official_count])
     lsc = generator.choice(constants.DEMO_LSC_CODES)
 
     def add_official(trainee: bool, head_official: bool) -> int:
@@ -225,6 +230,8 @@ def build_demo(database_path: Path, size: DemoSize, first_day: date, seed: int |
         role = role_of.get(official_id, constants.TEAM_POOL_ROLE)
         database.sign_in(official_id, sorted(sessions), [role], official_id in trainee_ids, validations)
     database.set_text_setting(constants.SETTING_DEMO_SIZE, json.dumps(size.to_payload()))
+    # Made-up coaches for the coaches page (every session, a few per club).
+    seed_demo_coaches(database, session_ids, all_names[official_count:], generator)
     return database
 
 

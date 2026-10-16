@@ -39,11 +39,13 @@ VENDOR_DIRECTORY_NAME = "vendor"
 PAGE_FILENAME = "signin.html"
 SCRIPT_FILENAME = "signin.js"
 CARD_SCANNER_SCRIPT_FILENAME = "card_scanner.js"
+CARD_CAMERA_SCRIPT_FILENAME = "card_camera.js"
 
 # Routes.
 ROUTE_HOME = "/"
 ROUTE_SCRIPT = "/signin.js"
 ROUTE_CARD_SCANNER_SCRIPT = "/card_scanner.js"
+ROUTE_CARD_CAMERA_SCRIPT = "/card_camera.js"  # the camera window shared by the officials and coaches pages
 ROUTE_VENDOR_PREFIX = "/vendor/"
 ROUTE_STATE = "/api/state"  # GET: active meet, sessions, sign-ins
 ROUTE_MEETS = "/api/meets"  # GET: every meet (Meet overview); POST: create a meet (and make it active)
@@ -87,6 +89,8 @@ ROUTE_TEAM_DISPLAY = "/teams/display"  # ?session_id=: big-screen teams + rotati
 OPEN_QUERY_KEY = "open"
 OPEN_TEAMS_VALUE = "teams"
 ROUTE_PRINT_STYLESHEET = "/print.css"
+ROUTE_DESK_STYLESHEET = "/desk.css"  # styles shared by the officials and coaches pages
+DESK_STYLESHEET_FILENAME = "desk.css"
 PRINT_STYLESHEET_FILENAME = "print.css"
 ROUTE_ROSTER_DOWNLOAD = "/roster-download.json"
 
@@ -551,6 +555,27 @@ COACHES_MODULE_NAME = "officials_signin.coaches"
 ROUTE_COACHES = "/coaches"  # GET: the coaches sign-in page
 ROUTE_COACHES_PREFIX = "/coaches/"  # GET: the coaches page's own files
 ROUTE_COACHES_API_PREFIX = "/api/coaches/"  # GET/POST: the coaches page's API
+COACHES_APP_TITLE = "Coaches Sign-In"
+COACHES_PAGE_FILENAME = "coaches.html"
+COACHES_SCRIPT_FILENAME = "coaches.js"
+ROUTE_COACHES_SCRIPT = "/coaches/coaches.js"
+ROUTE_COACHES_STATE = "/api/coaches/state"  # GET: meet, sessions (with coach counts), this session's coaches
+ROUTE_COACHES_KNOWN = "/api/coaches/known"  # GET: every coach seen before, for the name search
+ROUTE_COACHES_CARD_READING = "/api/coaches/card-reading"  # POST: OCR text -> card, check, known coach
+ROUTE_COACHES_SIGNINS = "/api/coaches/signins"  # POST: sign a coach in to the session (and later ones)
+ROUTE_COACH_SIGNIN_PREFIX = "/api/coaches/signins/"  # POST .../<id>/validate | /remove | /edit | /head
+COACH_HEAD_SUFFIX = "/head"  # POST {head_coach: true|false}
+ROUTE_COACHES_PRINT_SESSION = "/coaches/print/session"  # GET ?session_id=: the coaches of a session, by club
+ROUTE_COACHES_PRINT_MEET = "/coaches/print/meet"  # GET: every session's coaches, compact
+KEY_COACH_ID = "coach_id"
+KEY_COACHES = "coaches"
+KEY_HEAD_COACH = "head_coach"
+KEY_COACH_COUNT = "coach_count"
+COACH_ROLE = "Coach"
+# Demo: made-up coaches per club, and how many of them are head coaches.
+DEMO_COACHES_PER_CLUB = (1, 3)
+DEMO_HEAD_COACHES_PER_CLUB = (1, 2)
+DEMO_COACH_NAME_POOL = 20  # made-up names set aside for demo coaches
 
 # --- Settings table keys -------------------------------------------------------
 SETTING_ACTIVE_MEET_ID = "active_meet_id"

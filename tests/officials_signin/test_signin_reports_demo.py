@@ -408,9 +408,11 @@ class DemoServerTests(unittest.TestCase):
         self.assertEqual(len(self.database.list_meets()), 1)
         self.assertEqual(self.database.get_session(foreign)["meet_id"], other_meet)
 
-    def test_coaches_paths_404_until_the_module_exists(self) -> None:
-        status, _, _ = self.request("GET", constants.ROUTE_COACHES)
-        self.assertEqual(status, 404)
+    def test_coaches_page_is_served(self) -> None:
+        status, page, _ = self.request("GET", constants.ROUTE_COACHES)
+        self.assertEqual(status, 200)
+        self.assertIn(constants.COACHES_APP_TITLE.encode(), page)
+        self.assertEqual(self.request("GET", constants.ROUTE_COACHES_API_PREFIX + "nope")[0], 404)
 
     def test_coaches_module_gets_its_paths_with_the_right_database(self) -> None:
         calls = []

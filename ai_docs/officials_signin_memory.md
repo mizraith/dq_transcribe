@@ -5,6 +5,26 @@ within each section.
 
 ## Decisions
 
+- **2026-10-16 (00:50): Coaches Sign-In built here** (the owner asked for it; the separate
+  chat in `ai_docs/coaches_signin_handoff.md` was not used).
+  - `/coaches` ("Coach sign-in" button on the officials top bar, and in its ☰ menu; the
+    coaches page has "Officials sign-in" back). Same desk, teal palette and a COACHES tag.
+    Shares the meet, sessions, active session and demo mode. No teams, roles or years.
+  - Each coach: card scan or name, club (typed club wins: the admin's fix), **Head coach**
+    toggle (off by default, any number per club) on the sheet and on every row,
+    Looks good / Edit / Remove, later sessions today. Printouts: coaches of a session by
+    club (head coaches first), and the whole meet. `coaches.csv` in the meet zip.
+  - Storage: `coaches` and `coach_signins` tables in the same SQLite file, created by
+    `coaches.py` on first use (`coach_signins` cascades when a session is deleted).
+    Member IDs stored, never shown or exported.
+  - Card check for coaches is the same as officials for now (good standing, background
+    check, athlete protection). Coach-only items (Safety Training for Swim Coaches,
+    CPR...) need a coach card screenshot from the owner.
+  - **Shared code** (owner: share, don't mirror): the page styles are in `web/desk.css`
+    (colours as variables; the coaches page overrides them), and the camera window is
+    `web/card_camera.js` (builds its own markup; `CardCamera.read({...})`), used by both
+    pages on top of `card_scanner.js`.
+  - Demo: a few made-up coaches per demo club, 1-2 head coaches each.
 - **2026-10-16 (00:40): ☰ menu, session drop-down, Print on the left, meet zip.**
   - Top bar: ☰ menu at the left (Meets, Meet setup, Print meet summary, Save meet (zip
     file), Coaches once that page exists), then the title, meet name, a **session

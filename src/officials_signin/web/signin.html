@@ -16,191 +16,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${app_title}</title>
-  <style>
-    :root {
-      --ink: #1f2430; --muted: #5b6270; --paper: #f4f5f7; --card: #ffffff; --line: #d7dbe2;
-      --go: #15803d; --go-soft: #dcfce7; --warn: #b45309; --warn-soft: #fef3c7; --accent: #1d4ed8; --accent-soft: #dbeafe;
-      --bad: #b91c1c;
-    }
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; font-size: 18px; color: var(--ink); background: var(--paper); margin: 0; }
-    button { font: inherit; cursor: pointer; border-radius: 0.6rem; border: 1px solid var(--line); background: #fff; color: var(--ink); min-height: 3rem; padding: 0.5rem 1rem; }
-    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
-    button.go { background: var(--go); border-color: var(--go); color: #fff; font-weight: 700; }
-    button:disabled { opacity: 0.45; cursor: default; }
-    input, select { font: inherit; padding: 0.6rem; border: 1px solid var(--line); border-radius: 0.5rem; min-width: 0; background: #fff; color: var(--ink); }
-    [hidden] { display: none !important; }
-
-    header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; padding: 0.6rem 1rem; background: #111827; color: #fff; }
-    header h1 { font-size: 1.1rem; margin: 0 0.6rem 0 0; }
-    #meet-name { font-weight: 600; color: #cbd5e1; }
-    #teams-button { margin-left: auto; }
-    .menu-button { font-size: 1.4rem; min-width: 3rem; padding: 0 0.7rem; }
-    .session-picker select { min-height: 2.6rem; padding: 0.3rem 2rem 0.3rem 0.8rem; border-radius: 1.3rem; background: #fff; color: #111827; font-weight: 700; border: 0; max-width: 20rem; }
-    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-    .main-menu { position: fixed; top: 3.6rem; left: 0.6rem; z-index: 8; display: flex; flex-direction: column; min-width: 16rem; background: var(--card); border: 1px solid var(--line); border-radius: 0.8rem; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25); padding: 0.4rem; }
-    .main-menu button, .main-menu a { display: block; text-align: left; border: 0; border-radius: 0.5rem; background: none; min-height: 3rem; padding: 0.7rem 0.9rem; color: var(--ink); text-decoration: none; font: inherit; }
-    .main-menu button:hover, .main-menu a:hover { background: var(--accent-soft); }
-    header .header-button { background: transparent; color: #e5e7eb; border-color: #4b5563; min-height: 2.6rem; }
-
-    #layout { display: grid; grid-template-columns: minmax(20rem, 1.1fr) 1fr; gap: 1rem; padding: 1rem; height: calc(100vh - 3.8rem); }
-    #layout > section { overflow-y: auto; min-height: 0; }
-    @media (max-width: 820px) { #layout { display: block; height: auto; } #layout > section { margin-bottom: 1rem; } }
-    .panel { background: var(--card); border: 1px solid var(--line); border-radius: 0.9rem; padding: 1rem; margin-bottom: 1rem; }
-    .panel h2 { font-size: 0.9rem; margin: 0 0 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-
-    #capture-button { width: 100%; min-height: 5.5rem; font-size: 1.35rem; }
-    #capture-button small { display: block; font-weight: 400; font-size: 0.9rem; opacity: 0.85; }
-    #search { width: 100%; font-size: 1.2rem; padding: 0.8rem; margin-top: 1rem; }
-    #matches { list-style: none; margin: 0.5rem 0 0; padding: 0; }
-    #matches li button { width: 100%; text-align: left; margin-top: 0.4rem; display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; }
-    .match-detail { color: var(--muted); font-size: 0.9rem; }
-    #new-person { margin-top: 0.6rem; width: 100%; }
-
-    .signin-row { display: grid; grid-template-columns: 1fr auto; gap: 0.4rem 0.6rem; align-items: center; padding: 0.6rem 0; border-top: 1px solid var(--line); }
-    .signin-row:first-child { border-top: 0; }
-    .signin-name { font-weight: 700; }
-    .signin-detail { color: var(--muted); font-size: 0.9rem; }
-    .badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 0.6rem; font-size: 0.8rem; font-weight: 700; margin-left: 0.3rem; }
-    .badge.ok { background: var(--go-soft); color: var(--go); }
-    .badge.trainee { background: var(--accent-soft); color: var(--accent); }
-    .needs-admin { background: var(--warn-soft); border-color: #f59e0b; }
-    .problem { color: var(--warn); font-size: 0.9rem; }
-    .row-actions { display: flex; gap: 0.4rem; }
-    .row-actions button { min-height: 2.6rem; padding: 0.3rem 0.8rem; }
-    .roster-links a { display: inline-block; margin-right: 1rem; padding: 0.4rem 0; }
-    .roster-links .button-link { margin: 0 0.4rem 0.5rem 0; padding: 0.5rem 0.9rem; }
-    .roster-heading { margin-top: 0.8rem !important; }
-
-    /* Overlays: camera and sign-in sheet. */
-    .overlay { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.75); display: flex; align-items: center; justify-content: center; z-index: 5; padding: 1rem; }
-    .sheet { background: var(--card); border-radius: 1rem; padding: 1.2rem; width: min(44rem, 100%); max-height: 100%; overflow-y: auto; }
-    .sheet h2 { margin: 0 0 0.4rem; font-size: 1.4rem; }
-    .camera-bar { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
-    #camera-name { font-weight: 700; }
-    #camera-switch { min-height: 3.2rem; font-size: 1.1rem; font-weight: 700; border: 2px solid var(--accent); color: var(--accent); }
-    .camera-holder { text-align: center; background: #000; border-radius: 0.6rem; }
-    #camera-stage { position: relative; display: inline-block; max-width: 100%; vertical-align: top; }
-    #camera-stage.mirrored { transform: scaleX(-1); }
-    #camera-video { display: block; max-width: 100%; max-height: 55vh; }
-    #camera-overlay-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    #camera-guide { font-size: 1.35rem; font-weight: 800; margin: 0.6rem 0 0.2rem; padding: 0.5rem 0.8rem; border-radius: 0.6rem; color: #fff; background: #dc2626; text-align: center; }
-    #camera-status { font-size: 0.95rem; color: var(--muted); margin: 0.2rem 0 0.4rem; }
-    #camera-fields { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.6rem; }
-    .field-chip { padding: 0.2rem 0.6rem; border-radius: 0.8rem; background: #e5e7eb; color: var(--muted); font-size: 0.85rem; }
-    .field-chip.read { background: var(--go-soft); color: var(--go); font-weight: 700; }
-    .sheet-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: flex-end; margin-top: 1rem; }
-    /* ✕ in the top right corner of every pop-up; it stays in view while the sheet scrolls. */
-    .sheet-close { position: sticky; top: 0; float: right; z-index: 2; width: 2.8rem; height: 2.8rem; min-height: 0; padding: 0; margin: -0.4rem -0.4rem 0 0.6rem; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1.3rem; line-height: 1; }
-    /* Save / Cancel stay at the bottom of long sheets, so nobody has to scroll to leave. */
-    #setup-overlay .sheet > .sheet-actions, #meets-overlay .sheet > .sheet-actions { position: sticky; bottom: -1.2rem; background: var(--card); padding: 0.6rem 0 1.2rem; margin-bottom: -1.2rem; border-top: 1px solid var(--line); }
-    .sheet-actions .grow { margin-right: auto; }
-    .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-    .chip { border-radius: 1.5rem; border: 2px solid #93c5fd; background: var(--accent-soft); }
-    .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
-    .sheet-label { display: block; margin: 0.9rem 0 0.4rem; color: var(--muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.04em; }
-    .sheet-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 0.6rem; }
-    .check-line { margin-top: 0.4rem; font-weight: 600; }
-    .check-line.ok { color: var(--go); }
-    .check-line.warn { color: var(--warn); }
-    .setup-grid { display: grid; gap: 0.5rem; align-items: end; }
-    .setup-grid.meet-grid { grid-template-columns: 2fr 1.3fr; }
-    @media (max-width: 640px) { .setup-grid.meet-grid { grid-template-columns: 1fr; } }
-    .sheet.wide { width: min(76rem, 100%); }
-    .session-table-wrap { overflow-x: auto; }
-    .session-table { width: 100%; border-collapse: collapse; }
-    .session-table th { text-align: left; font-size: 0.8rem; font-weight: 600; color: var(--muted); padding: 0 0.25rem 0.3rem; white-space: nowrap; }
-    .session-table td { padding: 0.25rem; vertical-align: top; border-top: 1px solid var(--line); }
-    .session-table input, .session-table select { font: inherit; width: 100%; min-width: 6.5rem; padding: 0.5rem; border: 1px solid var(--line); border-radius: 0.5rem; background: #fff; color: var(--ink); }
-    .session-table input.session-name-input { min-width: 11rem; }
-    .session-table input.hours-input { min-width: 4.5rem; width: 5rem; }
-    .session-table .type-other { margin-top: 0.3rem; }
-    .session-table .count-cell { text-align: center; padding-top: 0.75rem; color: var(--muted); }
-    .session-table tr.changed td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
-    .session-table tr.deleting td { background: #fef2f2; }
-    @media (max-width: 900px) {
-      .session-table input, .session-table select { min-width: 0; padding: 0.4rem 0.3rem; font-size: 0.95rem; }
-      .session-table input.session-name-input { min-width: 7rem; }
-      .session-table input.hours-input { min-width: 3.2rem; width: 3.6rem; }
-      .session-table th { font-size: 0.72rem; white-space: normal; }
-      .session-table td { padding: 0.2rem 0.12rem; }
-      .session-table td:last-child button { min-height: 2.4rem; padding: 0.2rem 0.5rem; font-size: 0.9rem; }
-      .session-table input[type=date] { width: 8.6rem; }
-      .session-table input[type=time] { width: 7rem; }
-    }
-    #session-add-row { margin-top: 0.5rem; }
-    .setup-grid select { font: inherit; padding: 0.6rem; border: 1px solid var(--line); border-radius: 0.5rem; background: #fff; color: var(--ink); }
-    button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 700; }
-    .delete-warning { margin-top: 0.8rem; padding: 0.9rem 1rem; border: 2px solid var(--bad); border-radius: 0.7rem; background: #fef2f2; color: #7f1d1d; }
-    .delete-warning strong { font-size: 1.15rem; }
-    .delete-warning p { margin: 0.4rem 0; }
-    .wide-sheet { width: min(72rem, 100%); }
-    .teams-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.8rem; }
-    .teams-controls { display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: flex-end; }
-    .teams-controls .chip { min-height: 2.8rem; }
-    .chip .suggested { display: block; font-size: 0.75rem; font-weight: 400; }
-    .check-option { display: flex; align-items: center; gap: 0.5rem; min-height: 3rem; font-size: 1rem; }
-    .check-option input { width: 1.5rem; height: 1.5rem; }
-    .rotation { margin: 0.8rem 0 0.4rem; color: var(--muted); }
-    .teams-alert { padding: 0.6rem 0.9rem; border-radius: 0.6rem; margin: 0.4rem 0; font-weight: 600; }
-    .teams-alert.warn { background: var(--warn-soft); color: var(--warn); }
-    .teams-alert.bad { background: #fef2f2; color: var(--bad); }
-    .teams-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0.8rem; margin-top: 0.6rem; }
-    .team-card { border: 1px solid var(--line); border-radius: 0.8rem; padding: 0.7rem; background: #fafbfc; }
-    .team-card h3 { margin: 0; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: baseline; gap: 0.4rem; }
-    .team-card .lanes { font-size: 0.85rem; color: var(--muted); font-weight: 400; }
-    .team-card.extras { background: #f5f3ff; border-color: #c4b5fd; }
-    .team-card.unplaced { background: var(--warn-soft); border-color: #f59e0b; }
-    .team-card.drop-here { outline: 3px dashed var(--accent); outline-offset: 2px; }
-    .member.drop-here { outline: 3px solid var(--accent); }
-    .member { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-    .member.dragging { opacity: 0.35; }
-    .drag-ghost { position: fixed; z-index: 50; pointer-events: none; opacity: 0.92; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3); margin: 0; }
-    .job-chips { display: flex; gap: 0.35rem; margin: 0.25rem 0 0.4rem; flex-wrap: wrap; }
-    .chip.small { min-height: 2.2rem; padding: 0.15rem 0.7rem; font-size: 0.9rem; }
-    .drop-hint { color: var(--muted); font-size: 0.9rem; margin: 0.5rem 0 0; }
-    .check-names { margin: 0.3rem 0 0.6rem; padding-left: 1.2rem; font-weight: 600; }
-    .member { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; width: 100%; text-align: left; margin-top: 0.35rem; min-height: 2.8rem; background: #fff; border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.35rem 0.5rem 0.35rem 0.8rem; cursor: grab; }
-    .member .member-name { flex: 1; }
-    .member .member-end { display: flex; align-items: center; gap: 0.4rem; }
-    /* Team Lead star: tap it on the name (★ = this team's lead). */
-    .star-toggle { min-height: 2.3rem; min-width: 2.3rem; padding: 0 0.45rem; border-radius: 0.5rem; font-size: 1.15rem; line-height: 1; color: #9ca3af; background: #fff; border: 1px solid var(--line); }
-    .star-toggle.on { color: #92400e; background: #fef3c7; border-color: #f59e0b; font-size: 0.95rem; font-weight: 700; }
-    .jurisdiction-box { border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.2rem 0.7rem 0.4rem; background: #fafbfc; font-size: 0.95rem; }
-    .jurisdiction-box .sheet-label { margin-top: 0.3rem; }
-    .jurisdiction-line { margin: 0.1rem 0; }
-    .check-option.small { font-size: 0.9rem; min-height: 2.4rem; }
-    .member .years { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
-    .member.trainee { margin-left: 1.2rem; width: calc(100% - 1.2rem); border-style: dashed; font-size: 0.95rem; flex-direction: column; align-items: flex-start; gap: 0.1rem; }
-    .tag { display: inline-block; padding: 0 0.4rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; margin-left: 0.3rem; background: #e5e7eb; }
-    .tag.lead { background: #fef3c7; color: #92400e; }
-    .tag.fifteen { background: #e0f2fe; color: #075985; }
-    .badge.team { background: #ede9fe; color: #5b21b6; }
-    .diagnostics-option { font-size: 0.9rem; color: var(--muted); min-height: 2.4rem; }
-    .name-hint { display: block; margin-top: 0.3rem; font-size: 0.85rem; font-weight: 700; color: var(--warn); }
-    #sheet-name.check { border: 2px solid #f59e0b; background: var(--warn-soft); font-weight: 700; }
-    .button-link { display: inline-flex; align-items: center; min-height: 3rem; padding: 0.5rem 1rem; border-radius: 0.6rem; border: 1px solid var(--accent); color: var(--accent); font-weight: 700; text-decoration: none; background: #fff; }
-    .teams-print-actions { margin: 0.2rem 0 0.4rem; }
-    #demo-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; padding: 0.5rem 1rem; background: #7c3aed; color: #fff; font-size: 1rem; }
-    #demo-banner a { color: #fff; font-weight: 700; }
-    #demo-banner button { min-height: 2.4rem; padding: 0.2rem 0.9rem; }
-    #demo-reset { margin-left: auto; }
-    .meet-list { list-style: none; margin: 0.4rem 0 0.8rem; padding: 0; display: grid; gap: 0.5rem; }
-    .meet-row { display: flex; align-items: center; gap: 0.8rem; padding: 0.6rem 0.8rem; border: 1px solid var(--line); border-radius: 0.6rem; }
-    .meet-row.current { border: 2px solid var(--go); }
-    .meet-row.demo { border-color: #7c3aed; background: #f5f3ff; }
-    .meet-row .meet-text { flex: 1; display: flex; flex-direction: column; }
-    .meet-row .meet-title { font-weight: 700; }
-    .meet-row .meet-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
-    .meet-list.archived .meet-row { background: var(--soft, #f3f4f6); }
-    #meeting-time { color: #fcd34d; font-weight: 700; white-space: nowrap; }
-    .setup-grid label { display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); gap: 0.2rem; }
-    .link-button { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 0; min-height: 2.6rem; margin-top: 0.6rem; }
-
-    #toast { position: fixed; left: 50%; bottom: 1.5rem; transform: translate(-50%, 2rem); opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; padding: 0.9rem 1.5rem; border-radius: 0.7rem; font-size: 1.15rem; font-weight: 700; color: #fff; background: var(--go); z-index: 10; }
-    #toast.show { opacity: 1; transform: translate(-50%, 0); }
-    #toast.error { background: var(--bad); }
-  </style>
+  <link rel="stylesheet" href="${desk_stylesheet_route}">
 </head>
 <body>
   <div id="demo-banner" hidden>
@@ -219,6 +35,7 @@
     </label>
     <span id="meeting-time" hidden></span>
     <button id="teams-button" class="header-button" type="button" hidden>Teams</button>
+    <a id="coaches-button" class="header-button button-link" href="#" hidden>Coach sign-in</a>
   </header>
   <!-- The ☰ menu: things used now and then, kept out of the top bar. -->
   <nav id="main-menu" class="main-menu" hidden>
@@ -259,32 +76,7 @@
     </section>
   </div>
 
-  <!-- Camera overlay -->
-  <div class="overlay" id="camera-overlay" hidden>
-    <div class="sheet">
-      <button class="sheet-close" type="button" data-closes="camera-cancel" aria-label="Close">✕</button>
-      <h2>Show your Membership card</h2>
-      <div class="camera-bar">
-        <span id="camera-name">Camera</span>
-        <button id="camera-switch" type="button">⟲ Switch camera</button>
-      </div>
-      <div class="camera-holder">
-        <div id="camera-stage">
-          <video id="camera-video" playsinline muted></video>
-          <canvas id="camera-overlay-canvas"></canvas>
-        </div>
-      </div>
-      <div id="camera-guide">Starting camera…</div>
-      <div id="camera-status"></div>
-      <div id="camera-fields"></div>
-      <label class="check-option diagnostics-option"><input id="camera-diagnostics" type="checkbox"> Save frames for troubleshooting (your own card only)</label>
-      <div class="sheet-actions">
-        <button id="camera-cancel" class="grow" type="button">Cancel</button>
-        <button id="camera-capture" type="button">Capture now</button>
-        <button id="camera-done" type="button">Use what was read</button>
-      </div>
-    </div>
-  </div>
+  <!-- The camera window is built by card_camera.js (shared with the other desk page). -->
 
   <!-- Sign-in sheet -->
   <div class="overlay" id="sheet-overlay" hidden>
@@ -478,6 +270,7 @@
 
   <script src="${engine_script_route}"></script>
   <script src="${card_scanner_route}"></script>
+  <script src="${card_camera_route}"></script>
   <script src="${script_route}"></script>
 </body>
 </html>

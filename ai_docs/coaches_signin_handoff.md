@@ -1,3 +1,7 @@
+> **Superseded (2026-10-16):** the owner asked for the coaches page to be built in the
+> officials chat, and it was (`coaches.py`, `web/coaches.html`, `web/coaches.js`). This
+> file is kept for its notes on the open questions; see `ai_docs/officials_signin_memory.md`.
+
 # Coaches Sign-In: handoff and development prompt
 
 Point a new Claude chat at this file to build the **Coaches Sign-In** page. It is

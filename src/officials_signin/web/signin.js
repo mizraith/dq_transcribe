@@ -36,10 +36,6 @@ const deskPanel = element("desk-panel");
 const noSessionPanel = element("no-session-panel");
 const signinsTitle = element("signins-title");
 const signinsList = element("signins");
-const cameraOverlay = element("camera-overlay");
-const cameraVideo = element("camera-video");
-const cameraStatus = element("camera-status");
-const cameraFields = element("camera-fields");
 const sheetOverlay = element("sheet-overlay");
 const sheetName = element("sheet-name");
 const sheetYears = element("sheet-years");
@@ -56,9 +52,6 @@ const toast = element("toast");
 
 let pageState = { meet: null, sessions: [], activeSessionId: null, signins: [] };
 let officials = [];
-let activeScan = null;
-let lastScanReading = null;
-let scanForOfficial = null; // official whose sheet asked for the scan, if any
 // What the open sign-in sheet is about.
 let sheet = { officialId: null, card: null, cardResult: null, roles: [], trainee: false, laterSessionIds: [] };
 
@@ -170,6 +163,8 @@ function drawHeader() {
   element("demo-new").href = ROUTES.demo;
   element("coaches-link").hidden = !CONFIG.coachesPage;
   element("coaches-link").href = ROUTES.coaches;
+  element("coaches-button").hidden = !CONFIG.coachesPage;
+  element("coaches-button").href = ROUTES.coaches;
   const sessionQuery = "?" + KEYS.sessionId + "=" + pageState.activeSessionId;
   element("print-session-link").href = ROUTES.printSession + sessionQuery;
   element("print-meet-link").href = ROUTES.printMeet;
@@ -1406,76 +1401,23 @@ async function newMeetFromOverview() {
 
 // --- Camera -------------------------------------------------------------------
 
-function drawCameraFields(card) {
-  cameraFields.replaceChildren();
-  CONFIG.cardFields.forEach(function (pair) {
-    const chip = document.createElement("span");
-    const read = card && card[pair[0]] !== null && card[pair[0]] !== undefined;
-    chip.className = "field-chip" + (read ? " read" : "");
-    chip.textContent = (read ? "✓ " : "") + pair[1];
-    cameraFields.appendChild(chip);
-  });
-}
-
 /**
- * Open the camera and read a card. When done, open (or refresh) the sign-in sheet.
- * @param {object|null} forOfficial  The official whose sheet is open, if any.
+ * Open the shared camera window (card_camera.js) and read a card; then open (or
+ * refresh) the sign-in sheet with what was read.
+ * @param {object|null} forOfficial  The official whose sheet asked for the scan, if any.
  */
 function startCamera(forOfficial) {
-  if (!window.CardScanner) {
-    showToast("The card reader did not load", true);
-    return;
-  }
-  lastScanReading = null;
-  scanForOfficial = forOfficial;
-  element("camera-guide").textContent = "Starting camera…";
-  element("camera-guide").style.background = "";
-  drawCameraFields(null);
-  cameraOverlay.hidden = false;
-  element("camera-diagnostics").checked = window.CardScanner.diagnosticsEnabled();
-  activeScan = window.CardScanner.scan({
-    video: cameraVideo,
-    diagnostics: window.CardScanner.diagnosticsEnabled,
-    stage: element("camera-stage"),
-    overlay: element("camera-overlay-canvas"),
-    onGuide: function (state, message, colour) {
-      const guide = element("camera-guide");
-      guide.textContent = message;
-      guide.style.background = colour;
-    },
-    onStatus: function (text) { cameraStatus.textContent = text; },
-    onCamera: function (name, count) {
-      element("camera-name").textContent = name;
-      element("camera-switch").hidden = count < 2;
-    },
-    onProgress: function (reading) {
-      lastScanReading = reading;
-      drawCameraFields(reading[KEYS.card]);
-      cameraStatus.textContent = "";
-    },
-  });
-  activeScan.result.then(function (reading) {
-    finishCamera(reading, forOfficial, false);
+  window.CardCamera.read({ allowDiagnostics: true, onMessage: showToast }).then(function (result) {
+    if (result.cancelled) { return; }
+    if (result.reading === null) {
+      showToast("Could not read the card. Sign in by name; the admin will check.", true);
+      if (forOfficial) { openSheet(forOfficial, null, null); }
+      return;
+    }
+    openSheet(result.reading[KEYS.match] || forOfficial, result.reading[KEYS.card], result.reading);
   }).catch(function (error) {
-    cameraOverlay.hidden = true;
-    activeScan = null;
     showToast("Camera problem: " + error.message, true);
   });
-}
-
-/** Close the camera and open the sheet with whatever was read. */
-function finishCamera(reading, forOfficial, cancelled) {
-  if (activeScan === null) { return; }
-  activeScan = null;
-  cameraOverlay.hidden = true;
-  if (cancelled) { return; }
-  if (reading === null) {
-    showToast("Could not read the card. Sign in by name; the admin will check.", true);
-    if (forOfficial) { openSheet(forOfficial, null, null); }
-    return;
-  }
-  const match = reading[KEYS.match];
-  openSheet(match || forOfficial, reading[KEYS.card], reading);
 }
 
 // --- Sign-in sheet ---------------------------------------------------------------
@@ -1642,21 +1584,6 @@ async function submitSheet() {
 captureButton.addEventListener("click", function () { startCamera(null); });
 searchInput.addEventListener("input", drawMatches);
 newPersonButton.addEventListener("click", function () { openSheet(null, null, null); });
-element("camera-cancel").addEventListener("click", function () {
-  if (activeScan) { activeScan.cancel(); }
-  finishCamera(null, null, true);
-});
-element("camera-done").addEventListener("click", function () {
-  if (activeScan) { activeScan.cancel(); }
-  finishCamera(lastScanReading, scanForOfficial, false);
-});
-element("camera-diagnostics").addEventListener("change", function () {
-  // Takes effect at once, also during a scan.
-  window.CardScanner.setDiagnosticsEnabled(element("camera-diagnostics").checked);
-  showToast(element("camera-diagnostics").checked ? "Saving frames for troubleshooting" : "Not saving frames");
-});
-element("camera-capture").addEventListener("click", function () { if (activeScan) { activeScan.captureNow(); } });
-element("camera-switch").addEventListener("click", function () { if (activeScan) { activeScan.switchCamera(); } });
 sheetTrainee.addEventListener("click", function () {
   sheet.trainee = !sheet.trainee;
   sheetTrainee.classList.toggle("on", sheet.trainee);
