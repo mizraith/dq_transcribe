@@ -95,7 +95,7 @@ def _row(dq: dict[str, Any], css_class: str = "", with_status: bool = False) -> 
         f'<tr class="{css_class}"><td class="num">{_escape(dq.get("heat"))}</td><td class="num">{_escape(dq.get("lane"))}</td>'
         f"<td>{_escape(swimmer)}</td><td>{_escape(dq.get('club'))}</td><td class=\"code\">{codes}</td>"
         f"<td class=\"what\">{descriptions}</td><td>{_escape(dq.get('official'))}</td>"
-        + (f'<td class="status status-{_escape(dq.get("status"))}">{_escape(status_label(dq))}</td>' if with_status else "")
+        + (f'<td class="status"><span class="status-{_escape(dq.get("status"))}">{_escape(status_label(dq))}</span></td>' if with_status else "")
         + "<td class=\"box\">\u2610</td></tr>"
     )
 
