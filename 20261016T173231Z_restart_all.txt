@@ -1,0 +1,17 @@
+task: 20261016T173231Z_restart_all
+started: 2026-10-16T10:33:03-07:00
+finished: 2026-10-16T10:33:15-07:00
+work_repo_commit: 02adb7a
+exit_code: 0
+--- output ---
+[officials_signin] wake lock on
+[officials_signin] code up to date (02adb7a device task: 20261016T173231Z_restart_all)
+[officials_signin] server running at http://localhost:8010
+running 02adb7a
+2026-10-16 10:33:13,532 whisper-server ready: ggml-base
+2026-10-16 10:33:14,036 whisper-server ready: ggml-small.en
+DQ page 200
+refine 8179: 200
+main page 200
+1
+0
