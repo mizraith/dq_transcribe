@@ -251,7 +251,9 @@ def read_meet_sheet_text(text: str) -> MeetSheet:
         sheet.course = "Yard" if course.group(2).lower().startswith("y") else "Meter"
     location = next((LOCATION_PATTERN.match(line) for line in lines if LOCATION_PATTERN.match(line)), None)
     if location:
-        sheet.location = " ".join(location.group(1).split())
+        # Just the place: sheets often run on into directions ("...CA 94306: From Highway 280 take...").
+        place = re.split(r":\s|\.\s", " ".join(location.group(1).split()), maxsplit=1)[0]
+        sheet.location = place[:TITLE_MAX_CHARS]
     sheet.events = _events(lines, sheet.course)
     sheet.sessions = _sessions(lines, text, sheet.dates)
     for session in sheet.sessions:
