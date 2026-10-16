@@ -170,6 +170,9 @@ window.CardScanner = (function () {
    * @param {HTMLVideoElement} options.video  Preview element (the stream is attached to it).
    * @param {function(object):void} options.onProgress  Called with the server's reading after each pass.
    * @param {function(string):void} options.onStatus  Short status text for the admin.
+   * @param {boolean|function():boolean} options.diagnostics  Save raw frames, OCR text and
+   *   timings on the device for troubleshooting (POSTed to the diagnostics route). A
+   *   function is asked before every record, so ticking the box mid-scan works.
    * @returns {{result: Promise<object|null>, cancel: function():void, switchCamera: function():void}}
    *   ``result`` resolves to the last server reading (complete, or the best so far
    *   when the time limit is reached or the scan is cancelled; null if nothing was read).
@@ -200,6 +203,67 @@ window.CardScanner = (function () {
       // Mirror the front-camera preview so it behaves like a mirror; OCR uses the raw frame.
       options.video.classList.toggle("mirrored", facing === FACING_FRONT);
       await options.video.play();
+      const track = stream.getVideoTracks()[0];
+      // Ask for continuous autofocus where the camera supports it (many tablet front cameras do not).
+      const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+      if (capabilities.focusMode && capabilities.focusMode.indexOf("continuous") >= 0) {
+        try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (error) { /* keep default */ }
+      }
+      cameraRecord = {
+        kind: "camera",
+        facing: facing,
+        settings: track.getSettings ? track.getSettings() : null,
+        capabilities: capabilities,
+        video_size: [options.video.videoWidth, options.video.videoHeight],
+        user_agent: navigator.userAgent,
+        cpu_cores: navigator.hardwareConcurrency,
+      };
+      cameraRecordSent = false;
+    }
+
+    // --- Diagnostics (only when the admin ticked "Save frames for troubleshooting") ---
+    const scanStarted = Date.now();
+    const scanId = (function () {
+      const now = new Date();
+      const two = function (value) { return String(value).padStart(2, "0"); };
+      return String(now.getFullYear()) + two(now.getMonth() + 1) + two(now.getDate()) + "T"
+        + two(now.getHours()) + two(now.getMinutes()) + two(now.getSeconds());
+    })();
+    let diagnosticFrames = 0;
+    let cameraRecord = null;
+    let cameraRecordSent = false;
+
+    /** True while diagnostics are wanted (the box can be ticked during a scan). */
+    function wantDiagnostics() {
+      return typeof options.diagnostics === "function" ? options.diagnostics() : Boolean(options.diagnostics);
+    }
+
+    /** Send one diagnostics record (and optionally a raw frame); never slows or breaks the scan. */
+    function diagnose(record, frameSource) {
+      if (!wantDiagnostics()) { return; }
+      if (cameraRecord !== null && !cameraRecordSent) {
+        cameraRecordSent = true;
+        diagnose(cameraRecord, null);
+      }
+      const body = {};
+      record.elapsed_ms = Date.now() - scanStarted;
+      body[KEYS.scanId] = scanId;
+      body[KEYS.record] = record;
+      if (frameSource && diagnosticFrames < OCR.diagnosticsMaxFrames) {
+        diagnosticFrames += 1;
+        const video = frameSource;
+        const scale = Math.min(1, OCR.maxFrameWidth / video.videoWidth);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(video.videoWidth * scale);
+        canvas.height = Math.round(video.videoHeight * scale);
+        canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+        body[KEYS.image] = canvas.toDataURL("image/jpeg", OCR.diagnosticsJpegQuality);
+      }
+      fetch(CONFIG.routes.diagnostics, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).catch(function () { /* diagnostics are best effort */ });
     }
 
     async function recognize(worker, canvas, layout) {
@@ -236,8 +300,23 @@ window.CardScanner = (function () {
         const layout = OCR.pageSegmentationModes[passCount % OCR.pageSegmentationModes.length];
         passCount += 1;
         const frameMirrored = mirrorFrames;
+        const passNumber = passCount;
+        const prepareStarted = performance.now();
+        diagnose({ kind: "frame", pass: passNumber }, video);
         const frame = prepareFrame(video, video.videoWidth, video.videoHeight, frameMirrored);
+        const ocrStarted = performance.now();
         const text = await recognize(worker, frame, layout);
+        diagnose({
+          kind: "pass",
+          pass: passNumber,
+          layout: layout,
+          mirrored: frameMirrored,
+          frame_size: [frame.width, frame.height],
+          prepare_ms: Math.round(ocrStarted - prepareStarted),
+          ocr_ms: Math.round(performance.now() - ocrStarted),
+          card_words: CARD_HINT.test(text),
+          text: text,
+        }, null);
         if (done || cancelled) { return; }
         if (!CARD_HINT.test(text)) {
           // Lots of text but no card words: probably mirrored, so flip the next frames.
@@ -254,6 +333,12 @@ window.CardScanner = (function () {
         mirrorFrames = frameMirrored;
         texts.push(text);
         const reading = await mergeTexts();
+        diagnose({
+          kind: "merged",
+          pass: passNumber,
+          complete: reading[KEYS.card][KEYS.complete],
+          missing: reading[KEYS.card][KEYS.missing],
+        }, null);
         if (reading[KEYS.card][KEYS.complete]) {
           done = true;
         }
@@ -270,6 +355,14 @@ window.CardScanner = (function () {
       await Promise.all(workers.map(function (worker, index) {
         return sleep(index * OCR.workerStaggerMilliseconds).then(function () { return readFrames(worker, deadline); });
       }));
+      diagnose({
+        kind: "result",
+        passes: passCount,
+        card_passes: texts.length,
+        complete: lastReading ? lastReading[KEYS.card][KEYS.complete] : false,
+        missing: lastReading ? lastReading[KEYS.card][KEYS.missing] : null,
+        cancelled: cancelled,
+      }, null);
       return lastReading;
     }
 
@@ -287,5 +380,20 @@ window.CardScanner = (function () {
     };
   }
 
-  return { warmUp: warmUp, scan: scan, prepareFrame: prepareFrame };
+  /** Whether "Save frames for troubleshooting" is ticked (remembered on this device). */
+  function diagnosticsEnabled() {
+    try { return localStorage.getItem(OCR.diagnosticsStorageKey) === "1"; } catch (error) { return false; }
+  }
+
+  function setDiagnosticsEnabled(enabled) {
+    try { localStorage.setItem(OCR.diagnosticsStorageKey, enabled ? "1" : "0"); } catch (error) { /* private mode */ }
+  }
+
+  return {
+    warmUp: warmUp,
+    scan: scan,
+    prepareFrame: prepareFrame,
+    diagnosticsEnabled: diagnosticsEnabled,
+    setDiagnosticsEnabled: setDiagnosticsEnabled,
+  };
 })();

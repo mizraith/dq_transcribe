@@ -524,7 +524,34 @@ function showSessionFormMode() {
   const editing = editingSessionId !== null;
   element("session-form-title").textContent = editing ? "Edit session" : "Add a session";
   sessionField(ADD_FORM, "save").textContent = editing ? "Save changes" : "Add session";
-  element("session-edit-cancel").hidden = !editing;
+  element("session-edit-actions").hidden = !editing;
+  element("session-delete-warning").hidden = true;
+}
+
+/** Show the big warning before deleting the session being edited. */
+function askDeleteSession() {
+  const session = pageState.sessions.find(function (item) { return item[KEYS.id] === editingSessionId; });
+  if (!session) { return; }
+  const count = session[KEYS.signinCount];
+  element("session-delete-name").textContent = session[KEYS.name];
+  element("session-delete-detail").textContent = count === 0
+    ? "Nobody has signed in to it yet."
+    : "Its " + count + " sign-in" + (count === 1 ? "" : "s") + " and team placements will be deleted too. "
+      + "The officials themselves stay in the app for next time.";
+  element("session-delete-warning").hidden = false;
+}
+
+async function deleteSession() {
+  const session = pageState.sessions.find(function (item) { return item[KEYS.id] === editingSessionId; });
+  if (!session) { return; }
+  try {
+    await postJson(ROUTES.sessionPrefix + session[KEYS.id] + ROUTES.sessionDeleteSuffix, {});
+    await refresh();
+    stopEditingSession();
+    showToast(session[KEYS.name] + " deleted");
+  } catch (error) {
+    showToast(error.message, true);
+  }
 }
 
 /**
@@ -629,8 +656,10 @@ function startCamera(forOfficial) {
   scanForOfficial = forOfficial;
   drawCameraFields(null);
   cameraOverlay.hidden = false;
+  element("camera-diagnostics").checked = window.CardScanner.diagnosticsEnabled();
   activeScan = window.CardScanner.scan({
     video: cameraVideo,
+    diagnostics: window.CardScanner.diagnosticsEnabled,
     onStatus: function (text) { cameraStatus.textContent = text; },
     onProgress: function (reading) {
       lastScanReading = reading;
@@ -770,6 +799,11 @@ element("camera-done").addEventListener("click", function () {
   if (activeScan) { activeScan.cancel(); }
   finishCamera(lastScanReading, scanForOfficial, false);
 });
+element("camera-diagnostics").addEventListener("change", function () {
+  // Takes effect at once, also during a scan.
+  window.CardScanner.setDiagnosticsEnabled(element("camera-diagnostics").checked);
+  showToast(element("camera-diagnostics").checked ? "Saving frames for troubleshooting" : "Not saving frames");
+});
 element("camera-switch").addEventListener("click", function () { if (activeScan) { activeScan.switchCamera(); } });
 sheetTrainee.addEventListener("click", function () {
   sheet.trainee = !sheet.trainee;
@@ -791,6 +825,9 @@ element("new-meet-cancel").addEventListener("click", function () { openSetup(fal
 element("new-meet-create").addEventListener("click", createMeetWithSession);
 sessionField(ADD_FORM, "save").addEventListener("click", saveSession);
 element("session-edit-cancel").addEventListener("click", stopEditingSession);
+element("session-delete").addEventListener("click", askDeleteSession);
+element("session-delete-keep").addEventListener("click", function () { element("session-delete-warning").hidden = true; });
+element("session-delete-confirm").addEventListener("click", deleteSession);
 wireSessionForm(ADD_FORM);
 wireSessionForm(FIRST_FORM);
 // The first session follows the meet's start date until it is changed.

@@ -28,7 +28,7 @@ SQLITE_JOURNAL_MODE = "WAL"
 SERVER_HOST = "127.0.0.1"
 SERVER_DISPLAY_HOST = "localhost"
 SERVER_PORT = 8010
-MAX_REQUEST_BODY_BYTES = 1_000_000
+MAX_REQUEST_BODY_BYTES = 5_000_000  # room for one diagnostics frame
 # The server restarts itself when its own Python code changes on disk (after a
 # git pull), so the page and the server never disagree. Checked this often, and
 # only after the change has been stable for one more check (no half-written pull).
@@ -49,6 +49,7 @@ ROUTE_STATE = "/api/state"  # GET: active meet, sessions, sign-ins
 ROUTE_MEETS = "/api/meets"  # POST: create a meet (and make it active)
 ROUTE_SESSIONS = "/api/sessions"  # POST: add a session to the active meet
 ROUTE_SESSION_PREFIX = "/api/sessions/"  # POST /api/sessions/<id>: edit a session
+SESSION_DELETE_SUFFIX = "/delete"  # POST /api/sessions/<id>/delete: delete it and its sign-ins
 ROUTE_ACTIVE_SESSION = "/api/active-session"  # POST: choose the session being signed in
 ROUTE_OFFICIALS = "/api/officials"  # GET: everyone known, for the name search
 ROUTE_CARD_READING = "/api/card-reading"  # POST: OCR text from the camera -> parsed card
@@ -235,6 +236,25 @@ OCR_WORKER_SCRIPT_FILENAME = "worker.min.js"
 # One core build only (SIMD + LSTM, supported by every current Chrome) keeps the repo small.
 OCR_CORE_SCRIPT_FILENAME = "tesseract-core-simd-lstm.wasm.js"
 
+# --- Camera diagnostics (off unless ticked in the camera window) --------------------
+# Saves what the camera saw so card reading can be tuned: raw frames (JPEG), the
+# OCR text of each pass, timings, and the camera's own settings. These files show
+# the card, including the member ID: use it with your own card, and delete the
+# folder when done.
+DIAGNOSTICS_DIRECTORY = DATA_DIRECTORY / "diagnostics"
+ROUTE_DIAGNOSTICS = "/api/diagnostics"  # POST one record (camera info or one frame)
+DIAGNOSTICS_STORAGE_KEY = "officials_signin.save_diagnostics"
+DIAGNOSTICS_JPEG_QUALITY = 0.85
+DIAGNOSTICS_MAX_FRAMES_PER_SCAN = 30
+DIAGNOSTICS_MAX_IMAGE_BYTES = 3_000_000
+KEY_SCAN_ID = "scan_id"
+KEY_RECORD = "record"
+KEY_IMAGE = "image"
+DIAGNOSTICS_SCAN_ID_PATTERN = r"^[0-9]{8}T[0-9]{6}$"
+DIAGNOSTICS_RECORD_FILENAME = "records.jsonl"
+DIAGNOSTICS_FRAME_FILENAME_FORMAT = "frame_{number:03d}.jpg"
+DATA_URL_JPEG_PREFIX = "data:image/jpeg;base64,"
+
 # --- Validation methods (roster file values) -----------------------------------
 VALIDATION_HOST_LIST = "host_list"
 VALIDATION_CAMERA = "camera"
@@ -287,6 +307,66 @@ SESSION_LETTER_TYPES = ("A", "B", "C")
 SESSION_LETTER_PREFIX = "Session"
 # The officials meeting is usually an hour before the session starts (editable).
 OFFICIALS_MEETING_MINUTES_BEFORE_START = 60
+
+# --- Teams ------------------------------------------------------------------------
+# Stroke & turn judges are split into equal teams; two teams are on deck at a time
+# (one at each end) while the others rest, rotating every 30 minutes.
+TEAM_POOL_ROLE = "Stroke & Turn Judge"
+TEAM_NAME_FORMAT = "Team {number}"
+# Candidate team counts. The one leaving the fewest officials over wins; on a tie
+# the larger count (shorter shifts: 30 on / 30 off). 3 teams is the minimum for
+# breaks (60 on / 30 off); fewer judges than that make one team each.
+TEAM_COUNT_CHOICES = (4, 3)
+MIN_TEAMS_FOR_BREAKS = 3
+ROTATION_MINUTES = 30
+# Officials left over after equal teams get these jobs, most senior first
+# (suggestions: the admin picks who really does them).
+ASSIGNMENT_ACJ = "Assistant Chief Judge"
+ASSIGNMENT_FIFTEEN_METER = "15 m"
+ASSIGNMENT_RELIEF = "Relief"
+LEFTOVER_ASSIGNMENT_ORDER = (ASSIGNMENT_ACJ, ASSIGNMENT_FIFTEEN_METER, ASSIGNMENT_RELIEF)
+EXTRA_ASSIGNMENTS = LEFTOVER_ASSIGNMENT_ORDER
+# Officials with unknown years certified sort after everyone with years.
+UNKNOWN_YEARS_SORT_VALUE = -1
+DEFAULT_LANES = 8
+LANE_CHOICES = (6, 8, 10)
+MIN_LANES = 1
+MAX_LANES = 12
+KEY_TEAMS = "teams"
+KEY_LANES = "lanes"
+KEY_TEAM_COUNT = "team_count"
+KEY_FIFTEEN_METER_ON_TEAMS = "fifteen_meter_on_teams"
+KEY_ASSIGNMENT = "assignment"
+KEY_TEAM_LEAD = "team_lead"
+KEY_MENTOR_SIGNIN_ID = "mentor_signin_id"
+KEY_MENTOR = "mentor"  # roster file: the mentor's name, for trainees
+KEY_SIGNIN_ID = "signin_id"
+KEY_TEAM_SIZE = "team_size"
+KEY_EXTRAS = "extras"
+KEY_PATTERN = "pattern"
+KEY_THIS_END = "this_end"
+KEY_OTHER_END = "other_end"
+# Team view (GET /api/teams) keys.
+KEY_MEMBERS = "members"
+KEY_JURISDICTION = "jurisdiction"
+KEY_TRAINEES = "trainees"
+KEY_LANE_CHOICES = "lane_choices"
+KEY_JUDGE_COUNT = "judge_count"
+KEY_PROPOSED_TEAM_COUNT = "proposed_team_count"
+KEY_ALTERNATIVE_TEAM_COUNT = "alternative_team_count"
+KEY_LAYOUTS = "layouts"
+KEY_BUILT = "built"
+KEY_UNPLACED = "unplaced"
+KEY_UNPAIRED_TRAINEES = "unpaired_trainees"
+KEY_ROTATION = "rotation"
+KEY_EXTRA_ASSIGNMENTS = "extra_assignments"
+KEY_TEAMS_BUILT_AT = "teams_built_at"
+LANE_PATTERN_SEPARATOR = "-"
+LANE_PATTERN_ENDS_SEPARATOR = " / "
+ROUTE_TEAMS = "/api/teams"  # GET: the team view for the active session
+ROUTE_TEAMS_BUILD = "/api/teams/build"  # POST: build (or rebuild) teams automatically
+ROUTE_TEAMS_SETTINGS = "/api/teams/settings"  # POST: lanes (no rebuild)
+SIGNIN_TEAM_SUFFIX = "/team"  # POST /api/signins/<id>/team: move, lead, mentor
 
 # --- Settings table keys -------------------------------------------------------
 SETTING_ACTIVE_MEET_ID = "active_meet_id"

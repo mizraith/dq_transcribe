@@ -11,6 +11,8 @@ device and nowhere else. Requests are never logged with names or member IDs.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
 import re
@@ -26,6 +28,14 @@ from officials_signin import constants
 from officials_signin.card_reader import CardReading, check_card, read_card
 from officials_signin.database import Database, SigninError, Validation, not_checked_validation
 from officials_signin.roster import build_roster, roster_download_filename
+from officials_signin.teams import (
+    assign_mentors,
+    build_team_view,
+    chosen_team_count,
+    is_team_trainee,
+    judges_from_signins,
+    plan_teams,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -36,6 +46,14 @@ _SIGNIN_ACTION_PATTERN = re.compile(
     rf"({re.escape(constants.SIGNIN_VALIDATE_SUFFIX)}|{re.escape(constants.SIGNIN_REMOVE_SUFFIX)})$"
 )
 _SESSION_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_SESSION_PREFIX)}(\d+)$")
+_SESSION_DELETE_PATTERN = re.compile(
+    rf"^{re.escape(constants.ROUTE_SESSION_PREFIX)}(\d+){re.escape(constants.SESSION_DELETE_SUFFIX)}$"
+)
+_SIGNIN_TEAM_PATTERN = re.compile(
+    rf"^{re.escape(constants.ROUTE_SIGNIN_PREFIX)}(\d+){re.escape(constants.SIGNIN_TEAM_SUFFIX)}$"
+)
+_TEAM_NAME_PATTERN = re.compile("^" + re.escape(constants.TEAM_NAME_FORMAT).replace(r"\{number\}", r"\d{1,2}") + "$")
+_SCAN_ID_PATTERN = re.compile(constants.DIAGNOSTICS_SCAN_ID_PATTERN)
 _DATE_PATTERN = re.compile(constants.DATE_PATTERN)
 _TIME_PATTERN = re.compile(constants.TIME_OF_DAY_PATTERN)
 
@@ -54,6 +72,7 @@ def build_web_config() -> dict[str, Any]:
             "sessions": constants.ROUTE_SESSIONS,
             "activeSession": constants.ROUTE_ACTIVE_SESSION,
             "sessionPrefix": constants.ROUTE_SESSION_PREFIX,
+            "sessionDeleteSuffix": constants.SESSION_DELETE_SUFFIX,
             "officials": constants.ROUTE_OFFICIALS,
             "cardReading": constants.ROUTE_CARD_READING,
             "signins": constants.ROUTE_SIGNINS,
@@ -61,6 +80,11 @@ def build_web_config() -> dict[str, Any]:
             "validateSuffix": constants.SIGNIN_VALIDATE_SUFFIX,
             "removeSuffix": constants.SIGNIN_REMOVE_SUFFIX,
             "roster": constants.ROUTE_ROSTER,
+            "diagnostics": constants.ROUTE_DIAGNOSTICS,
+            "teams": constants.ROUTE_TEAMS,
+            "teamsBuild": constants.ROUTE_TEAMS_BUILD,
+            "teamsSettings": constants.ROUTE_TEAMS_SETTINGS,
+            "teamSuffix": constants.SIGNIN_TEAM_SUFFIX,
             "rosterDownload": constants.ROUTE_ROSTER_DOWNLOAD,
         },
         "keys": {
@@ -97,11 +121,42 @@ def build_web_config() -> dict[str, Any]:
             "missing": constants.CARD_FIELD_MISSING,
             "labelsFound": constants.CARD_FIELD_LABELS_FOUND,
             "memberId": constants.CARD_FIELD_MEMBER_ID,
+            "scanId": constants.KEY_SCAN_ID,
+            "record": constants.KEY_RECORD,
+            "image": constants.KEY_IMAGE,
             "cardName": constants.CARD_FIELD_NAME,
+            "team": constants.KEY_TEAM,
+            "teams": constants.KEY_TEAMS,
+            "members": constants.KEY_MEMBERS,
+            "jurisdiction": constants.KEY_JURISDICTION,
+            "pattern": constants.KEY_PATTERN,
+            "trainees": constants.KEY_TRAINEES,
+            "mentor": constants.KEY_MENTOR,
+            "mentorSigninId": constants.KEY_MENTOR_SIGNIN_ID,
+            "assignment": constants.KEY_ASSIGNMENT,
+            "teamLead": constants.KEY_TEAM_LEAD,
+            "lanes": constants.KEY_LANES,
+            "laneChoices": constants.KEY_LANE_CHOICES,
+            "teamCount": constants.KEY_TEAM_COUNT,
+            "proposedTeamCount": constants.KEY_PROPOSED_TEAM_COUNT,
+            "alternativeTeamCount": constants.KEY_ALTERNATIVE_TEAM_COUNT,
+            "layouts": constants.KEY_LAYOUTS,
+            "teamSize": constants.KEY_TEAM_SIZE,
+            "extras": constants.KEY_EXTRAS,
+            "built": constants.KEY_BUILT,
+            "unplaced": constants.KEY_UNPLACED,
+            "unpairedTrainees": constants.KEY_UNPAIRED_TRAINEES,
+            "rotation": constants.KEY_ROTATION,
+            "extraAssignments": constants.KEY_EXTRA_ASSIGNMENTS,
+            "fifteenMeterOnTeams": constants.KEY_FIFTEEN_METER_ON_TEAMS,
+            "judgeCount": constants.KEY_JUDGE_COUNT,
             "cardMeetId": constants.KEY_CARD_MEET_ID,
         },
         "cardFields": [[name, constants.CARD_FIELD_LABELS[name]] for name in constants.CARD_REQUIRED_FIELDS],
         "roles": list(constants.ROSTER_ROLES),
+        "teamPoolRole": constants.TEAM_POOL_ROLE,
+        "assignmentFifteenMeter": constants.ASSIGNMENT_FIFTEEN_METER,
+        "assignmentAcj": constants.ASSIGNMENT_ACJ,
         "sessionTypes": list(constants.SESSION_TYPES),
         "sessionTypeOtherLabel": constants.SESSION_TYPE_OTHER_LABEL,
         "sessionLetterTypes": list(constants.SESSION_LETTER_TYPES),
@@ -128,6 +183,9 @@ def build_web_config() -> dict[str, Any]:
             "maxFrameWidth": constants.OCR_MAX_FRAME_WIDTH_PIXELS,
             "giveUpSeconds": constants.OCR_GIVE_UP_SECONDS,
             "textsLimit": constants.OCR_TEXTS_PER_REQUEST_LIMIT,
+            "diagnosticsStorageKey": constants.DIAGNOSTICS_STORAGE_KEY,
+            "diagnosticsJpegQuality": constants.DIAGNOSTICS_JPEG_QUALITY,
+            "diagnosticsMaxFrames": constants.DIAGNOSTICS_MAX_FRAMES_PER_SCAN,
         },
         "maxYearsCertified": constants.MAX_YEARS_CERTIFIED,
     }
@@ -194,16 +252,24 @@ class SigninServer(ThreadingHTTPServer):
 
     Attributes:
         database: Officials, meets, sessions and sign-ins.
+        diagnostics_directory: Where camera diagnostics are saved (when switched on).
     """
 
-    def __init__(self, server_address: tuple[str, int], database: Database) -> None:
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        database: Database,
+        diagnostics_directory: Path = constants.DIAGNOSTICS_DIRECTORY,
+    ) -> None:
         """Create the server.
 
         Args:
             server_address: ``(host, port)`` to bind. Use port 0 to let the OS choose.
             database: Storage (already initialized).
+            diagnostics_directory: Where camera diagnostics are saved.
         """
         self.database = database
+        self.diagnostics_directory = diagnostics_directory
         super().__init__(server_address, RequestHandler)
 
 
@@ -236,6 +302,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_vendor_file(path)
         elif path == constants.ROUTE_STATE:
             self._send_json(HTTPStatus.OK, database.get_state())
+        elif path == constants.ROUTE_TEAMS:
+            self._send_team_view()
         elif path == constants.ROUTE_OFFICIALS:
             self._send_json(HTTPStatus.OK, {constants.KEY_OFFICIALS: database.list_officials(date.today())})
         elif path in (constants.ROUTE_ROSTER, constants.ROUTE_ROSTER_DOWNLOAD):
@@ -282,6 +350,10 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_create_meet(payload)
             elif path == constants.ROUTE_SESSIONS:
                 self._handle_add_session(payload)
+            elif (match := _SESSION_DELETE_PATTERN.match(path)) is not None:
+                deleted = self.server.database.delete_session(int(match.group(1)))
+                LOGGER.info("Deleted a session and its %d sign-in(s)", deleted)
+                self._send_json(HTTPStatus.OK, {constants.KEY_SIGNIN_COUNT: deleted})
             elif (match := _SESSION_PATTERN.match(path)) is not None:
                 self._handle_update_session(int(match.group(1)), payload)
             elif path == constants.ROUTE_ACTIVE_SESSION:
@@ -290,6 +362,14 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_card_reading(payload)
             elif path == constants.ROUTE_SIGNINS:
                 self._handle_sign_in(payload)
+            elif path == constants.ROUTE_DIAGNOSTICS:
+                self._handle_diagnostics(payload)
+            elif path == constants.ROUTE_TEAMS_BUILD:
+                self._handle_build_teams(payload)
+            elif path == constants.ROUTE_TEAMS_SETTINGS:
+                self._handle_team_settings(payload)
+            elif (match := _SIGNIN_TEAM_PATTERN.match(path)) is not None:
+                self._handle_signin_team(int(match.group(1)), payload)
             elif (match := _SIGNIN_ACTION_PATTERN.match(path)) is not None:
                 self._handle_signin_action(int(match.group(1)), match.group(2))
             else:
@@ -445,6 +525,156 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json_error(HTTPStatus.NOT_FOUND, "Sign-in not found")
             return
         self._send_json(HTTPStatus.OK, {constants.KEY_OK: True})
+
+    # --- Camera diagnostics -------------------------------------------------------
+
+    def _handle_diagnostics(self, payload: dict[str, Any]) -> None:
+        """Save one diagnostics record (and its frame, if any) for a scan.
+
+        Files go to ``~/.officials_signin/diagnostics/<scan id>/``: ``records.jsonl``
+        (one JSON record per line) and ``frame_NNN.jpg``. Only used when the admin
+        ticks "Save frames for troubleshooting".
+        """
+        scan_id = str(payload.get(constants.KEY_SCAN_ID, ""))
+        record = payload.get(constants.KEY_RECORD)
+        if not _SCAN_ID_PATTERN.match(scan_id) or not isinstance(record, dict):
+            raise SigninError("Bad diagnostics record")
+        folder = self.server.diagnostics_directory / scan_id
+        folder.mkdir(parents=True, exist_ok=True)
+        image = payload.get(constants.KEY_IMAGE)
+        if isinstance(image, str) and image.startswith(constants.DATA_URL_JPEG_PREFIX):
+            frame_count = len(list(folder.glob("frame_*.jpg")))
+            if frame_count < constants.DIAGNOSTICS_MAX_FRAMES_PER_SCAN:
+                try:
+                    image_bytes = base64.b64decode(image[len(constants.DATA_URL_JPEG_PREFIX):], validate=True)
+                except (binascii.Error, ValueError):
+                    raise SigninError("Bad diagnostics image") from None
+                if len(image_bytes) <= constants.DIAGNOSTICS_MAX_IMAGE_BYTES:
+                    filename = constants.DIAGNOSTICS_FRAME_FILENAME_FORMAT.format(number=frame_count + 1)
+                    (folder / filename).write_bytes(image_bytes)
+                    record[constants.KEY_IMAGE] = filename
+        with (folder / constants.DIAGNOSTICS_RECORD_FILENAME).open("a", encoding="utf-8") as records:
+            records.write(json.dumps(record) + "\n")
+        self._send_json(HTTPStatus.OK, {constants.KEY_OK: True})
+
+    # --- Teams ----------------------------------------------------------------
+
+    def _active_session(self) -> dict[str, Any]:
+        """The active session row.
+
+        Raises:
+            SigninError: If no session is chosen.
+        """
+        session_id = self.server.database.get_state()[constants.KEY_ACTIVE_SESSION_ID]
+        session = None if session_id is None else self.server.database.get_session(session_id)
+        if session is None:
+            raise SigninError("Choose a session first")
+        return session
+
+    def _team_view(self) -> dict[str, Any]:
+        """The Teams screen for the active session."""
+        session = self._active_session()
+        return build_team_view(self.server.database.list_signins(session[constants.KEY_ID]), session)
+
+    def _send_team_view(self) -> None:
+        """GET /api/teams."""
+        try:
+            self._send_json(HTTPStatus.OK, self._team_view())
+        except SigninError as error:
+            self._send_json_error(HTTPStatus.NOT_FOUND, str(error))
+
+    @staticmethod
+    def _lanes_from(payload: dict[str, Any]) -> int | None:
+        """Validated lane count from a request, or None if not given."""
+        lanes = payload.get(constants.KEY_LANES)
+        if lanes is None:
+            return None
+        if not isinstance(lanes, int) or not constants.MIN_LANES <= lanes <= constants.MAX_LANES:
+            raise SigninError(f"Lanes must be {constants.MIN_LANES} to {constants.MAX_LANES}")
+        return lanes
+
+    def _handle_team_settings(self, payload: dict[str, Any]) -> None:
+        """Change the lane count (jurisdictions are recalculated; teams are kept)."""
+        session = self._active_session()
+        self.server.database.save_team_settings(session[constants.KEY_ID], lanes=self._lanes_from(payload))
+        self._send_json(HTTPStatus.OK, self._team_view())
+
+    def _handle_build_teams(self, payload: dict[str, Any]) -> None:
+        """Build (or rebuild) the teams automatically, replacing any hand changes."""
+        database = self.server.database
+        session = self._active_session()
+        session_id = session[constants.KEY_ID]
+        team_count = payload.get(constants.KEY_TEAM_COUNT)
+        if team_count is not None and (not isinstance(team_count, int) or team_count < 0):
+            raise SigninError("Team count must be a whole number")
+        fifteen = payload.get(constants.KEY_FIFTEEN_METER_ON_TEAMS)
+        database.save_team_settings(
+            session_id,
+            lanes=self._lanes_from(payload),
+            team_count=team_count,
+            fifteen_meter_on_teams=None if fifteen is None else bool(fifteen),
+        )
+        session = database.get_session(session_id)
+        signins = database.list_signins(session_id)
+        judges = judges_from_signins(signins)
+        count = chosen_team_count(len(judges), session[constants.KEY_TEAM_COUNT])
+        placements = plan_teams(judges, count, bool(session[constants.KEY_FIFTEEN_METER_ON_TEAMS]))
+        # Trainees in sign-in order (the list is newest first).
+        trainee_ids = [signin[constants.KEY_ID] for signin in reversed(signins) if is_team_trainee(signin)]
+        mentors = assign_mentors(trainee_ids, placements, judges)
+        team_of = {placement.signin_id: placement.team for placement in placements}
+        database.save_team_plan(
+            session_id,
+            [(placement.signin_id, placement.team, placement.assignment) for placement in placements],
+            mentors,
+            {trainee: team_of.get(mentor) for trainee, mentor in mentors.items()},
+        )
+        LOGGER.info("Built %d team(s) from %d judge(s)", count, len(judges))
+        self._send_json(HTTPStatus.OK, self._team_view())
+
+    def _handle_signin_team(self, signin_id: int, payload: dict[str, Any]) -> None:
+        """Move one official (team or extra job), set a Team Lead, or change a mentor."""
+        database = self.server.database
+        session = self._active_session()
+        signins = {signin[constants.KEY_ID]: signin for signin in database.list_signins(session[constants.KEY_ID])}
+        if signin_id not in signins:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "Sign-in not found")
+            return
+        changes: dict[str, Any] = {}
+        if constants.KEY_TEAM in payload:
+            team = payload[constants.KEY_TEAM]
+            if team is not None and not (isinstance(team, str) and _TEAM_NAME_PATTERN.match(team)):
+                raise SigninError("Unknown team")
+            changes[constants.KEY_TEAM] = team
+        if constants.KEY_ASSIGNMENT in payload:
+            assignment = payload[constants.KEY_ASSIGNMENT]
+            if assignment is not None and assignment not in constants.EXTRA_ASSIGNMENTS:
+                raise SigninError("Unknown assignment")
+            changes[constants.KEY_ASSIGNMENT] = assignment
+        if constants.KEY_MENTOR_SIGNIN_ID in payload:
+            mentor_id = payload[constants.KEY_MENTOR_SIGNIN_ID]
+            if mentor_id is not None and (mentor_id not in signins or signins[mentor_id][constants.KEY_TRAINEE]):
+                raise SigninError("A mentor must be a certified official signed in to this session")
+            changes[constants.KEY_MENTOR_SIGNIN_ID] = mentor_id
+            # A trainee goes wherever the mentor is.
+            changes[constants.KEY_TEAM] = None if mentor_id is None else signins[mentor_id][constants.KEY_TEAM]
+        new_team = changes.get(constants.KEY_TEAM, signins[signin_id][constants.KEY_TEAM])
+        if constants.KEY_TEAM_LEAD in payload:
+            changes[constants.KEY_TEAM_LEAD] = bool(payload[constants.KEY_TEAM_LEAD]) and new_team is not None
+        elif new_team != signins[signin_id][constants.KEY_TEAM]:
+            changes[constants.KEY_TEAM_LEAD] = False  # a lead who changes team is no longer that team's lead
+        if changes.get(constants.KEY_TEAM_LEAD):
+            # One Team Lead per team.
+            for other in signins.values():
+                if other[constants.KEY_ID] != signin_id and other[constants.KEY_TEAM] == new_team and other[constants.KEY_TEAM_LEAD]:
+                    database.update_signin_team(other[constants.KEY_ID], {constants.KEY_TEAM_LEAD: False})
+        database.update_signin_team(signin_id, changes)
+        # Trainees follow their mentor to a new team.
+        if constants.KEY_TEAM in changes and not signins[signin_id][constants.KEY_TRAINEE]:
+            for other in signins.values():
+                if other[constants.KEY_MENTOR_SIGNIN_ID] == signin_id:
+                    database.update_signin_team(other[constants.KEY_ID], {constants.KEY_TEAM: new_team})
+        self._send_json(HTTPStatus.OK, self._team_view())
 
     # --- Helpers ------------------------------------------------------------
 

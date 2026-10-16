@@ -35,7 +35,7 @@
     header h1 { font-size: 1.1rem; margin: 0 0.6rem 0 0; }
     #meet-name { font-weight: 600; color: #cbd5e1; }
     #session-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-    #setup-button { margin-left: auto; }
+    #teams-button, #teams-button[hidden] + #setup-button { margin-left: auto; }
     .session-chip { min-height: 2.6rem; padding: 0.3rem 0.9rem; border-radius: 1.3rem; background: #1f2937; color: #e5e7eb; border-color: #374151; }
     .session-chip.on { background: #fff; color: #111827; font-weight: 700; }
     .session-chip .count { display: inline-block; margin-left: 0.4rem; padding: 0 0.4rem; border-radius: 0.7rem; background: #374151; color: #fff; font-size: 0.85rem; }
@@ -99,6 +99,36 @@
     .setup-sessions button { width: 100%; text-align: left; border: 0; border-radius: 0.4rem; background: transparent; min-height: 2.8rem; padding: 0.3rem 0.4rem; }
     .setup-sessions button.editing { background: var(--accent-soft); }
     .setup-sessions .edit-hint { float: right; color: var(--accent); font-size: 0.85rem; }
+    button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 700; }
+    .edit-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; }
+    .delete-warning { margin-top: 0.8rem; padding: 0.9rem 1rem; border: 2px solid var(--bad); border-radius: 0.7rem; background: #fef2f2; color: #7f1d1d; }
+    .delete-warning strong { font-size: 1.15rem; }
+    .delete-warning p { margin: 0.4rem 0; }
+    .wide-sheet { width: min(72rem, 100%); }
+    .teams-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.8rem; }
+    .teams-controls { display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: flex-end; }
+    .teams-controls .chip { min-height: 2.8rem; }
+    .chip .suggested { display: block; font-size: 0.75rem; font-weight: 400; }
+    .check-option { display: flex; align-items: center; gap: 0.5rem; min-height: 3rem; font-size: 1rem; }
+    .check-option input { width: 1.5rem; height: 1.5rem; }
+    .rotation { margin: 0.8rem 0 0.4rem; color: var(--muted); }
+    .teams-alert { padding: 0.6rem 0.9rem; border-radius: 0.6rem; margin: 0.4rem 0; font-weight: 600; }
+    .teams-alert.warn { background: var(--warn-soft); color: var(--warn); }
+    .teams-alert.bad { background: #fef2f2; color: var(--bad); }
+    .teams-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0.8rem; margin-top: 0.6rem; }
+    .team-card { border: 1px solid var(--line); border-radius: 0.8rem; padding: 0.7rem; background: #fafbfc; }
+    .team-card h3 { margin: 0; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: baseline; gap: 0.4rem; }
+    .team-card .lanes { font-size: 0.85rem; color: var(--muted); font-weight: 400; }
+    .team-card.extras { background: #f5f3ff; border-color: #c4b5fd; }
+    .team-card.unplaced { background: var(--warn-soft); border-color: #f59e0b; }
+    .member { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; margin-top: 0.35rem; min-height: 2.8rem; background: #fff; }
+    .member .years { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+    .member.trainee { margin-left: 1.2rem; width: calc(100% - 1.2rem); border-style: dashed; font-size: 0.95rem; }
+    .tag { display: inline-block; padding: 0 0.4rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; margin-left: 0.3rem; background: #e5e7eb; }
+    .tag.lead { background: #fef3c7; color: #92400e; }
+    .tag.fifteen { background: #e0f2fe; color: #075985; }
+    .badge.team { background: #ede9fe; color: #5b21b6; }
+    .diagnostics-option { font-size: 0.9rem; color: var(--muted); min-height: 2.4rem; }
     #meeting-time { color: #fcd34d; font-weight: 700; white-space: nowrap; }
     .setup-grid label { display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); gap: 0.2rem; }
     .meet-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem; margin-bottom: 0.4rem; }
@@ -121,6 +151,7 @@
     <span id="meet-name"></span>
     <div id="session-chips"></div>
     <span id="meeting-time" hidden></span>
+    <button id="teams-button" class="header-button" type="button" hidden>Teams</button>
     <button id="setup-button" class="header-button" type="button">Meet setup</button>
   </header>
 
@@ -158,6 +189,7 @@
       <video id="camera-video" playsinline muted></video>
       <div id="camera-status"></div>
       <div id="camera-fields"></div>
+      <label class="check-option diagnostics-option"><input id="camera-diagnostics" type="checkbox"> Save frames for troubleshooting (your own card only)</label>
       <div class="sheet-actions">
         <button id="camera-switch" class="grow" type="button">Switch camera</button>
         <button id="camera-cancel" type="button">Cancel</button>
@@ -224,7 +256,19 @@
           <label>Session name<input id="session-name" type="text" autocomplete="off"></label>
           <button id="session-save" class="go" type="button">Add session</button>
         </div>
-        <button id="session-edit-cancel" class="link-button" type="button" hidden>Cancel editing</button>
+        <div id="session-edit-actions" class="edit-actions" hidden>
+          <button id="session-edit-cancel" class="link-button" type="button">Cancel editing</button>
+          <button id="session-delete" class="danger" type="button">Delete this session</button>
+        </div>
+        <div id="session-delete-warning" class="delete-warning" hidden>
+          <strong>⚠ Delete <span id="session-delete-name"></span>?</strong>
+          <p id="session-delete-detail"></p>
+          <p>This cannot be undone.</p>
+          <div class="sheet-actions">
+            <button id="session-delete-keep" type="button">Keep it</button>
+            <button id="session-delete-confirm" class="danger" type="button">Yes, delete it</button>
+          </div>
+        </div>
         <button id="new-meet-toggle" class="link-button" type="button">Start a different meet…</button>
       </div>
 
@@ -254,6 +298,54 @@
       </div>
 
       <div class="sheet-actions"><button id="setup-close" class="primary" type="button">Done</button></div>
+    </div>
+  </div>
+
+  <!-- Teams: stroke & turn judges in equal seniority teams, extras, trainees with mentors. -->
+  <div class="overlay" id="teams-overlay" hidden>
+    <div class="sheet wide-sheet">
+      <div class="teams-head">
+        <h2>Teams</h2>
+        <span id="teams-summary" class="signin-detail"></span>
+      </div>
+      <div class="teams-controls">
+        <div><span class="sheet-label">Lanes</span><div id="teams-lanes" class="chips"></div></div>
+        <div><span class="sheet-label">Teams</span><div id="teams-layouts" class="chips"></div></div>
+        <label class="check-option"><input id="teams-fifteen" type="checkbox"> Include 15 m on every team</label>
+      </div>
+      <div id="teams-rotation" class="rotation"></div>
+      <div id="teams-alerts"></div>
+      <div id="teams-grid" class="teams-grid"></div>
+      <div class="sheet-actions">
+        <button id="teams-rebuild" class="grow" type="button">Rebuild automatically</button>
+        <button id="teams-close" class="primary" type="button">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tap an official in Teams: move them, make them lead, or change a trainee's mentor. -->
+  <div class="overlay" id="place-overlay" hidden>
+    <div class="sheet">
+      <h2 id="place-name"></h2>
+      <div id="place-detail" class="signin-detail"></div>
+      <div id="place-move-block">
+        <span class="sheet-label">Move to</span>
+        <div id="place-teams" class="chips"></div>
+        <span class="sheet-label">Or a job off the teams</span>
+        <div id="place-extras" class="chips"></div>
+        <div id="place-team-options">
+          <span class="sheet-label">On this team</span>
+          <div class="chips">
+            <button id="place-lead" class="chip" type="button">★ Team Lead</button>
+            <button id="place-fifteen" class="chip" type="button">15 m mark</button>
+          </div>
+        </div>
+      </div>
+      <div id="place-mentor-block">
+        <span class="sheet-label">Mentor (the trainee shadows them)</span>
+        <div id="place-mentors" class="chips"></div>
+      </div>
+      <div class="sheet-actions"><button id="place-close" class="primary" type="button">Done</button></div>
     </div>
   </div>
 

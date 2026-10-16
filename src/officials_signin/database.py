@@ -81,8 +81,22 @@ _SCHEMA = (
     "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)",
 )
 
-# Columns added after the first release; `initialize` adds them to older databases.
-_ADDED_SESSION_COLUMNS = {"session_type": "TEXT", "officials_meeting_time": "TEXT"}
+# Columns added after the first release, by table; `initialize` adds them to older databases.
+_ADDED_COLUMNS = {
+    "sessions": {
+        "session_type": "TEXT",
+        "officials_meeting_time": "TEXT",
+        "lanes": "INTEGER",
+        "team_count": "INTEGER",
+        "fifteen_meter_on_teams": "INTEGER NOT NULL DEFAULT 0",
+        "teams_built_at": "TEXT",
+    },
+    "signins": {
+        "assignment": "TEXT",
+        "team_lead": "INTEGER NOT NULL DEFAULT 0",
+        "mentor_signin_id": "INTEGER",
+    },
+}
 
 _NON_LETTERS = re.compile(r"[^a-z]+")
 _NOT_CHECKED_PROBLEM = "Card not checked yet"
@@ -163,10 +177,11 @@ class Database:
             connection.execute(f"PRAGMA journal_mode = {constants.SQLITE_JOURNAL_MODE}")
             for statement in _SCHEMA:
                 connection.execute(statement)
-            existing = {row["name"] for row in connection.execute("PRAGMA table_info(sessions)")}
-            for column, column_type in _ADDED_SESSION_COLUMNS.items():
-                if column not in existing:
-                    connection.execute(f"ALTER TABLE sessions ADD COLUMN {column} {column_type}")
+            for table, columns in _ADDED_COLUMNS.items():
+                existing = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+                for column, column_type in columns.items():
+                    if column not in existing:
+                        connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
 
     # --- Settings ---------------------------------------------------------------
 
@@ -267,6 +282,37 @@ class Database:
             )
             if cursor.rowcount == 0:
                 raise SigninError("That session is not part of the active meet")
+
+    def delete_session(self, session_id: int) -> int:
+        """Delete a session of the active meet and its sign-ins (the officials stay known).
+
+        If it was the active session, the meet's first remaining session (or none)
+        becomes active.
+
+        Returns:
+            How many sign-ins were deleted with it.
+
+        Raises:
+            SigninError: If the session is not part of the active meet.
+        """
+        with self._connect() as connection:
+            meet_id = self._get_setting_id(connection, constants.SETTING_ACTIVE_MEET_ID)
+            row = connection.execute("SELECT meet_id FROM sessions WHERE id = ?", (session_id,)).fetchone()
+            if row is None or row["meet_id"] != meet_id:
+                raise SigninError("That session is not part of the active meet")
+            signin_count = connection.execute(
+                "SELECT COUNT(*) AS count FROM signins WHERE session_id = ?", (session_id,)
+            ).fetchone()["count"]
+            connection.execute("DELETE FROM signins WHERE session_id = ?", (session_id,))
+            connection.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            if self._get_setting_id(connection, constants.SETTING_ACTIVE_SESSION_ID) == session_id:
+                next_session = connection.execute(
+                    "SELECT id FROM sessions WHERE meet_id = ? ORDER BY date, start_time, id LIMIT 1", (meet_id,)
+                ).fetchone()
+                self._set_setting(
+                    connection, constants.SETTING_ACTIVE_SESSION_ID, None if next_session is None else next_session["id"]
+                )
+        return int(signin_count)
 
     def set_active_session(self, session_id: int) -> None:
         """Choose the session officials are signing in to.
@@ -544,14 +590,16 @@ class Database:
         Returns:
             Dictionaries with ``id``, ``official_id``, ``name``, ``club``, ``lsc``,
             ``zone``, ``years_certified``, ``roles``, ``trainee``, ``validated``,
-            ``validation_method``, ``problems`` and ``team``.
+            ``validation_method``, ``problems``, ``team``, ``assignment`` (ACJ,
+            15 m, Relief or None), ``team_lead`` and ``mentor_signin_id``.
         """
         session = self.get_session(session_id)
         on_date = date.today() if session is None else date.fromisoformat(session["date"])
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT g.id, g.official_id, g.roles_json, g.trainee, g.validated, g.validation_method, "
-                "g.problems_json, g.team, o.name, o.lsc, o.club, o.certified_since_year "
+                "g.problems_json, g.team, g.assignment, g.team_lead, g.mentor_signin_id, "
+                "o.name, o.lsc, o.club, o.certified_since_year "
                 "FROM signins g JOIN officials o ON o.id = g.official_id "
                 "WHERE g.session_id = ? ORDER BY g.signed_in_at DESC, g.id DESC",
                 (session_id,),
@@ -571,6 +619,9 @@ class Database:
                 constants.KEY_VALIDATION_METHOD: row["validation_method"],
                 constants.KEY_PROBLEMS: json.loads(row["problems_json"] or "[]"),
                 constants.KEY_TEAM: row["team"],
+                constants.KEY_ASSIGNMENT: row["assignment"],
+                constants.KEY_TEAM_LEAD: bool(row["team_lead"]),
+                constants.KEY_MENTOR_SIGNIN_ID: row["mentor_signin_id"],
             }
             for row in rows
         ]
@@ -597,6 +648,90 @@ class Database:
         with self._connect() as connection:
             cursor = connection.execute("DELETE FROM signins WHERE id = ?", (signin_id,))
         return cursor.rowcount > 0
+
+    # --- Teams ----------------------------------------------------------------
+
+    def save_team_settings(
+        self,
+        session_id: int,
+        lanes: int | None = None,
+        team_count: int | None = None,
+        fifteen_meter_on_teams: bool | None = None,
+    ) -> None:
+        """Store team-builder settings for a session (None leaves a value as it is).
+
+        ``team_count`` 0 means "use the proposed count".
+        """
+        changes = {
+            "lanes": lanes,
+            "team_count": team_count,
+            "fifteen_meter_on_teams": None if fifteen_meter_on_teams is None else int(fifteen_meter_on_teams),
+        }
+        with self._connect() as connection:
+            for column, value in changes.items():
+                if value is not None:
+                    connection.execute(f"UPDATE sessions SET {column} = ? WHERE id = ?", (value, session_id))
+
+    def save_team_plan(
+        self,
+        session_id: int,
+        placements: list[tuple[int, str | None, str | None]],
+        mentors: dict[int, int],
+        teams_of_trainees: dict[int, str | None],
+    ) -> None:
+        """Replace a session's teams: clear every placement, then write the new ones.
+
+        Args:
+            session_id: The session.
+            placements: ``(signin_id, team, assignment)`` for each certified judge.
+            mentors: ``{trainee signin_id: mentor signin_id}``.
+            teams_of_trainees: ``{trainee signin_id: the mentor's team}``.
+        """
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE signins SET team = NULL, assignment = NULL, team_lead = 0, mentor_signin_id = NULL "
+                "WHERE session_id = ?",
+                (session_id,),
+            )
+            for signin_id, team, assignment in placements:
+                connection.execute(
+                    "UPDATE signins SET team = ?, assignment = ? WHERE id = ? AND session_id = ?",
+                    (team, assignment, signin_id, session_id),
+                )
+            for trainee_id, mentor_id in mentors.items():
+                connection.execute(
+                    "UPDATE signins SET team = ?, mentor_signin_id = ? WHERE id = ? AND session_id = ?",
+                    (teams_of_trainees.get(trainee_id), mentor_id, trainee_id, session_id),
+                )
+            connection.execute("UPDATE sessions SET teams_built_at = ? WHERE id = ?", (utc_now_iso(), session_id))
+
+    def update_signin_team(self, signin_id: int, changes: dict[str, Any]) -> bool:
+        """Change one sign-in's team, assignment, lead flag or mentor (only the keys given).
+
+        Args:
+            signin_id: The sign-in.
+            changes: Any of ``team``, ``assignment``, ``team_lead``, ``mentor_signin_id``.
+
+        Returns:
+            True if the sign-in exists.
+        """
+        allowed = {
+            constants.KEY_TEAM: "team",
+            constants.KEY_ASSIGNMENT: "assignment",
+            constants.KEY_TEAM_LEAD: "team_lead",
+            constants.KEY_MENTOR_SIGNIN_ID: "mentor_signin_id",
+        }
+        with self._connect() as connection:
+            row = connection.execute("SELECT id FROM signins WHERE id = ?", (signin_id,)).fetchone()
+            if row is None:
+                return False
+            for key, column in allowed.items():
+                if key in changes:
+                    value = changes[key]
+                    if key == constants.KEY_TEAM_LEAD:
+                        value = int(bool(value))
+                    connection.execute(f"UPDATE signins SET {column} = ? WHERE id = ?", (value, signin_id))
+        return True
 
     def roster_source(self, session_id: int) -> dict[str, Any] | None:
         """The meet, session and sign-ins needed to build the roster file.
