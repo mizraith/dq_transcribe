@@ -1,0 +1,22 @@
+task: 20261016T155846Z_install_suite
+started: 2026-10-16T08:59:06-07:00
+finished: 2026-10-16T08:59:11-07:00
+work_repo_commit: dd757d6
+exit_code: 0
+--- output ---
+capture activity: idle
+running dd757d6
+2026-10-16 08:59:09,925 whisper-server ready: ggml-base
+2026-10-16 08:59:10,936 whisper-server ready: ggml-small.en
+DQ page 200
+--- suite current (main page):
+meet {'id': 3, 'name': 'All Treats No Tricks Candy Meet Block Party', 'start_date': '2026-10-16'} sessions [(4, 'Friday PM')] active 4 demo False
+--- link the suite's current meet in DQ (what the page does):
+{"meet_id": 3}
+suite meet 3 All Treats No Tricks Candy Meet Block Party 2026-10-16
+suite meet 2 Test 2 2026-10-15
+suite meet 1 Test Party 2026-10-15
+suite meet 4 10/14 Test 2026-10-14
+DQ meet 3 All Treats No Tricks Candy Meet Block Party 2026-10-16 suite 3 0 clips ACTIVE
+DQ meet 1 10/14 Test 2026-10-14 suite None 29 clips 
+DQ meet 2 DEMO MEET 1999-10-31 suite None 229 clips 
