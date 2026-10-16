@@ -44,6 +44,7 @@ ROUTE_VENDOR_PREFIX = "/vendor/"
 ROUTE_STATE = "/api/state"  # GET: active meet, sessions, sign-ins
 ROUTE_MEETS = "/api/meets"  # POST: create a meet (and make it active)
 ROUTE_SESSIONS = "/api/sessions"  # POST: add a session to the active meet
+ROUTE_SESSION_PREFIX = "/api/sessions/"  # POST /api/sessions/<id>: edit a session
 ROUTE_ACTIVE_SESSION = "/api/active-session"  # POST: choose the session being signed in
 ROUTE_OFFICIALS = "/api/officials"  # GET: everyone known, for the name search
 ROUTE_CARD_READING = "/api/card-reading"  # POST: OCR text from the camera -> parsed card
@@ -81,6 +82,9 @@ KEY_NAME = "name"
 KEY_START_DATE = "start_date"
 KEY_DATE = "date"
 KEY_START_TIME = "start_time"
+KEY_SESSION_TYPE = "session_type"
+KEY_OFFICIALS_MEETING_TIME = "officials_meeting_time"
+KEY_SIGNIN_COUNT = "signin_count"
 KEY_MEET = "meet"
 KEY_SESSIONS = "sessions"
 KEY_ACTIVE_SESSION_ID = "active_session_id"
@@ -124,8 +128,14 @@ CARD_FIELD_GOOD_STANDING_BANNER = "good_standing_banner"
 CARD_FIELD_COMPLETE = "complete"
 CARD_FIELD_MISSING = "missing"
 CARD_FIELD_LABELS_FOUND = "labels_found"
+CARD_FIELD_DATE_VOTES = "date_votes"
+# OCR can misread a digit (2027 read as 2021). A date that would send the official
+# to the admin as expired must be read the same way this many times before the
+# scanner stops; until then it keeps reading.
+CARD_EXPIRED_DATE_CONFIRMATIONS = 2
 
-# Fields that must be read before the camera stops looking.
+# Fields that must be read before the camera stops looking. The good-standing date
+# may instead be covered by the green "In good standing" banner (see card_reader).
 CARD_REQUIRED_FIELDS = (
     CARD_FIELD_NAME,
     CARD_FIELD_MEMBER_ID,
@@ -151,12 +161,23 @@ CARD_DATES_REQUIRED_CURRENT = {
     CARD_FIELD_BACKGROUND_CHECK: "Background check",
     CARD_FIELD_ATHLETE_PROTECTION: "Athlete protection training",
 }
+# Label patterns tolerate common OCR slips ("Untii", "Standinq", "Backgrouncl").
 CARD_DATE_LABEL_PATTERNS = {
-    CARD_FIELD_GOOD_STANDING_UNTIL: r"good\s*standing\s*until",
+    CARD_FIELD_GOOD_STANDING_UNTIL: r"good\s*stand\w*\s*un\w*",
     CARD_FIELD_EXPIRATION: r"expiration\s*date",
-    CARD_FIELD_BACKGROUND_CHECK: r"background\s*check",
-    CARD_FIELD_ATHLETE_PROTECTION: r"athlete\s*protection\s*training",
+    CARD_FIELD_BACKGROUND_CHECK: r"back\w*\s*che\w*",
+    CARD_FIELD_ATHLETE_PROTECTION: r"athlete\s*protect\w*\s*train\w*",
 }
+# Every dated row on the card, top to bottom. Used to pair labels with dates when
+# OCR prints the label column and the date column separately.
+CARD_DATE_ROW_PATTERNS = (
+    (CARD_FIELD_GOOD_STANDING_UNTIL, CARD_DATE_LABEL_PATTERNS[CARD_FIELD_GOOD_STANDING_UNTIL]),
+    (CARD_FIELD_EXPIRATION, CARD_DATE_LABEL_PATTERNS[CARD_FIELD_EXPIRATION]),
+    (CARD_FIELD_BACKGROUND_CHECK, CARD_DATE_LABEL_PATTERNS[CARD_FIELD_BACKGROUND_CHECK]),
+    (CARD_FIELD_ATHLETE_PROTECTION, CARD_DATE_LABEL_PATTERNS[CARD_FIELD_ATHLETE_PROTECTION]),
+    (None, r"concussion"),
+    (None, r"mandatory\s*report"),
+)
 CARD_MEMBER_ID_LABEL_PATTERN = r"member\s*i[dl1|]"
 CARD_LSC_CLUB_LABEL_PATTERN = r"lsc\s*(?:&|and|8|%)?\s*club"
 CARD_OFFICIAL_PATTERN = r"\bofficial\b"
@@ -172,6 +193,9 @@ ISO_DATE_FORMAT = "%Y-%m-%d"
 # A name line has no digits and needs at least this many words and this share of letters.
 CARD_NAME_MIN_WORDS = 2
 CARD_NAME_MIN_LETTER_SHARE = 0.75
+# When voting on the name, each other reading that contains a candidate adds this
+# much, so "Mark Byer" beats a one-off "Dil Mark Byer P" with stray letters.
+CARD_NAME_CONTAINED_BONUS = 0.5
 # Label lines are never names, even when OCR mangles their punctuation.
 CARD_NON_NAME_WORDS = (
     "member", "club", "lsc", "standing", "expiration", "background", "athlete", "protection",
@@ -181,7 +205,19 @@ CARD_NON_NAME_WORDS = (
 # Settings sent to the camera page. The scanner tries these Tesseract page
 # segmentation modes in turn, one per frame, and flips frames that read backwards
 # (front cameras and some camera apps mirror the image).
-OCR_PAGE_SEGMENTATION_MODES = ("4", "6", "11")
+# Measured on the owner's camera photo: layout 6 reads every field in one pass;
+# layout 4 reads rows that 6 sometimes splits. 11 added nothing, so it is dropped.
+OCR_PAGE_SEGMENTATION_MODES = ("6", "4")
+# Frames are read by several OCR workers in parallel, each taking the newest
+# camera frame as soon as it is free ("snapshots processed as we go").
+OCR_WORKER_COUNT = 2
+# Start the second worker a little later so the two read different frames.
+OCR_WORKER_STAGGER_MILLISECONDS = 400
+# A frame with at least this many letters but no card label is probably mirrored;
+# the next frames are flipped. Fewer letters means the phone is not in view yet.
+OCR_MIRROR_MIN_LETTERS = 40
+# Words that only appear on the card; a frame containing one is a card frame.
+OCR_CARD_HINT_PATTERN = r"member|standing|background|athlete|club|expiration|official"
 OCR_LANGUAGE = "eng"
 OCR_CONTRAST_CUTOFF_FRACTION = 0.02  # share of darkest/lightest pixels clipped by auto-contrast
 OCR_MAX_FRAME_WIDTH_PIXELS = 1600  # larger frames are scaled down before OCR (speed)
@@ -219,6 +255,7 @@ ROSTER_KEY_GENERATED_AT = "generated_at"
 ROSTER_KEY_MEET = "meet"
 ROSTER_KEY_SESSION = "session"
 ROSTER_KEY_OFFICIALS = "officials"
+ROSTER_KEY_SESSION_TYPE = "type"  # optional, added within version 1
 ROSTER_DOWNLOAD_FILENAME_FORMAT = "officials_roster_{start_date}_{session_slug}.json"
 
 # --- USA Swimming zones by LSC code -------------------------------------------
@@ -235,6 +272,17 @@ LSC_CODES_BY_ZONE = {
     ZONE_WESTERN: ("AK", "AZ", "CC", "CO", "IE", "MT", "NM", "OR", "PC", "PN", "SI", "SN", "SR", "CA", "UT", "WY", "HI"),
 }
 ZONE_BY_LSC_CODE = {code: zone for zone, codes in LSC_CODES_BY_ZONE.items() for code in codes}
+
+# --- Sessions ---------------------------------------------------------------------
+# Choices for the session type drop-down; "Other…" lets the admin type their own.
+SESSION_TYPES = ("Timed Finals", "Prelims", "Finals", "AM", "PM", "A", "B", "C")
+SESSION_TYPE_OTHER_LABEL = "Other…"
+SESSION_TYPE_MAX_LENGTH = 30
+# Single-letter types read better in a name with a prefix: "Friday Session A".
+SESSION_LETTER_TYPES = ("A", "B", "C")
+SESSION_LETTER_PREFIX = "Session"
+# The officials meeting is usually an hour before the session starts (editable).
+OFFICIALS_MEETING_MINUTES_BEFORE_START = 60
 
 # --- Settings table keys -------------------------------------------------------
 SETTING_ACTIVE_MEET_ID = "active_meet_id"

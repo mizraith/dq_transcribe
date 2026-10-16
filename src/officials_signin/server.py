@@ -35,6 +35,7 @@ _SIGNIN_ACTION_PATTERN = re.compile(
     rf"^{re.escape(constants.ROUTE_SIGNIN_PREFIX)}(\d+)"
     rf"({re.escape(constants.SIGNIN_VALIDATE_SUFFIX)}|{re.escape(constants.SIGNIN_REMOVE_SUFFIX)})$"
 )
+_SESSION_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_SESSION_PREFIX)}(\d+)$")
 _DATE_PATTERN = re.compile(constants.DATE_PATTERN)
 _TIME_PATTERN = re.compile(constants.TIME_OF_DAY_PATTERN)
 
@@ -52,6 +53,7 @@ def build_web_config() -> dict[str, Any]:
             "meets": constants.ROUTE_MEETS,
             "sessions": constants.ROUTE_SESSIONS,
             "activeSession": constants.ROUTE_ACTIVE_SESSION,
+            "sessionPrefix": constants.ROUTE_SESSION_PREFIX,
             "officials": constants.ROUTE_OFFICIALS,
             "cardReading": constants.ROUTE_CARD_READING,
             "signins": constants.ROUTE_SIGNINS,
@@ -68,6 +70,9 @@ def build_web_config() -> dict[str, Any]:
             "startDate": constants.KEY_START_DATE,
             "date": constants.KEY_DATE,
             "startTime": constants.KEY_START_TIME,
+            "sessionType": constants.KEY_SESSION_TYPE,
+            "meetingTime": constants.KEY_OFFICIALS_MEETING_TIME,
+            "signinCount": constants.KEY_SIGNIN_COUNT,
             "meet": constants.KEY_MEET,
             "sessions": constants.KEY_SESSIONS,
             "activeSessionId": constants.KEY_ACTIVE_SESSION_ID,
@@ -97,6 +102,11 @@ def build_web_config() -> dict[str, Any]:
         },
         "cardFields": [[name, constants.CARD_FIELD_LABELS[name]] for name in constants.CARD_REQUIRED_FIELDS],
         "roles": list(constants.ROSTER_ROLES),
+        "sessionTypes": list(constants.SESSION_TYPES),
+        "sessionTypeOtherLabel": constants.SESSION_TYPE_OTHER_LABEL,
+        "sessionLetterTypes": list(constants.SESSION_LETTER_TYPES),
+        "sessionLetterPrefix": constants.SESSION_LETTER_PREFIX,
+        "meetingMinutesBeforeStart": constants.OFFICIALS_MEETING_MINUTES_BEFORE_START,
         "defaultRole": constants.DEFAULT_ROLE,
         "validationMethods": {
             "camera": constants.VALIDATION_CAMERA,
@@ -110,6 +120,10 @@ def build_web_config() -> dict[str, Any]:
             "coreScript": constants.OCR_CORE_SCRIPT_FILENAME,
             "language": constants.OCR_LANGUAGE,
             "pageSegmentationModes": list(constants.OCR_PAGE_SEGMENTATION_MODES),
+            "workerCount": constants.OCR_WORKER_COUNT,
+            "workerStaggerMilliseconds": constants.OCR_WORKER_STAGGER_MILLISECONDS,
+            "mirrorMinLetters": constants.OCR_MIRROR_MIN_LETTERS,
+            "cardHintPattern": constants.OCR_CARD_HINT_PATTERN,
             "contrastCutoffFraction": constants.OCR_CONTRAST_CUTOFF_FRACTION,
             "maxFrameWidth": constants.OCR_MAX_FRAME_WIDTH_PIXELS,
             "giveUpSeconds": constants.OCR_GIVE_UP_SECONDS,
@@ -268,6 +282,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_create_meet(payload)
             elif path == constants.ROUTE_SESSIONS:
                 self._handle_add_session(payload)
+            elif (match := _SESSION_PATTERN.match(path)) is not None:
+                self._handle_update_session(int(match.group(1)), payload)
             elif path == constants.ROUTE_ACTIVE_SESSION:
                 self._handle_active_session(payload)
             elif path == constants.ROUTE_CARD_READING:
@@ -290,17 +306,34 @@ class RequestHandler(BaseHTTPRequestHandler):
         meet_id = self.server.database.create_meet(name, start_date)
         self._send_json(HTTPStatus.OK, {constants.KEY_ID: meet_id})
 
-    def _handle_add_session(self, payload: dict[str, Any]) -> None:
-        """Add a session to the active meet."""
+    @staticmethod
+    def _session_fields(payload: dict[str, Any]) -> tuple[str, str, str | None, str | None, str | None]:
+        """Validate the session form: name, date, start time, type and officials meeting time.
+
+        Raises:
+            SigninError: With a message for the admin when something is wrong.
+        """
         name = str(payload.get(constants.KEY_NAME, "")).strip()[: constants.SESSION_NAME_MAX_LENGTH]
         session_date = str(payload.get(constants.KEY_DATE, ""))
-        start_time = payload.get(constants.KEY_START_TIME) or None
         if not name or not _DATE_PATTERN.match(session_date):
             raise SigninError("A session needs a name and a date")
-        if start_time is not None and not _TIME_PATTERN.match(str(start_time)):
-            raise SigninError("Start time must look like 13:00")
-        session_id = self.server.database.add_session(name, session_date, start_time)
+        start_time = payload.get(constants.KEY_START_TIME) or None
+        meeting_time = payload.get(constants.KEY_OFFICIALS_MEETING_TIME) or None
+        for label, value in (("Start time", start_time), ("Officials meeting time", meeting_time)):
+            if value is not None and not _TIME_PATTERN.match(str(value)):
+                raise SigninError(f"{label} must look like 13:00")
+        session_type = str(payload.get(constants.KEY_SESSION_TYPE) or "").strip()[: constants.SESSION_TYPE_MAX_LENGTH]
+        return name, session_date, start_time, session_type or None, meeting_time
+
+    def _handle_add_session(self, payload: dict[str, Any]) -> None:
+        """Add a session to the active meet."""
+        session_id = self.server.database.add_session(*self._session_fields(payload))
         self._send_json(HTTPStatus.OK, {constants.KEY_ID: session_id})
+
+    def _handle_update_session(self, session_id: int, payload: dict[str, Any]) -> None:
+        """Change a session of the active meet."""
+        self.server.database.update_session(session_id, *self._session_fields(payload))
+        self._send_json(HTTPStatus.OK, {constants.KEY_OK: True})
 
     def _handle_active_session(self, payload: dict[str, Any]) -> None:
         """Choose the session being signed in."""
@@ -327,10 +360,15 @@ class RequestHandler(BaseHTTPRequestHandler):
         result = check_card(reading, self._active_session_date())
         official_id = self.server.database.find_official_for_card(reading)
         match = None if official_id is None else self.server.database.get_official(official_id, date.today())
+        card = reading.to_dict()
+        # A date that looks expired but was read only once may be an OCR slip:
+        # report "not complete" so the camera keeps reading to confirm it.
+        if result.unconfirmed:
+            card[constants.CARD_FIELD_COMPLETE] = False
         self._send_json(
             HTTPStatus.OK,
             {
-                constants.KEY_CARD: reading.to_dict(),
+                constants.KEY_CARD: card,
                 constants.KEY_VALIDATED: result.validated,
                 constants.KEY_PROBLEMS: result.problems,
                 constants.KEY_MATCH: match,

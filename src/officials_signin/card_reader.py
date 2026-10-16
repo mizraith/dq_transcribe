@@ -39,6 +39,10 @@ _DATE_PATTERNS = {
     field_name: re.compile(label + r"[^0-9\n]{0,6}" + _DATE_VALUE, _FLAGS)
     for field_name, label in constants.CARD_DATE_LABEL_PATTERNS.items()
 }
+_DATE_ONLY_LINE = re.compile(r"^\W*" + _DATE_VALUE + r"\W*$")
+_DATE_ROWS = [(field_name, re.compile(label, _FLAGS)) for field_name, label in constants.CARD_DATE_ROW_PATTERNS]
+_ANY_DATE = re.compile(_DATE_VALUE)
+_DATE_FIELDS = tuple(constants.CARD_DATE_LABEL_PATTERNS)
 _MEMBER_ID_PATTERN = re.compile(
     constants.CARD_MEMBER_ID_LABEL_PATTERN
     + _SEPARATOR
@@ -79,6 +83,7 @@ class CardReading:
         good_standing_banner: True when the green "In good standing" banner was read.
         labels_found: How many card labels were recognised (0 means the text is
             probably not a membership card, or the image is mirrored).
+        date_votes: For each date field, how many OCR passes agreed on its value.
     """
 
     name: str | None = None
@@ -92,11 +97,20 @@ class CardReading:
     is_official: bool = False
     good_standing_banner: bool = False
     labels_found: int = 0
+    date_votes: dict[str, int] = field(default_factory=dict)
 
     @property
     def missing_fields(self) -> list[str]:
-        """Required fields not read yet, in ``constants.CARD_REQUIRED_FIELDS`` order."""
-        return [name for name in constants.CARD_REQUIRED_FIELDS if getattr(self, name) is None]
+        """Required fields not read yet, in ``constants.CARD_REQUIRED_FIELDS`` order.
+
+        The good-standing date counts as read when the green "In good standing"
+        banner was seen instead (the app shows that banner only while the member
+        is in good standing).
+        """
+        missing = [name for name in constants.CARD_REQUIRED_FIELDS if getattr(self, name) is None]
+        if self.good_standing_banner and constants.CARD_FIELD_GOOD_STANDING_UNTIL in missing:
+            missing.remove(constants.CARD_FIELD_GOOD_STANDING_UNTIL)
+        return missing
 
     @property
     def is_complete(self) -> bool:
@@ -145,6 +159,37 @@ def tidy_name(raw_name: str) -> str:
     return " ".join(tidied_words)[: constants.NAME_MAX_LENGTH]
 
 
+def _pair_date_columns(lines: list[str]) -> dict[str, str]:
+    """Pair date labels with dates when OCR printed them as two separate columns.
+
+    Some page layouts give all the labels first ("Background Check:" ...) and
+    the dates later, one per line. When the number of dateless label rows equals
+    the number of date-only lines after the first of them, they are paired in order.
+
+    Returns:
+        ISO dates by field name (only for rows that map to a card field).
+    """
+    label_rows: list[tuple[int, str | None]] = []
+    for index, line in enumerate(lines):
+        if _ANY_DATE.search(line):
+            continue
+        row = next((field_name for field_name, pattern in _DATE_ROWS if pattern.search(line)), "")
+        if row != "":
+            label_rows.append((index, row))
+    if not label_rows:
+        return {}
+    first_label_index = label_rows[0][0]
+    date_lines = [match for line in lines[first_label_index:] if (match := _DATE_ONLY_LINE.match(line)) is not None]
+    if len(date_lines) != len(label_rows):
+        return {}
+    paired = {}
+    for (_, field_name), match in zip(label_rows, date_lines):
+        iso_date = _parse_card_date(*match.groups())
+        if field_name is not None and iso_date is not None:
+            paired[field_name] = iso_date
+    return paired
+
+
 def _looks_like_name(line: str) -> bool:
     """True when an OCR line could be the member's name (not a label or noise)."""
     if any(character.isdigit() for character in line):
@@ -178,7 +223,29 @@ def _find_name(lines: list[str]) -> str | None:
     # Between the anchors the name is the line just above "Member Id"; after
     # "Official" alone, it is the first line below it.
     chosen = candidates[-1] if member_line is not None else candidates[0]
-    return tidy_name(chosen) or None
+    return tidy_name(_strip_stray_words(chosen)) or None
+
+
+def _strip_stray_words(line: str) -> str:
+    """Drop OCR noise around a name printed in capitals.
+
+    The card prints names in capitals, so when most words are capitals, words
+    that are not (``Dil``) are noise; a lone letter at either end (``P``) is too.
+    A middle initial inside the name is kept.
+    """
+    words = line.split()
+
+    def letters(word: str) -> str:
+        return "".join(character for character in word if character.isalpha())
+
+    capital_words = [word for word in words if letters(word) and letters(word).isupper() and len(letters(word)) > 1]
+    if len(capital_words) >= constants.CARD_NAME_MIN_WORDS:
+        words = [word for word in words if letters(word).isupper()]
+    while words and len(letters(words[0])) <= 1:
+        words.pop(0)
+    while words and len(letters(words[-1])) <= 1:
+        words.pop()
+    return " ".join(words)
 
 
 def parse_card_text(text: str) -> CardReading:
@@ -200,6 +267,11 @@ def parse_card_text(text: str) -> CardReading:
             setattr(reading, field_name, _parse_card_date(*match.groups()))
         if re.search(constants.CARD_DATE_LABEL_PATTERNS[field_name], text, _FLAGS):
             labels_found += 1
+
+    for field_name, iso_date in _pair_date_columns(lines).items():
+        if getattr(reading, field_name) is None:
+            setattr(reading, field_name, iso_date)
+    reading.date_votes = {name: 1 for name in _DATE_FIELDS if getattr(reading, name) is not None}
 
     member_match = _MEMBER_ID_PATTERN.search(text)
     if member_match is not None:
@@ -223,12 +295,33 @@ def parse_card_text(text: str) -> CardReading:
 
 def _most_common(values: Iterable[Any]) -> Any:
     """Return the most frequent non-None value (earliest wins a tie), or None."""
+    return _vote(values)[0]
+
+
+def _vote(values: Iterable[Any]) -> tuple[Any, int]:
+    """Return the most frequent non-None value (earliest wins a tie) and its count."""
     present = [value for value in values if value is not None]
+    if not present:
+        return None, 0
+    counts = Counter(present)
+    best_count = max(counts.values())
+    return next(value for value in present if counts[value] == best_count), best_count
+
+
+def _best_name(names: list[str | None]) -> str | None:
+    """Pick the name most passes agree on; a name found inside other readings
+    (``Mark Byer`` within ``Dil Mark Byer P``) gets extra credit, so stray letters lose."""
+    present = [name for name in names if name]
     if not present:
         return None
     counts = Counter(present)
-    best_count = max(counts.values())
-    return next(value for value in present if counts[value] == best_count)
+
+    def score(name: str) -> float:
+        contained_in = sum(1 for other in counts if other != name and name in other)
+        return counts[name] + contained_in * constants.CARD_NAME_CONTAINED_BONUS
+
+    best = max(score(name) for name in counts)
+    return next(name for name in present if score(name) == best)
 
 
 def merge_readings(readings: list[CardReading]) -> CardReading:
@@ -242,15 +335,13 @@ def merge_readings(readings: list[CardReading]) -> CardReading:
         the best single pass.
     """
     merged = CardReading()
-    for field_name in (
-        constants.CARD_FIELD_NAME,
-        constants.CARD_FIELD_MEMBER_ID,
-        constants.CARD_FIELD_GOOD_STANDING_UNTIL,
-        constants.CARD_FIELD_EXPIRATION,
-        constants.CARD_FIELD_BACKGROUND_CHECK,
-        constants.CARD_FIELD_ATHLETE_PROTECTION,
-    ):
-        setattr(merged, field_name, _most_common(getattr(reading, field_name) for reading in readings))
+    merged.name = _best_name([reading.name for reading in readings])
+    merged.member_id = _most_common(reading.member_id for reading in readings)
+    for field_name in _DATE_FIELDS:
+        value, votes = _vote(getattr(reading, field_name) for reading in readings)
+        setattr(merged, field_name, value)
+        if value is not None:
+            merged.date_votes[field_name] = votes
     # LSC and club are read together, so vote on the pair.
     pair = _most_common(
         (reading.lsc, reading.club) if reading.lsc is not None else None for reading in readings
@@ -282,17 +373,21 @@ class CardCheck:
     Attributes:
         validated: True when every required date is current on the session date.
         problems: Human-readable reasons when not validated (for the admin).
+        unconfirmed: Date fields that look expired but were read only once (possibly
+            an OCR slip); the scanner keeps reading until they are confirmed.
     """
 
     validated: bool
     problems: list[str] = field(default_factory=list)
+    unconfirmed: list[str] = field(default_factory=list)
 
 
 def check_card(reading: CardReading, on_date: date) -> CardCheck:
     """Decide whether a card reading validates the official on a given date.
 
     Membership, background check and athlete protection training must each be
-    current (not before ``on_date``). This confirms membership and safety
+    current (not before ``on_date``). When the good-standing date was not read,
+    the green "In good standing" banner is accepted instead. This confirms membership and safety
     requirements only, not position certifications (the Referee assigns positions).
 
     Args:
@@ -302,13 +397,20 @@ def check_card(reading: CardReading, on_date: date) -> CardCheck:
     Returns:
         The decision and, if not validated, the reasons.
     """
-    problems = []
+    problems: list[str] = []
+    unconfirmed: list[str] = []
     for field_name, label in constants.CARD_DATES_REQUIRED_CURRENT.items():
         value = getattr(reading, field_name)
+        if value is None and field_name == constants.CARD_FIELD_GOOD_STANDING_UNTIL and reading.good_standing_banner:
+            continue  # the banner says the member is in good standing now
         if value is None:
             problems.append(f"{label}: not read")
         elif date.fromisoformat(value) < on_date:
-            problems.append(f"{label}: expired {value}")
+            if reading.date_votes.get(field_name, 0) < constants.CARD_EXPIRED_DATE_CONFIRMATIONS:
+                unconfirmed.append(field_name)
+                problems.append(f"{label}: read as expired {value} only once, please check the card")
+            else:
+                problems.append(f"{label}: expired {value}")
     if reading.member_id is None:
         problems.append("Member ID: not read")
-    return CardCheck(validated=not problems, problems=problems)
+    return CardCheck(validated=not problems, problems=problems, unconfirmed=unconfirmed)

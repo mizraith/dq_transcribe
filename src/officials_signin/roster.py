@@ -58,6 +58,9 @@ def build_roster(source: dict[str, Any], generated_at: datetime | None = None) -
             constants.KEY_NAME: session[constants.KEY_NAME],
             constants.KEY_DATE: session[constants.KEY_DATE],
             constants.KEY_START_TIME: session[constants.KEY_START_TIME],
+            # Optional keys added within version 1 (readers ignore keys they do not know).
+            constants.ROSTER_KEY_SESSION_TYPE: session.get(constants.KEY_SESSION_TYPE),
+            constants.KEY_OFFICIALS_MEETING_TIME: session.get(constants.KEY_OFFICIALS_MEETING_TIME),
         },
         constants.ROSTER_KEY_OFFICIALS: officials,
     }

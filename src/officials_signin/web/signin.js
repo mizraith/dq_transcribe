@@ -151,7 +151,7 @@ function drawHeader() {
     chip.classList.toggle("on", session[KEYS.id] === pageState.activeSessionId);
     const count = document.createElement("span");
     count.className = "count";
-    count.textContent = String(session.signin_count);
+    count.textContent = String(session[KEYS.signinCount]);
     chip.appendChild(count);
     sessionChips.appendChild(chip);
   });
@@ -159,6 +159,9 @@ function drawHeader() {
   deskPanel.hidden = !ready;
   noSessionPanel.hidden = ready;
   const session = activeSession();
+  const meetingTime = element("meeting-time");
+  meetingTime.hidden = !(session && session[KEYS.meetingTime]);
+  meetingTime.textContent = meetingTime.hidden ? "" : "Officials Meeting: " + formatTime12(session[KEYS.meetingTime]);
   signinsTitle.textContent = session ? "Signed in: " + session[KEYS.name] : "Signed in";
   element("roster-link").href = ROUTES.roster;
   element("roster-download-link").href = ROUTES.rosterDownload;
@@ -224,6 +227,21 @@ function drawSignins() {
   });
 }
 
+/**
+ * Validate a sign-in by eye ("Looks good") or remove it, then redraw.
+ * @param {object} signin  Sign-in from the list.
+ * @param {string} actionSuffix  ``ROUTES.validateSuffix`` or ``ROUTES.removeSuffix``.
+ */
+async function signinAction(signin, actionSuffix) {
+  try {
+    await postJson(ROUTES.signinPrefix + signin[KEYS.id] + actionSuffix, {});
+    showToast(signin[KEYS.name] + (actionSuffix === ROUTES.removeSuffix ? " removed" : " checked by the admin"));
+    await refresh();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
 function drawMatches() {
   matchList.replaceChildren();
   const query = searchInput.value.trim();
@@ -268,8 +286,28 @@ async function chooseSession(sessionId) {
 
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const NOON_HOUR = 12;
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
 const MILLISECONDS_PER_MINUTE = 60000;
 const ISO_DATE_LENGTH = 10;
+const TYPE_AM = "AM";
+const TYPE_PM = "PM";
+const OTHER_TYPE_VALUE = "other";
+// The two session forms in Meet setup share one set of field names, with these id prefixes.
+const ADD_FORM = "session-";
+const FIRST_FORM = "first-session-";
+const SESSION_FIELD_TYPE = "type";
+const SESSION_FIELD_TYPE_OTHER = "type-other";
+const SESSION_FIELD_DATE = "date";
+const SESSION_FIELD_TIME = "time";
+const SESSION_FIELD_MEETING = "meeting";
+const SESSION_FIELD_NAME = "name";
+let editingSessionId = null;
+
+/** One field of a session form. */
+function sessionField(form, fieldName) {
+  return element(form + fieldName);
+}
 
 /** Today's date as YYYY-MM-DD in local time. */
 function isoToday() {
@@ -277,36 +315,131 @@ function isoToday() {
   return new Date(now.getTime() - now.getTimezoneOffset() * MILLISECONDS_PER_MINUTE).toISOString().slice(0, ISO_DATE_LENGTH);
 }
 
+/** "13:05" -> minutes after midnight. */
+function minutesOfDay(hoursMinutes) {
+  const parts = hoursMinutes.split(":").map(Number);
+  return parts[0] * MINUTES_PER_HOUR + parts[1];
+}
+
+/** Minutes after midnight -> "13:05" (clamped to the same day). */
+function hoursMinutesOf(minutes) {
+  const clamped = Math.max(0, Math.min(MINUTES_PER_DAY - 1, minutes));
+  const hours = Math.floor(clamped / MINUTES_PER_HOUR);
+  const rest = clamped % MINUTES_PER_HOUR;
+  return String(hours).padStart(2, "0") + ":" + String(rest).padStart(2, "0");
+}
+
+/** "13:05" -> "1:05 PM". */
+function formatTime12(hoursMinutes) {
+  const minutes = minutesOfDay(hoursMinutes);
+  const hours = Math.floor(minutes / MINUTES_PER_HOUR);
+  const displayHours = hours % NOON_HOUR === 0 ? NOON_HOUR : hours % NOON_HOUR;
+  return displayHours + ":" + String(minutes % MINUTES_PER_HOUR).padStart(2, "0") + (hours < NOON_HOUR ? " AM" : " PM");
+}
+
+/** The session type chosen in a form ("" if none). */
+function sessionTypeOf(form) {
+  const select = sessionField(form, SESSION_FIELD_TYPE);
+  if (select.value === OTHER_TYPE_VALUE) { return sessionField(form, SESSION_FIELD_TYPE_OTHER).value.trim(); }
+  return select.value;
+}
+
 /**
- * Suggest a session name from its date and start time, for example "Friday PM".
+ * Suggest a session name, for example "Friday Prelims", "Friday PM" or "Friday Session A".
  * @param {string} isoDate  YYYY-MM-DD, or "".
- * @param {string} startTime  HH:MM, or "".
+ * @param {string} sessionType  Session type, or "".
  * @returns {string}  The suggestion, or "" without a date.
  */
-function suggestSessionName(isoDate, startTime) {
+function suggestSessionName(isoDate, sessionType) {
   if (!isoDate) { return ""; }
   const parts = isoDate.split("-").map(Number);
   const weekday = WEEKDAY_NAMES[new Date(parts[0], parts[1] - 1, parts[2]).getDay()];
-  if (!startTime) { return weekday; }
-  return weekday + (Number(startTime.split(":")[0]) < NOON_HOUR ? " AM" : " PM");
+  if (!sessionType) { return weekday; }
+  const isLetter = CONFIG.sessionLetterTypes.indexOf(sessionType) >= 0;
+  return weekday + " " + (isLetter ? CONFIG.sessionLetterPrefix + " " + sessionType : sessionType);
 }
 
 /**
- * Keep a session-name box filled with the suggestion until the admin types in it.
- * @param {string} nameId  Session name input.
- * @param {string} dateId  Session date input.
- * @param {string} timeId  Session start time input.
+ * Fill in whatever the admin has not set by hand: the type follows the start
+ * time (AM/PM), the officials meeting is an hour before the start, and the name
+ * is suggested from the date and type.
  */
-function autoNameSession(nameId, dateId, timeId) {
-  const nameInput = element(nameId);
-  if (nameInput.dataset.typed) { return; }
-  nameInput.value = suggestSessionName(element(dateId).value, element(timeId).value);
+function autoFillSession(form) {
+  const time = sessionField(form, SESSION_FIELD_TIME).value;
+  const select = sessionField(form, SESSION_FIELD_TYPE);
+  if (!select.dataset.chosen && time) {
+    select.value = minutesOfDay(time) < NOON_HOUR * MINUTES_PER_HOUR ? TYPE_AM : TYPE_PM;
+  }
+  const meeting = sessionField(form, SESSION_FIELD_MEETING);
+  if (!meeting.dataset.typed) {
+    meeting.value = time ? hoursMinutesOf(minutesOfDay(time) - CONFIG.meetingMinutesBeforeStart) : "";
+  }
+  const name = sessionField(form, SESSION_FIELD_NAME);
+  if (!name.dataset.typed) {
+    name.value = suggestSessionName(sessionField(form, SESSION_FIELD_DATE).value, sessionTypeOf(form));
+  }
 }
 
-/** Reset a session-name box so it follows the suggestion again. */
-function resetSessionName(nameId) {
-  element(nameId).value = "";
-  delete element(nameId).dataset.typed;
+/** Clear a session form so everything follows the suggestions again. */
+function resetSessionForm(form) {
+  [SESSION_FIELD_TIME, SESSION_FIELD_MEETING, SESSION_FIELD_NAME, SESSION_FIELD_TYPE_OTHER].forEach(function (fieldName) {
+    const input = sessionField(form, fieldName);
+    input.value = "";
+    delete input.dataset.typed;
+  });
+  const select = sessionField(form, SESSION_FIELD_TYPE);
+  select.value = "";
+  delete select.dataset.chosen;
+  sessionField(form, SESSION_FIELD_TYPE_OTHER).hidden = true;
+}
+
+/** Build the type drop-down: a blank choice, the usual types, then "Other…". */
+function fillTypeOptions(form) {
+  const select = sessionField(form, SESSION_FIELD_TYPE);
+  select.replaceChildren();
+  [["", "—"]].concat(CONFIG.sessionTypes.map(function (type) { return [type, type]; }))
+    .concat([[OTHER_TYPE_VALUE, CONFIG.sessionTypeOtherLabel]])
+    .forEach(function (pair) {
+      const option = document.createElement("option");
+      option.value = pair[0];
+      option.textContent = pair[1];
+      select.appendChild(option);
+    });
+}
+
+/** Wire one session form's auto-fill behaviour. */
+function wireSessionForm(form) {
+  fillTypeOptions(form);
+  const select = sessionField(form, SESSION_FIELD_TYPE);
+  const other = sessionField(form, SESSION_FIELD_TYPE_OTHER);
+  select.addEventListener("change", function () {
+    select.dataset.chosen = "1";
+    other.hidden = select.value !== OTHER_TYPE_VALUE;
+    if (!other.hidden) { other.focus(); }
+    autoFillSession(form);
+  });
+  other.addEventListener("input", function () { autoFillSession(form); });
+  [SESSION_FIELD_DATE, SESSION_FIELD_TIME].forEach(function (fieldName) {
+    sessionField(form, fieldName).addEventListener("change", function () { autoFillSession(form); });
+  });
+  // Typing in the name or meeting time stops the suggestions for that box.
+  [SESSION_FIELD_NAME, SESSION_FIELD_MEETING].forEach(function (fieldName) {
+    const input = sessionField(form, fieldName);
+    input.addEventListener("input", function () { input.dataset.typed = "1"; });
+  });
+}
+
+/** The request body for a session form. */
+function sessionBody(form) {
+  const body = {};
+  const sessionType = sessionTypeOf(form);
+  body[KEYS.name] = sessionField(form, SESSION_FIELD_NAME).value.trim()
+    || suggestSessionName(sessionField(form, SESSION_FIELD_DATE).value, sessionType);
+  body[KEYS.date] = sessionField(form, SESSION_FIELD_DATE).value;
+  body[KEYS.startTime] = sessionField(form, SESSION_FIELD_TIME).value || null;
+  body[KEYS.sessionType] = sessionType || null;
+  body[KEYS.meetingTime] = sessionField(form, SESSION_FIELD_MEETING).value || null;
+  return body;
 }
 
 /** Sessions after the last one start on its date (multi-day meets add days in order). */
@@ -314,6 +447,14 @@ function nextSessionDate() {
   const sessions = pageState.sessions;
   if (sessions.length > 0) { return sessions[sessions.length - 1][KEYS.date]; }
   return pageState.meet ? pageState.meet[KEYS.startDate] : isoToday();
+}
+
+function describeSession(session) {
+  const parts = [session[KEYS.date]];
+  if (session[KEYS.startTime]) { parts.push("starts " + formatTime12(session[KEYS.startTime])); }
+  if (session[KEYS.meetingTime]) { parts.push("officials meeting " + formatTime12(session[KEYS.meetingTime])); }
+  parts.push(session[KEYS.signinCount] + " signed in");
+  return parts.join(" · ");
 }
 
 function drawSetupSessions() {
@@ -328,15 +469,61 @@ function drawSetupSessions() {
   }
   pageState.sessions.forEach(function (session) {
     const item = document.createElement("li");
+    const button = makeButton("", "", function () { editSession(session); });
+    button.classList.toggle("editing", session[KEYS.id] === editingSessionId);
+    const hint = document.createElement("span");
+    hint.className = "edit-hint";
+    hint.textContent = "Edit";
     const name = document.createElement("strong");
     name.textContent = session[KEYS.name];
     const detail = document.createElement("span");
     detail.className = "signin-detail";
-    detail.textContent = "  " + [session[KEYS.date], session[KEYS.startTime], session.signin_count + " signed in"]
-      .filter(Boolean).join(" · ");
-    item.append(name, detail);
+    detail.textContent = "  " + describeSession(session);
+    button.append(hint, name, detail);
+    item.appendChild(button);
     list.appendChild(item);
   });
+}
+
+/** Load a session into the "Add a session" form to change it. */
+function editSession(session) {
+  editingSessionId = session[KEYS.id];
+  resetSessionForm(ADD_FORM);
+  const select = sessionField(ADD_FORM, SESSION_FIELD_TYPE);
+  const sessionType = session[KEYS.sessionType] || "";
+  if (sessionType && CONFIG.sessionTypes.indexOf(sessionType) < 0) {
+    select.value = OTHER_TYPE_VALUE;
+    sessionField(ADD_FORM, SESSION_FIELD_TYPE_OTHER).value = sessionType;
+    sessionField(ADD_FORM, SESSION_FIELD_TYPE_OTHER).hidden = false;
+  } else {
+    select.value = sessionType;
+  }
+  select.dataset.chosen = "1";
+  sessionField(ADD_FORM, SESSION_FIELD_DATE).value = session[KEYS.date];
+  sessionField(ADD_FORM, SESSION_FIELD_TIME).value = session[KEYS.startTime] || "";
+  // Keep the saved values; changing the start time still moves an unchanged meeting time.
+  sessionField(ADD_FORM, SESSION_FIELD_MEETING).value = session[KEYS.meetingTime] || "";
+  sessionField(ADD_FORM, SESSION_FIELD_MEETING).dataset.typed = "1";
+  sessionField(ADD_FORM, SESSION_FIELD_NAME).value = session[KEYS.name];
+  sessionField(ADD_FORM, SESSION_FIELD_NAME).dataset.typed = "1";
+  showSessionFormMode();
+  drawSetupSessions();
+}
+
+function stopEditingSession() {
+  editingSessionId = null;
+  resetSessionForm(ADD_FORM);
+  sessionField(ADD_FORM, SESSION_FIELD_DATE).value = nextSessionDate();
+  autoFillSession(ADD_FORM);
+  showSessionFormMode();
+  drawSetupSessions();
+}
+
+function showSessionFormMode() {
+  const editing = editingSessionId !== null;
+  element("session-form-title").textContent = editing ? "Edit session" : "Add a session";
+  sessionField(ADD_FORM, "save").textContent = editing ? "Save changes" : "Add session";
+  element("session-edit-cancel").hidden = !editing;
 }
 
 /**
@@ -356,24 +543,19 @@ function openSetup(showNewMeet) {
   if (hasMeet) {
     element("current-meet-name").textContent = pageState.meet[KEYS.name];
     element("current-meet-date").textContent = "starts " + pageState.meet[KEYS.startDate];
+    if (editingSessionId === null) {
+      sessionField(ADD_FORM, SESSION_FIELD_DATE).value = nextSessionDate();
+      autoFillSession(ADD_FORM);
+    }
+    showSessionFormMode();
     drawSetupSessions();
-    element("session-date-input").value = nextSessionDate();
-    autoNameSession("session-name-input", "session-date-input", "session-time-input");
   }
   if (!hasMeet || showNewMeet) {
     element("new-meet-date").value = element("new-meet-date").value || isoToday();
-    element("first-session-date").value = element("new-meet-date").value;
-    autoNameSession("first-session-name", "first-session-date", "first-session-time");
+    sessionField(FIRST_FORM, SESSION_FIELD_DATE).value = element("new-meet-date").value;
+    autoFillSession(FIRST_FORM);
   }
   setupOverlay.hidden = false;
-}
-
-function sessionBody(nameId, dateId, timeId) {
-  const body = {};
-  body[KEYS.name] = element(nameId).value.trim() || suggestSessionName(element(dateId).value, element(timeId).value);
-  body[KEYS.date] = element(dateId).value;
-  body[KEYS.startTime] = element(timeId).value || null;
-  return body;
 }
 
 /** Create a meet and its first session in one tap. */
@@ -381,7 +563,7 @@ async function createMeetWithSession() {
   const meetBody = {};
   meetBody[KEYS.name] = element("new-meet-name").value.trim();
   meetBody[KEYS.startDate] = element("new-meet-date").value;
-  const firstSession = sessionBody("first-session-name", "first-session-date", "first-session-time");
+  const firstSession = sessionBody(FIRST_FORM);
   if (!meetBody[KEYS.name] || !meetBody[KEYS.startDate]) {
     showToast("Enter the meet name and start date", true);
     return;
@@ -394,8 +576,8 @@ async function createMeetWithSession() {
     await postJson(ROUTES.meets, meetBody);
     await postJson(ROUTES.sessions, firstSession);
     element("new-meet-name").value = "";
-    element("first-session-time").value = "";
-    resetSessionName("first-session-name");
+    resetSessionForm(FIRST_FORM);
+    editingSessionId = null;
     await refresh();
     openSetup(false);
     showToast(meetBody[KEYS.name] + " created with " + firstSession[KEYS.name]);
@@ -406,15 +588,15 @@ async function createMeetWithSession() {
   }
 }
 
-async function addSession() {
-  const body = sessionBody("session-name-input", "session-date-input", "session-time-input");
+/** Add a session, or save the one being edited. */
+async function saveSession() {
+  const body = sessionBody(ADD_FORM);
+  const editing = editingSessionId !== null;
   try {
-    await postJson(ROUTES.sessions, body);
-    element("session-time-input").value = "";
-    resetSessionName("session-name-input");
+    await postJson(editing ? ROUTES.sessionPrefix + editingSessionId : ROUTES.sessions, body);
     await refresh();
-    openSetup(false);
-    showToast(body[KEYS.name] + " added");
+    stopEditingSession();
+    showToast(body[KEYS.name] + (editing ? " saved" : " added"));
   } catch (error) {
     showToast(error.message, true);
   }
@@ -599,25 +781,21 @@ element("sheet-scan").addEventListener("click", function () {
 element("sheet-cancel").addEventListener("click", function () { sheetOverlay.hidden = true; });
 element("sheet-submit").addEventListener("click", submitSheet);
 element("setup-button").addEventListener("click", function () { openSetup(false); });
-element("setup-close").addEventListener("click", function () { setupOverlay.hidden = true; });
+element("setup-close").addEventListener("click", function () {
+  setupOverlay.hidden = true;
+  if (editingSessionId !== null) { stopEditingSession(); }
+});
 element("new-meet-toggle").addEventListener("click", function () { openSetup(true); });
 element("new-meet-cancel").addEventListener("click", function () { openSetup(false); });
 element("new-meet-create").addEventListener("click", createMeetWithSession);
-element("session-add").addEventListener("click", addSession);
+sessionField(ADD_FORM, "save").addEventListener("click", saveSession);
+element("session-edit-cancel").addEventListener("click", stopEditingSession);
+wireSessionForm(ADD_FORM);
+wireSessionForm(FIRST_FORM);
 // The first session follows the meet's start date until it is changed.
 element("new-meet-date").addEventListener("change", function () {
-  element("first-session-date").value = element("new-meet-date").value;
-  autoNameSession("first-session-name", "first-session-date", "first-session-time");
-});
-// Session names are suggested ("Friday PM") until the admin types their own.
-[["session-name-input", "session-date-input", "session-time-input"],
-  ["first-session-name", "first-session-date", "first-session-time"]].forEach(function (ids) {
-  element(ids[0]).addEventListener("input", function () {
-    if (element(ids[0]).value.trim()) { element(ids[0]).dataset.typed = "1"; } else { delete element(ids[0]).dataset.typed; }
-  });
-  [ids[1], ids[2]].forEach(function (id) {
-    element(id).addEventListener("change", function () { autoNameSession(ids[0], ids[1], ids[2]); });
-  });
+  sessionField(FIRST_FORM, SESSION_FIELD_DATE).value = element("new-meet-date").value;
+  autoFillSession(FIRST_FORM);
 });
 
 refresh().then(function () {

@@ -19,7 +19,8 @@ officials_signin side; any change bumps `version` and is recorded below.
   "version": 1,
   "generated_at": "2026-10-16T07:45:00-07:00",
   "meet": {"name": "Candy Meet", "start_date": "2026-10-16"},
-  "session": {"name": "Friday PM", "date": "2026-10-16", "start_time": "13:00"},
+  "session": {"name": "Friday Prelims", "date": "2026-10-16", "start_time": "13:00",
+              "type": "Prelims", "officials_meeting_time": "12:00"},
   "officials": [
     {
       "name": "Pat Example",
@@ -43,6 +44,8 @@ officials_signin side; any change bumps `version` and is recorded below.
 |---|---|
 | `generated_at` | Local time with UTC offset, seconds precision. |
 | `session.start_time` | `HH:MM`, or `null` if not set. |
+| `session.type` | Optional (added within v1). "Timed Finals", "Prelims", "Finals", "AM", "PM", "A", "B", "C", or the admin's own text; `null` if not set. |
+| `session.officials_meeting_time` | Optional (added within v1). `HH:MM` or `null`. |
 | `officials` | Sorted by name. An official working two roles appears **twice**, once per role. |
 | `name` | As read from the USA Swimming card (title case, nickname in quotes, e.g. `Mark "Red" Byer`) or as typed. |
 | `role` | Exactly one of dq_transcribe's `MEET_ROSTER_ROLES`: "Stroke & Turn Judge", "Chief Judge", "Deck Referee", "Meet Referee", "Starter", "Relay Take-off Judge", "Admin Official". (officials_signin keeps an identical `ROSTER_ROLES`; a test fails if they drift.) |
@@ -61,3 +64,5 @@ certifications; the Referee assigns positions.
 ## Change log
 
 - **Version 1** (2026-10-15): first version, as proposed in the handoff.
+- **Version 1, additive** (2026-10-15): `session.type` and `session.officials_meeting_time`
+  added. Optional keys only, so the version stays 1; readers must ignore keys they do not know.

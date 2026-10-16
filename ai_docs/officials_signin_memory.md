@@ -5,6 +5,24 @@ within each section.
 
 ## Decisions
 
+- **2026-10-15: camera speed.** The owner held the phone up ~10 s on the tablet. Now two
+  Tesseract workers read the newest frame in parallel ("snapshots processed as we go"),
+  layout 6 goes first (reads every field of the sample photo in one pass), empty frames
+  cost one pass (no mirrored retry; mirroring is detected from text with no card words),
+  and a worker race that flipped orientation back was fixed. Headless Chrome at 4x CPU
+  throttle: 2–6 s for the three samples. Not yet re-measured on the tablet.
+- **2026-10-15: good standing.** Owner reported the good-standing row was never read on the
+  tablet. Labels now tolerate OCR slips, label/date columns printed separately are paired,
+  and the green "In good standing" banner counts when the date is not read.
+- **2026-10-15: OCR slips on dates.** A pass read 2027 as 2021. A date that looks expired
+  must be read the same in two passes before the scanner stops; if time runs out the
+  admin sees "read as expired … only once, please check the card".
+- **2026-10-15: sessions** have a type (drop-down: Timed Finals, Prelims, Finals, AM, PM,
+  A, B, C, Other…) and an optional officials meeting time, defaulting to one hour
+  before the start and editable; shown in the header as "Officials Meeting: 12:00 PM".
+  Sessions can be edited from Meet setup. Names are suggested ("Friday Prelims",
+  "Friday Session A").
+
 - **2026-10-15: OCR runs in Chrome (Tesseract.js), not in Termux.** The owner wants
   simple packaging and cross-platform installs (Android tablet first because it is
   cheaper; ChromeOS and Mac are welcome; Windows is low priority). The engine

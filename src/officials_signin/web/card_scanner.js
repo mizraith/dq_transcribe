@@ -2,16 +2,16 @@
  * Card scanner: reads a USA Swimming membership card from the tablet camera.
  *
  * The official holds up their phone (USA Swimming app, "Membership card" tab).
- * This script keeps grabbing camera frames, cleans each one up (grayscale +
- * auto-contrast + light sharpening), runs Tesseract.js on it in a web worker,
- * and posts every pass's text to the server, which parses and merges them.
- * It stops by itself as soon as every required field has been read, so the
- * common case needs no shutter tap.
+ * Several Tesseract.js workers run in parallel; each one takes the newest camera
+ * frame as soon as it is free, cleans it up (grayscale + auto-contrast + light
+ * sharpening), reads it, and posts the text to the server, which parses and
+ * merges every pass so far. Scanning stops by itself as soon as every required
+ * field has been read, so the common case needs no shutter tap.
  *
- * Successive frames cycle through Tesseract page layouts (each tends to read
- * different rows). A frame whose text has no card labels is tried again
- * mirrored, because front cameras and some camera apps flip the image; once
- * mirroring helps, later frames are mirrored straight away.
+ * Passes alternate between Tesseract page layouts (each tends to read different
+ * rows). A frame with plenty of text but no card words is probably mirrored
+ * (front cameras and some camera apps flip the image), so the next frames are
+ * flipped. Frames with little text (phone not in view yet) cost one pass only.
  *
  * Everything runs on this device: the OCR engine is served from localhost
  * (web/vendor/tesseract) and frames are never uploaded or stored.
@@ -37,21 +37,33 @@ window.CardScanner = (function () {
   const LUMA_BLUE = 0.114;
   const BYTES_PER_PIXEL = 4;
 
-  let workerPromise = null;
+  const CARD_HINT = new RegExp(OCR.cardHintPattern, "i");
+  const LETTER = /[A-Za-z]/g;
+  const FRAME_WAIT_MILLISECONDS = 200;
 
-  /** Start loading the OCR engine (about 7 MB, from localhost) so the first scan is quick. */
+  let poolPromise = null;
+
+  /** Start loading the OCR workers (engine and language data come from localhost) so the first scan is quick. */
   function warmUp() {
-    if (workerPromise === null) {
-      workerPromise = window.Tesseract.createWorker(OCR.language, 1, {
-        workerPath: OCR.enginePath + OCR.workerScript,
-        corePath: OCR.enginePath + OCR.coreScript,
-        langPath: OCR.languageDataPath,
-        workerBlobURL: false,
-        gzip: true,
-      });
-      workerPromise.catch(function () { workerPromise = null; });
+    if (poolPromise === null) {
+      const workers = [];
+      for (let index = 0; index < OCR.workerCount; index += 1) {
+        workers.push(window.Tesseract.createWorker(OCR.language, 1, {
+          workerPath: OCR.enginePath + OCR.workerScript,
+          corePath: OCR.enginePath + OCR.coreScript,
+          langPath: OCR.languageDataPath,
+          workerBlobURL: false,
+          gzip: true,
+        }));
+      }
+      poolPromise = Promise.all(workers);
+      poolPromise.catch(function () { poolPromise = null; });
     }
-    return workerPromise;
+    return poolPromise;
+  }
+
+  function sleep(milliseconds) {
+    return new Promise(function (resolve) { setTimeout(resolve, milliseconds); });
   }
 
   /** The camera the admin last used (front by default: officials face the tablet). */
@@ -196,44 +208,68 @@ window.CardScanner = (function () {
       return output.data.text || "";
     }
 
+    let passCount = 0;
+    let orientationFixed = false;
+    let done = false;
+    let parsedTextCount = 0;
+
+    /** Post every card text so far; keep the reply if it covers the most texts yet. */
+    async function mergeTexts() {
+      const count = texts.length;
+      const reading = await parseTexts(texts.slice());
+      if (count >= parsedTextCount) {
+        parsedTextCount = count;
+        lastReading = reading;
+        if (!done && !cancelled) { options.onProgress(reading); }
+      }
+      return reading;
+    }
+
+    /** One worker's loop: read the newest frame, again and again, until done. */
+    async function readFrames(worker, deadline) {
+      while (!done && !cancelled && Date.now() < deadline) {
+        const video = options.video;
+        if (!video.videoWidth) {
+          await sleep(FRAME_WAIT_MILLISECONDS);
+          continue;
+        }
+        const layout = OCR.pageSegmentationModes[passCount % OCR.pageSegmentationModes.length];
+        passCount += 1;
+        const frameMirrored = mirrorFrames;
+        const frame = prepareFrame(video, video.videoWidth, video.videoHeight, frameMirrored);
+        const text = await recognize(worker, frame, layout);
+        if (done || cancelled) { return; }
+        if (!CARD_HINT.test(text)) {
+          // Lots of text but no card words: probably mirrored, so flip the next frames.
+          // Little text: the phone is not in view yet. Only the orientation this frame
+          // used is flipped (another worker may already have flipped it), and never
+          // after a card frame has fixed the orientation.
+          const letterCount = (text.match(LETTER) || []).length;
+          if (!orientationFixed && letterCount >= OCR.mirrorMinLetters && frameMirrored === mirrorFrames) {
+            mirrorFrames = !frameMirrored;
+          }
+          continue;
+        }
+        orientationFixed = true;
+        mirrorFrames = frameMirrored;
+        texts.push(text);
+        const reading = await mergeTexts();
+        if (reading[KEYS.card][KEYS.complete]) {
+          done = true;
+        }
+      }
+    }
+
     async function run() {
       options.onStatus("Starting camera…");
       await openCamera();
       options.onStatus("Loading the card reader…");
-      const worker = await warmUp();
+      const workers = await warmUp();
       const deadline = Date.now() + OCR.giveUpSeconds * 1000;
-      let pass = 0;
       options.onStatus("Hold the Membership card tab up to the camera");
-      while (!cancelled && Date.now() < deadline) {
-        const video = options.video;
-        if (!video.videoWidth) {
-          await new Promise(function (resolve) { setTimeout(resolve, 200); });
-          continue;
-        }
-        const layout = OCR.pageSegmentationModes[pass % OCR.pageSegmentationModes.length];
-        pass += 1;
-        let text = await recognize(worker, prepareFrame(video, video.videoWidth, video.videoHeight, mirrorFrames), layout);
-        if (cancelled) { break; }
-        let reading = await parseTexts(texts.concat([text]));
-        if (reading[KEYS.card][KEYS.labelsFound] === 0 && texts.length === 0) {
-          // No card labels at all: try the same frame mirrored.
-          const flipped = await recognize(worker, prepareFrame(video, video.videoWidth, video.videoHeight, !mirrorFrames), layout);
-          const flippedReading = await parseTexts([flipped]);
-          if (flippedReading[KEYS.card][KEYS.labelsFound] > 0) {
-            mirrorFrames = !mirrorFrames;
-            text = flipped;
-            reading = flippedReading;
-          }
-        }
-        if (reading[KEYS.card][KEYS.labelsFound] > 0) {
-          texts.push(text);
-          lastReading = reading;
-          options.onProgress(reading);
-          if (reading[KEYS.card][KEYS.complete]) {
-            return reading;
-          }
-        }
-      }
+      await Promise.all(workers.map(function (worker, index) {
+        return sleep(index * OCR.workerStaggerMilliseconds).then(function () { return readFrames(worker, deadline); });
+      }));
       return lastReading;
     }
 
@@ -245,6 +281,7 @@ window.CardScanner = (function () {
         facing = facing === FACING_FRONT ? FACING_BACK : FACING_FRONT;
         rememberFacing(facing);
         mirrorFrames = false;
+        orientationFixed = false;
         openCamera().catch(function () { options.onStatus("Could not switch camera"); });
       },
     };

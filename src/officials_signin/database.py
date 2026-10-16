@@ -58,7 +58,9 @@ _SCHEMA = (
         meet_id INTEGER NOT NULL REFERENCES meets(id) ON DELETE CASCADE,
         name TEXT NOT NULL,
         date TEXT NOT NULL,
-        start_time TEXT
+        start_time TEXT,
+        session_type TEXT,
+        officials_meeting_time TEXT
     )
     """,
     """
@@ -78,6 +80,9 @@ _SCHEMA = (
     """,
     "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)",
 )
+
+# Columns added after the first release; `initialize` adds them to older databases.
+_ADDED_SESSION_COLUMNS = {"session_type": "TEXT", "officials_meeting_time": "TEXT"}
 
 _NON_LETTERS = re.compile(r"[^a-z]+")
 _NOT_CHECKED_PROBLEM = "Card not checked yet"
@@ -158,6 +163,10 @@ class Database:
             connection.execute(f"PRAGMA journal_mode = {constants.SQLITE_JOURNAL_MODE}")
             for statement in _SCHEMA:
                 connection.execute(statement)
+            existing = {row["name"] for row in connection.execute("PRAGMA table_info(sessions)")}
+            for column, column_type in _ADDED_SESSION_COLUMNS.items():
+                if column not in existing:
+                    connection.execute(f"ALTER TABLE sessions ADD COLUMN {column} {column_type}")
 
     # --- Settings ---------------------------------------------------------------
 
@@ -195,13 +204,23 @@ class Database:
             self._set_setting(connection, constants.SETTING_ACTIVE_SESSION_ID, None)
         return meet_id
 
-    def add_session(self, name: str, session_date: str, start_time: str | None) -> int:
+    def add_session(
+        self,
+        name: str,
+        session_date: str,
+        start_time: str | None,
+        session_type: str | None = None,
+        officials_meeting_time: str | None = None,
+    ) -> int:
         """Add a session to the active meet; it becomes active if none is.
 
         Args:
-            name: Session name, for example ``Friday PM``.
+            name: Session name, for example ``Friday Prelims``.
             session_date: ISO date.
             start_time: ``HH:MM`` or None.
+            session_type: For example ``Prelims`` (see ``constants.SESSION_TYPES``) or
+                the admin's own text; None if not given.
+            officials_meeting_time: ``HH:MM`` or None.
 
         Returns:
             The new session's ID.
@@ -214,13 +233,40 @@ class Database:
             if meet_id is None:
                 raise SigninError("Create a meet first")
             cursor = connection.execute(
-                "INSERT INTO sessions (meet_id, name, date, start_time) VALUES (?, ?, ?, ?)",
-                (meet_id, name, session_date, start_time),
+                "INSERT INTO sessions (meet_id, name, date, start_time, session_type, officials_meeting_time) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (meet_id, name, session_date, start_time, session_type, officials_meeting_time),
             )
             session_id = int(cursor.lastrowid)
             if self._get_setting_id(connection, constants.SETTING_ACTIVE_SESSION_ID) is None:
                 self._set_setting(connection, constants.SETTING_ACTIVE_SESSION_ID, session_id)
         return session_id
+
+    def update_session(
+        self,
+        session_id: int,
+        name: str,
+        session_date: str,
+        start_time: str | None,
+        session_type: str | None,
+        officials_meeting_time: str | None,
+    ) -> None:
+        """Change a session of the active meet (sign-ins are kept).
+
+        Args: as for ``add_session``, plus the session's ID.
+
+        Raises:
+            SigninError: If the session is not part of the active meet.
+        """
+        with self._connect() as connection:
+            meet_id = self._get_setting_id(connection, constants.SETTING_ACTIVE_MEET_ID)
+            cursor = connection.execute(
+                "UPDATE sessions SET name = ?, date = ?, start_time = ?, session_type = ?, officials_meeting_time = ? "
+                "WHERE id = ? AND meet_id = ?",
+                (name, session_date, start_time, session_type, officials_meeting_time, session_id, meet_id),
+            )
+            if cursor.rowcount == 0:
+                raise SigninError("That session is not part of the active meet")
 
     def set_active_session(self, session_id: int) -> None:
         """Choose the session officials are signing in to.
@@ -246,7 +292,8 @@ class Database:
 
         Returns:
             ``{"meet": ... or None, "sessions": [...], "active_session_id": ... or None,
-            "signins": [...]}``. Sessions carry a ``signin_count``.
+            "signins": [...]}``. Sessions carry ``session_type``,
+            ``officials_meeting_time`` and a ``signin_count``.
         """
         with self._connect() as connection:
             meet_id = self._get_setting_id(connection, constants.SETTING_ACTIVE_MEET_ID)
@@ -257,7 +304,7 @@ class Database:
             sessions = [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT s.id, s.name, s.date, s.start_time, "
+                    "SELECT s.id, s.name, s.date, s.start_time, s.session_type, s.officials_meeting_time, "
                     "(SELECT COUNT(*) FROM signins WHERE session_id = s.id) AS signin_count "
                     "FROM sessions s WHERE s.meet_id = ? ORDER BY s.date, s.start_time, s.id",
                     (meet_id,),

@@ -58,6 +58,25 @@ MIRRORED_TEXT = """slito1d YM ot Nosd —>
 2noitsoitined bis> qide1sdmoM
 fIYd "OIA" AAAM
 """
+# Layout where OCR prints the label column, then the date column (seen with page layout 3).
+COLUMN_LAYOUT_TEXT = f"""Official @
+PAT "SKIP" EXAMPLE
+Member Id: {FAKE_MEMBER_ID}
+LSC & Club: PC - PASA
+In Good Standing Until:
+Expiration Date:
+Background Check:
+Athlete Protection Training:
+Concussion Protocol Training:
+(CANRA) Mandatory Reporting:
+Understanding Your Responsibility:
+09/21/2027
+12/31/9999
+09/30/2027
+09/21/2027
+01/01/3000
+01/01/3000
+"""
 SESSION_DATE = date(2026, 10, 16)
 
 
@@ -126,7 +145,7 @@ class CheckCardTests(unittest.TestCase):
 
     def test_expired_background_check_needs_the_admin(self) -> None:
         text = CLEAN_CARD_TEXT.replace("Background Check: 09/30/2027", "Background Check: 09/30/2026")
-        result = check_card(parse_card_text(text), SESSION_DATE)
+        result = check_card(read_card([text, text]), SESSION_DATE)  # confirmed by two passes
         self.assertFalse(result.validated)
         self.assertEqual(result.problems, ["Background check: expired 2026-09-30"])
 
@@ -138,6 +157,69 @@ class CheckCardTests(unittest.TestCase):
         result = check_card(parse_card_text(TOP_HALF_TEXT), SESSION_DATE)
         self.assertFalse(result.validated)
         self.assertIn("Background check: not read", result.problems)
+
+
+class GoodStandingTests(unittest.TestCase):
+    """The good-standing row is the hardest to read; several fallbacks cover it."""
+
+    def test_ocr_slip_in_the_label_is_tolerated(self) -> None:
+        text = CLEAN_CARD_TEXT.replace("In Good Standing Until", "In Good Standinq Untii")
+        self.assertEqual(parse_card_text(text).good_standing_until, "2027-09-21")
+
+    def test_label_and_date_columns_are_paired_in_order(self) -> None:
+        reading = parse_card_text(COLUMN_LAYOUT_TEXT)
+        self.assertEqual(reading.good_standing_until, "2027-09-21")
+        self.assertEqual(reading.expiration_date, "9999-12-31")
+        self.assertEqual(reading.background_check_until, "2027-09-30")
+        self.assertEqual(reading.athlete_protection_until, "2027-09-21")
+
+    def test_columns_are_not_paired_when_counts_differ(self) -> None:
+        text = COLUMN_LAYOUT_TEXT.replace("12/31/9999\n", "")
+        self.assertIsNone(parse_card_text(text).good_standing_until)
+
+    def test_banner_covers_an_unread_good_standing_date(self) -> None:
+        text = CLEAN_CARD_TEXT.replace("In Good Standing Until: 09/21/2027", "In Good Standing Until:")
+        reading = parse_card_text(text)
+        self.assertIsNone(reading.good_standing_until)
+        self.assertTrue(reading.good_standing_banner)
+        self.assertTrue(reading.is_complete)
+        self.assertTrue(check_card(reading, SESSION_DATE).validated)
+
+    def test_without_banner_or_date_good_standing_is_missing(self) -> None:
+        text = CLEAN_CARD_TEXT.replace("In Good Standing Until: 09/21/2027", "").replace("In good standing\n", "")
+        reading = parse_card_text(text)
+        self.assertIn(constants.CARD_FIELD_GOOD_STANDING_UNTIL, reading.missing_fields)
+        self.assertFalse(check_card(reading, SESSION_DATE).validated)
+
+
+class OcrSlipTests(unittest.TestCase):
+    """A single misread must not send a valid official to the admin, or garble the name."""
+
+    def test_expiry_read_once_is_unconfirmed(self) -> None:
+        misread = CLEAN_CARD_TEXT.replace("Until: 09/21/2027", "Until: 09/21/2021").replace("In good standing\n", "")
+        result = check_card(read_card([misread]), SESSION_DATE)
+        self.assertFalse(result.validated)
+        self.assertEqual(result.unconfirmed, [constants.CARD_FIELD_GOOD_STANDING_UNTIL])
+
+    def test_expiry_read_twice_is_confirmed(self) -> None:
+        expired = CLEAN_CARD_TEXT.replace("Until: 09/21/2027", "Until: 09/21/2021")
+        result = check_card(read_card([expired, expired]), SESSION_DATE)
+        self.assertEqual(result.unconfirmed, [])
+        self.assertEqual(result.problems, ["Membership (good standing): expired 2021-09-21"])
+
+    def test_later_correct_reads_outvote_a_slip(self) -> None:
+        misread = CLEAN_CARD_TEXT.replace("Until: 09/21/2027", "Until: 09/21/2021")
+        reading = read_card([misread, CLEAN_CARD_TEXT, CLEAN_CARD_TEXT])
+        self.assertEqual(reading.good_standing_until, "2027-09-21")
+        self.assertTrue(check_card(reading, SESSION_DATE).validated)
+
+    def test_stray_letters_around_the_name_are_dropped(self) -> None:
+        noisy = CLEAN_CARD_TEXT.replace('PAT "SKIP" EXAMPLE', 'Dil PAT "SKIP" EXAMPLE P')
+        self.assertEqual(parse_card_text(noisy).name, 'Pat "Skip" Example')
+
+    def test_name_vote_prefers_the_clean_reading(self) -> None:
+        noisy = CLEAN_CARD_TEXT.replace('PAT "SKIP" EXAMPLE', 'PAT "SKIP" EXAMPLE Xq')
+        self.assertEqual(read_card([noisy, CLEAN_CARD_TEXT]).name, 'Pat "Skip" Example')
 
 
 class TidyNameTests(unittest.TestCase):

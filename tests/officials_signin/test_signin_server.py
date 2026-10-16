@@ -74,9 +74,9 @@ class SigninServerTests(unittest.TestCase):
         )
         return morning[constants.KEY_ID], evening[constants.KEY_ID]
 
-    def read_card(self, text: str) -> dict[str, Any]:
-        """Post OCR text and return the server's reading."""
-        status, reply, _ = self.request("POST", constants.ROUTE_CARD_READING, {constants.KEY_TEXTS: [text]})
+    def read_card(self, text: str, passes: int = 1) -> dict[str, Any]:
+        """Post OCR text (as ``passes`` identical passes) and return the server's reading."""
+        status, reply, _ = self.request("POST", constants.ROUTE_CARD_READING, {constants.KEY_TEXTS: [text] * passes})
         self.assertEqual(status, 200)
         return reply
 
@@ -161,7 +161,10 @@ class SigninServerTests(unittest.TestCase):
 
     def test_expired_card_goes_to_the_admin_then_looks_good(self) -> None:
         self.set_up_meet()
-        reading = self.read_card(EXPIRED_CARD_TEXT)
+        once = self.read_card(EXPIRED_CARD_TEXT)
+        self.assertFalse(once[constants.KEY_CARD][constants.CARD_FIELD_COMPLETE])  # keep reading to confirm
+        reading = self.read_card(EXPIRED_CARD_TEXT, passes=2)
+        self.assertTrue(reading[constants.KEY_CARD][constants.CARD_FIELD_COMPLETE])
         self.assertFalse(reading[constants.KEY_VALIDATED])
         _, reply, _ = self.request("POST", constants.ROUTE_SIGNINS, {
             constants.KEY_ROLES: ["Starter"], constants.KEY_CARD: reading[constants.KEY_CARD],
