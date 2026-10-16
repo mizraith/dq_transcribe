@@ -43,6 +43,7 @@ let dqsSignature = "";
 let dqCount = 0;
 let dqFilter = loadDqFilter(); // a status from CONFIG.dqStatusLabels, or DQ_FILTER_ALL
 let dqGroupByEvent = loadSetting(DQ_GROUP_STORAGE_KEY, "false") === "true";
+let scrollToDqId = null; // a DQ to scroll to on the next draw (opened from the transcript)
 let flashDqId = null; // the DQ just changed, highlighted once when the list is redrawn
 // State buttons in the editor, in order (labels say what tapping does when not current).
 const DQ_STATE_BUTTONS = [
@@ -223,8 +224,34 @@ async function loadDqCodes() {
  * A tapped button keeps focus but is not typing, so it does not count.
  */
 function editingDq() {
+  if (clipsContainer.querySelector(".dq-editor[data-dirty]")) {
+    return true; // unsaved changes in the open DQ: never redraw over them
+  }
   const active = document.activeElement;
   return Boolean(active && active.closest && active.closest(".dq-editor") && active.matches("input, select, textarea"));
+}
+
+/**
+ * Save the open DQ if it has unsaved changes (when it is closed, another DQ is
+ * opened, or the view changes), so edits are never silently lost.
+ * Returns true if a save was started.
+ */
+function saveOpenEditorIfDirty() {
+  const editor = clipsContainer.querySelector(".dq-editor[data-dirty]");
+  if (!editor || !editor.dqForSave) {
+    return false;
+  }
+  delete editor.dataset.dirty;
+  saveDq(editor.dqForSave, editor);
+  return true;
+}
+
+/** Note that the open DQ has unsaved changes (the list then waits before redrawing). */
+function markEditorDirty(element) {
+  const editor = element.closest(".dq-editor");
+  if (editor) {
+    editor.dataset.dirty = "1";
+  }
 }
 
 /** Fetch the DQs and redraw the list (unless nothing changed or the editor is in use). */
@@ -425,11 +452,20 @@ function renderDqList(dqs) {
     cards.push(makeElement("p", "note", "No DQs are " + CONFIG.dqStatusLabels[dqFilter].toLowerCase() + ". Tap All to see every DQ."));
   }
   clipsContainer.replaceChildren(buildDqFilterBar(dqs), ...cards);
+  if (scrollToDqId !== null) {
+    // Opened from a transcript line: bring that DQ into view (once).
+    const target = clipsContainer.querySelector('[data-dq-id="' + scrollToDqId + '"]');
+    scrollToDqId = null;
+    if (target) {
+      target.scrollIntoView({ block: "start" });
+    }
+  }
 }
 
 /** One DQ in the list: a summary row; tap to open the editor. */
 function buildDqCard(dq) {
   const card = makeElement("section", "dq-card state-" + dq.state + " status-" + dq.status + (flashDqId === dq.id ? " flash" : ""));
+  card.dataset.dqId = String(dq.id);
   const summary = makeElement("button", "dq-summary");
   summary.type = "button";
   summary.append(makeElement("strong", "dq-ehl", eventHeatLane(dq)));
@@ -465,7 +501,14 @@ function buildDqCard(dq) {
       card.classList.remove("swiped"); // a tap closes the revealed trash button
       return;
     }
-    expandedDqId = expandedDqId === dq.id ? null : dq.id;
+    const closing = expandedDqId === dq.id;
+    expandedDqId = closing ? null : dq.id;
+    if (closing && saveOpenEditorIfDirty()) {
+      return; // closing an edited DQ saves it (the save redraws the list)
+    }
+    if (!closing) {
+      saveOpenEditorIfDirty(); // opening another DQ saves the one that was open
+    }
     forceRefresh();
   });
   // Swipe left on a closed DQ to reveal "Move to trash" (for mistakes such as a duplicate).
@@ -681,7 +724,10 @@ function buildInfractionEditor(infraction, dq, onRemove) {
   markChosenChip();
   const phases = makeElement("div", "phases");
   for (const phase of CONFIG.racePhases) {
-    const toggle = makeButton("phase" + ((infraction.phases || []).includes(phase) ? " on" : ""), phase, () => toggle.classList.toggle("on"));
+    const toggle = makeButton("phase" + ((infraction.phases || []).includes(phase) ? " on" : ""), phase, () => {
+      toggle.classList.toggle("on");
+      markEditorDirty(toggle);
+    });
     toggle.dataset.phase = phase;
     phases.append(toggle);
   }
@@ -717,6 +763,10 @@ function readInfractions(container) {
 /** The edit panel for one DQ. */
 function buildDqEditor(dq) {
   const editor = makeElement("div", "dq-editor");
+  // Typing, picking and toggling all count as unsaved changes until Save (or a status change, which saves).
+  editor.addEventListener("input", () => { editor.dataset.dirty = "1"; });
+  editor.addEventListener("change", () => { editor.dataset.dirty = "1"; });
+  editor.dqForSave = dq;
   const fields = makeElement("div", "dq-fields");
   Object.keys(DQ_FIELD_LABELS).forEach((name) => fields.append(buildField(dq, name)));
   editor.append(fields);
@@ -736,11 +786,18 @@ function buildDqEditor(dq) {
   editor.append(makeElement("div", "dq-subtitle", "Infractions"));
   const infractions = makeElement("div", "infractions");
   const addInfraction = (infraction) => {
-    const box = buildInfractionEditor(infraction, dq, () => box.remove());
+    // Remove takes the infraction off and saves at once (nothing to forget).
+    const box = buildInfractionEditor(infraction, dq, () => {
+      box.remove();
+      saveDq(dq, editor);
+    });
     infractions.append(box);
   };
   (dq.infractions.length ? dq.infractions : [{}]).forEach(addInfraction);
-  editor.append(infractions, makeButton("", "+ Add infraction", () => addInfraction({})));
+  editor.append(infractions, makeButton("", "+ Add infraction", () => {
+    addInfraction({});
+    editor.dataset.dirty = "1";
+  }));
 
   editor.append(makeElement("div", "dq-subtitle", "Heard in"));
   for (const item of dq.evidence) {

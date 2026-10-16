@@ -13,6 +13,7 @@ import threading
 from pathlib import Path
 
 from dq_transcribe import constants
+from dq_transcribe.demo_data import ensure_demo_meet
 from dq_transcribe.database import Database
 from dq_transcribe.server import DqTranscribeServer
 from dq_transcribe.transcriber import (
@@ -65,6 +66,14 @@ def _exit_on_terminate(signal_number: int, frame: object) -> None:
     raise KeyboardInterrupt
 
 
+def _ensure_training_meet(database: Database) -> None:
+    """Create the training meet if it is missing (never fatal: the app works without it)."""
+    try:
+        ensure_demo_meet(database, constants.RECORDINGS_DIRECTORY)
+    except Exception:  # noqa: BLE001 (log and carry on)
+        LOGGER.exception("Could not create the training meet")
+
+
 def main() -> None:
     """Start the app and run until interrupted with Ctrl+C."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
@@ -114,6 +123,8 @@ def main() -> None:
         database,
         worker,
     )
+    # The training meet ships with the app: create it once, in the background (it takes a few seconds).
+    threading.Thread(target=_ensure_training_meet, args=(database,), daemon=True).start()
     address = f"http://{constants.SERVER_DISPLAY_HOST}:{constants.SERVER_PORT}{constants.ROUTE_HOME}"
     print(f"{constants.APP_NAME} running. Open {address} in Chrome. Press Ctrl+C to stop.")
     try:

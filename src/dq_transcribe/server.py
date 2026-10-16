@@ -31,6 +31,7 @@ from dq_transcribe.database import Database
 from dq_transcribe.dq_store import DqError, DqStore, load_dq_codes
 from dq_transcribe.grouping import normalize_timestamp
 from dq_transcribe.meet_archive import archive_filename, build_meet_archive
+from dq_transcribe.demo_data import DEMO_MEET_NAME
 from dq_transcribe.officials_roster import RosterError, read_roster
 from dq_transcribe.slip_page import render_slips
 from dq_transcribe.meet_files import MeetFileError, read_meet_file
@@ -179,6 +180,8 @@ def build_web_config() -> dict[str, Any]:
         "notifyEventRoute": constants.ROUTE_NOTIFY_EVENT,
         "dqTrashSuffix": constants.DQ_TRASH_SUFFIX,
         "importOfficialsRoute": constants.ROUTE_IMPORT_OFFICIALS,
+        "rebuildTrainingMeetRoute": constants.ROUTE_REBUILD_TRAINING_MEET,
+        "trainingMeetName": DEMO_MEET_NAME,
         "signinRosterUrl": constants.OFFICIALS_SIGNIN_ROSTER_URL,
         "officialsResponseKey": constants.RESPONSE_KEY_OFFICIALS,
         "sessionKey": constants.RESPONSE_KEY_SESSION,
@@ -446,6 +449,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_notify_event()
         elif path == constants.ROUTE_IMPORT_OFFICIALS:
             self._handle_import_officials()
+        elif path == constants.ROUTE_REBUILD_TRAINING_MEET:
+            self._handle_rebuild_training_meet()
         elif path == constants.ROUTE_DQ_FROM_UTTERANCE:
             self._handle_dq_from_utterance()
         elif (match := _DQ_STATE_PATTERN.match(path)) is not None:
@@ -848,6 +853,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json_error(HTTPStatus.NOT_FOUND, "No such DQ, or it is already there")
             return
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _handle_rebuild_training_meet(self) -> None:
+        """Rebuild the training meet so its times are current (only that meet is touched)."""
+        from dq_transcribe.demo_data import create_demo_meet  # local import: demo_data uses this module
+
+        meet_id = create_demo_meet(self.server.database, self.server.recordings_directory, replace=True)
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id})
 
     def _handle_import_officials(self) -> None:
         """Read an officials roster from the Sign-In app: the file as the body, or {"url": ...}.

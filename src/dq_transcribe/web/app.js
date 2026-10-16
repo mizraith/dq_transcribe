@@ -1114,6 +1114,7 @@ const VIEW_TITLES = { transcript: "Transcript", dqs: "DQs", trash: "Trash", meet
 
 /** Switch the main area between the transcript, the DQ list and the trash bin. */
 function setView(view) {
+  saveOpenEditorIfDirty(); // leaving the DQs view (or reopening it) saves an edited DQ first
   currentView = view;
   showingTrash = view === "trash";
   updateViewButtons();
@@ -1352,6 +1353,9 @@ async function refreshDqCount() {
 function openDq(dqId) {
   dqFilter = DQ_FILTER_ALL;
   expandedDqId = dqId;
+  scrollToDqId = dqId;
+  flashDqId = dqId;
+  setTimeout(() => { flashDqId = null; }, 2000);
   setView("dqs");
 }
 

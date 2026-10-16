@@ -216,6 +216,7 @@ MAX_ROSTER_FILE_BYTES = 2 * 1024 * 1024
 RESPONSE_KEY_OFFICIALS = "officials"
 RESPONSE_KEY_SESSION = "session"
 RESPONSE_KEY_WARNINGS = "warnings"
+ROUTE_REBUILD_TRAINING_MEET = "/api/training-meet/rebuild"  # POST: rebuild the training meet with fresh times
 ROUTE_NOTIFY_EVENT = "/api/events/notify"  # POST {"event", "by", "include_not_ready"}
 RESPONSE_KEY_NOTIFIED = "notified"
 # Fields a DQ needs before the coach can be notified ("infraction" = at least one).

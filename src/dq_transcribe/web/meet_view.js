@@ -88,6 +88,28 @@ async function loadMeetFile(file, url) {
   renderMeetView();
 }
 
+/** The training meet's card: what it is, and a rebuild with fresh times (protest windows count from now). */
+function buildTrainingMeetCard() {
+  const card = makeElement("section", "meet-card training-meet");
+  card.append(makeElement("h3", "", "Training meet"));
+  card.append(makeElement("p", "note",
+    "Made-up data for practice: 25 events in progress, closing in event order, with DQs in every stage. Rebuild it to start a session with fresh times (the protest windows of the latest events open again). Only this meet is changed."));
+  const rebuild = makeButton("primary", "Rebuild training meet", async () => {
+    rebuild.disabled = true;
+    rebuild.textContent = "Rebuilding\u2026";
+    try {
+      await postJson(CONFIG.rebuildTrainingMeetRoute, {});
+      notify("\u2713 Training meet rebuilt with fresh times");
+    } catch (error) {
+      notify("Could not rebuild the training meet: " + error.message, "error");
+    }
+    await loadMeets();
+    renderMeetView();
+  });
+  card.append(rebuild);
+  return card;
+}
+
 /**
  * The "End of meet" card: download the archive, close the meet (which unlocks
  * emptying its trash), reopen it, and empty the trash once it is closed.
@@ -97,7 +119,7 @@ function buildEndOfMeetCard() {
   card.append(makeElement("h3", "", "End of meet"));
   const base = CONFIG.meetsRoute + "/" + activeMeet.id;
   const row = makeElement("div", "meet-file-actions");
-  const download = makeButton("primary", "\u2b07 Download archive (.zip)", () => {
+  const download = makeButton("primary", "Download archive (.zip)", () => {
     window.location.href = base + CONFIG.meetArchiveSuffix;
     notify("Building the archive\u2026 it downloads when ready (audio makes it large).");
   });
@@ -238,6 +260,9 @@ function renderMeetView() {
   dateLabel.append(dateInput);
   details.append(nameLabel, dateLabel);
   page.append(details);
+  if (activeMeet.name === CONFIG.trainingMeetName) {
+    page.append(buildTrainingMeetCard());
+  }
   page.append(buildMeetFileCard());
   page.append(buildEndOfMeetCard());
 
@@ -276,7 +301,7 @@ function markMeetDirty() {
 /** "Import officials" buttons: from the Sign-In app on this tablet, or from a roster file. */
 function buildImportOfficials() {
   const row = makeElement("div", "import-officials");
-  row.append(makeButton("primary", "\u2b07 Import officials from Sign-In", () => importOfficials(null)));
+  row.append(makeButton("primary", "Import officials from Sign-In", () => importOfficials(null)));
   const picker = document.createElement("input");
   picker.type = "file";
   picker.hidden = true;
