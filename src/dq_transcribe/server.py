@@ -212,6 +212,7 @@ def build_web_config() -> dict[str, Any]:
         "sessionNameQueryKey": constants.QUERY_KEY_SESSION_NAME,
         "addedToExistingKey": constants.RESPONSE_KEY_ADDED_TO_EXISTING,
         "eventSummaryRoute": constants.ROUTE_EVENT_SUMMARY,
+        "allStatusesQueryKey": constants.QUERY_KEY_ALL_STATUSES,
         "printRequestedQueryKey": constants.QUERY_KEY_PRINT_REQUESTED,
         "layoutQueryKey": constants.QUERY_KEY_LAYOUT,
         "slipLayoutOnePerPage": constants.SLIP_LAYOUT_ONE_PER_PAGE,
@@ -316,6 +317,19 @@ def _render(filename: str, values: dict[str, str]) -> bytes:
     """
     template = string.Template((_WEB_DIRECTORY / filename).read_text("utf-8"))
     return template.substitute(values).encode("utf-8")
+
+
+def _suite_current_meet() -> dict[str, Any] | None:
+    """The Admin Assistant's current meet ({id, name, start_date}), or None if the main page
+    is not running (asked without a cookie, so never the demo meet)."""
+    try:
+        with urllib.request.urlopen(constants.SUITE_CURRENT_URL, timeout=constants.SUITE_FETCH_TIMEOUT_SECONDS) as response:
+            meet = json.loads(response.read().decode("utf-8")).get("meet")
+    except (OSError, ValueError):
+        return None
+    if not isinstance(meet, dict) or not isinstance(meet.get("id"), int) or not meet.get("name"):
+        return None
+    return meet
 
 
 def _is_iso_date(text: str) -> bool:
@@ -898,7 +912,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         database = self.server.database
         meet_id = database.get_active_meet_id()
         suite_meet = first(constants.QUERY_KEY_SUITE_MEET_ID)
-        if suite_meet.isdigit():
+        if suite_meet == constants.SUITE_MEET_CURRENT:
+            # From the main page's Reports: its current meet (the DQ meet is linked or made quietly).
+            current = _suite_current_meet()
+            if current is not None:
+                meet_id = database.link_suite_meet(current["id"], current["name"], current["start_date"])
+            suite_meet = ""
+        elif suite_meet.isdigit():
             linked = next((meet for meet in database.list_meets() if meet.get("suite_meet_id") == int(suite_meet)), None)
             meet_id = linked["id"] if linked else None
         meet = database.get_meet(meet_id) if meet_id is not None else None
@@ -918,7 +938,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         event_dqs = [dq for dq in dqs if normalize_event_number(dq["event"] or "") == event]
         self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE,
-                         render_event_summary(meet["name"], event, event_dqs, all_statuses=all_statuses))
+                         render_event_summary(meet, event, event_dqs, all_statuses=all_statuses))
 
     def _send_font(self, filename: str) -> None:
         """Send a bundled font file (only plain file names inside web/fonts/)."""

@@ -368,7 +368,12 @@ class ServerTests(unittest.TestCase):
         store.change_state(declined, constants.DQ_STATE_DECLINED, "Deck Referee")
         route = f"{constants.ROUTE_EVENT_SUMMARY}?{constants.QUERY_KEY_SUITE_MEET_ID}=7&{constants.QUERY_KEY_ALL_STATUSES}=1"
         page = self._request("GET", route + f"&{constants.QUERY_KEY_EVENT}=05").read().decode()
-        self.assertIn("Event 5: all DQs (3)", page)
+        self.assertIn("DQ Report \u2013 Event 5 (all 3 DQs)", page)
+        for fact in ("<dt>Meet</dt><dd>Candy Meet</dd>", "<dt>Date</dt><dd>Fri Oct 16, 2026</dd>", "<dt>Event swum</dt>"):
+            self.assertIn(fact, page)
+        summary = self._request("GET", f"{constants.ROUTE_EVENT_SUMMARY}?{constants.QUERY_KEY_SUITE_MEET_ID}=7&{constants.QUERY_KEY_EVENT}=5").read().decode()
+        self.assertIn("DQ Summary \u2013 Event 5 (1 to enter)", summary)
+        self.assertIn("<th>Status</th>", summary)  # the status column is on both versions
         for label in ("Notified", "Called", "Declined"):
             self.assertIn(f">{label}<", page)
         self.assertNotIn("${", page)

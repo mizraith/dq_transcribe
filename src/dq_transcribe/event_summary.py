@@ -43,10 +43,18 @@ NOT_YET_NOTIFIED_STATES = (constants.DQ_STATE_CALLED, constants.DQ_STATE_ACCEPTE
 COLUMNS = ("Heat", "Lane", "Swimmer", "Club", "Code", "Infraction", "Official")
 STATUS_COLUMN = "Status"
 ENTERED_COLUMN = "Entered"
-HEAD_HTML = "<tr>" + "".join(f"<th>{name}</th>" for name in (*COLUMNS, ENTERED_COLUMN)) + "</tr>"
 HEAD_WITH_STATUS_HTML = "<tr>" + "".join(f"<th>{name}</th>" for name in (*COLUMNS, STATUS_COLUMN, ENTERED_COLUMN)) + "</tr>"
-HEADING_FORMAT = "Event {event} DQs ({count})"
-ALL_TITLE_FORMAT = "Event {event}: all DQs ({count})"
+HEADING_FORMAT = "DQ Summary \u2013 Event {event} ({count} to enter)"
+REPORT_HEADING_FORMAT = "DQ Report \u2013 Event {event} (all {count} DQs)"
+OVERTURNED_HEADING = "Overturned: do NOT enter (remove if already entered)"
+META_EVENT = "Event"
+META_MEET = "Meet"
+META_DATE = "Date"
+META_SWUM = "Event swum"
+META_SWUM_NOTE = " (time of the last DQ call)"
+META_PRINTED = "Printed"
+META_UNKNOWN = "\u2013"
+MEET_DATE_FORMAT = "%a %b %d, %Y"
 ALL_NONE_TEXT = "No DQs in this event."
 ALL_NOTE = "Every DQ of the event, whatever its status. Enter only Notified and Upheld DQs in Meet Manager."
 PICKER_TITLE = "Print DQ summary for event"
@@ -97,74 +105,105 @@ def status_label(dq: dict[str, Any]) -> str:
     return constants.DQ_STATUS_LABELS.get(dq.get("status") or "", dq.get("status") or "")
 
 
+def event_swum_at(dqs: list[dict[str, Any]]) -> datetime | None:
+    """About when the event was swum: the latest DQ call heard in it.
+
+    The last call gives the latest time, which is the benefit of the doubt for the
+    earlier heats. None when no DQ has a call time (made by hand).
+    """
+    times = []
+    for dq in dqs:
+        try:
+            times.append(datetime.fromisoformat(dq["call_time"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return max(times) if times else None
+
+
+def _clock(moment: datetime | None) -> str:
+    """"5:42 PM" in the tablet's time zone, or a dash."""
+    if moment is None:
+        return META_UNKNOWN
+    local = moment.astimezone() if moment.tzinfo else moment
+    return local.strftime(constants.CLOCK_FORMAT_12_HOUR).lstrip("0")
+
+
+def _meet_date(meet: dict[str, Any]) -> str:
+    """"Fri Oct 16, 2026" for the meet's first day (as stored if it is not a date)."""
+    try:
+        return datetime.strptime(meet.get("start_date") or "", constants.MEET_START_DATE_FORMAT).strftime(MEET_DATE_FORMAT)
+    except ValueError:
+        return meet.get("start_date") or META_UNKNOWN
+
+
+def _meta_html(meet: dict[str, Any], event: str, label: str, dqs: list[dict[str, Any]], printed_at: datetime) -> str:
+    """The header facts: event and title, meet, date, when the event was swum, when printed."""
+    facts = (
+        (META_EVENT, f"{event}" + (f" \u2013 {label}" if label else "")),
+        (META_MEET, meet.get("name") or META_UNKNOWN),
+        (META_DATE, _meet_date(meet)),
+        (META_SWUM, _clock(event_swum_at(dqs)) + META_SWUM_NOTE),
+        (META_PRINTED, printed_at.strftime(PRINTED_FORMAT)),
+    )
+    return "".join(f"<dt>{_escape(term)}</dt><dd>{_escape(value)}</dd>" for term, value in facts)
+
+
 def render_event_summary(
-    meet_name: str, event: str, dqs: list[dict[str, Any]], printed_at: datetime | None = None, all_statuses: bool = False
+    meet: dict[str, Any], event: str, dqs: list[dict[str, Any]], printed_at: datetime | None = None, all_statuses: bool = False
 ) -> bytes:
-    """The printable summary page for one event.
+    """The printable DQ summary for one event (large type: legible at a meet, not stretched to the page).
+
+    Both versions show each DQ's current status in a column, and the meta information:
+    event number and title, meet, date, about when the event was swum (the last DQ
+    call) and when it was printed.
 
     Args:
-        meet_name: The meet's name (page header).
+        meet: The meet (``name``, ``start_date``).
         event: The event number.
         dqs: The event's DQs as ``DqStore.list_dqs`` returns them (sorted by heat and lane).
         printed_at: When printed (default now).
         all_statuses: Every DQ of the event whatever its status (Called, Incomplete,
-            Declined, ...), with a Status column: the Admin Assistant's Reports
-            printout, for working "blind" from paper. Otherwise only the DQs to enter
-            in Meet Manager (the version offered at Notify event).
+            Declined, ...): the "Report" (from the DQ list before the event is fully
+            notified, or from the Admin Assistant's Reports), for working "blind" from
+            paper. Otherwise the "Summary": only the DQs to enter in Meet Manager, with
+            overturned ones listed apart (offered once the event is notified).
     """
-    if all_statuses:
-        return _render_all_statuses(meet_name, event, dqs, printed_at)
-    to_enter = [dq for dq in dqs if dq["state"] in ENTER_STATES]
-    overturned = [dq for dq in dqs if dq["state"] == constants.DQ_STATE_OVERTURNED]
-    pending = [dq for dq in dqs if dq["state"] in NOT_YET_NOTIFIED_STATES]
-    label = next((dq.get("event_label") for dq in dqs if dq.get("event_label")), "")
-    rows = "".join(_row(dq) for dq in to_enter) or f'<tr><td colspan="8" class="none">{_escape(NONE_TEXT)}</td></tr>'
-    overturned_html = ""
-    if overturned:
-        overturned_html = (
-            '<h2>Overturned: do NOT enter (remove if already entered)</h2><table class="overturned"><tbody>'
-            + "".join(_row(dq, "struck") for dq in overturned)
-            + "</tbody></table>"
-        )
-    pending_html = f'<p class="pending">{_escape(PENDING_FORMAT.format(count=len(pending)))}</p>' if pending else ""
-    template = string.Template(SUMMARY_TEMPLATE_PATH.read_text("utf-8"))
-    return template.substitute(
-        title=_escape(TITLE_FORMAT.format(event=event)),
-        heading=_escape(HEADING_FORMAT.format(event=event, count=len(to_enter))),
-        meet_name=_escape(meet_name),
-        event=_escape(event),
-        event_label=_escape(label),
-        count=str(len(to_enter)),
-        head=HEAD_HTML,
-        rows=rows,
-        overturned=overturned_html,
-        pending=pending_html,
-        printed=_escape((printed_at or datetime.now()).strftime(PRINTED_FORMAT)),
-        app_name=_escape(constants.APP_DISPLAY_NAME),
-    ).encode("utf-8")
-
-
-def _render_all_statuses(meet_name: str, event: str, dqs: list[dict[str, Any]], printed_at: datetime | None) -> bytes:
-    """Every DQ of the event in heat and lane order, with its status (see ``render_event_summary``)."""
+    printed_at = printed_at or datetime.now()
     label = next((dq.get("event_label") for dq in dqs if dq.get("event_label")), "")
     columns = len(COLUMNS) + 2
-    rows = "".join(
-        _row(dq, "struck" if dq["state"] in (constants.DQ_STATE_OVERTURNED, constants.DQ_STATE_DECLINED) else "", with_status=True)
-        for dq in dqs
-    ) or f'<tr><td colspan="{columns}" class="none">{_escape(ALL_NONE_TEXT)}</td></tr>'
+    if all_statuses:
+        shown = dqs
+        heading = REPORT_HEADING_FORMAT.format(event=event, count=len(dqs))
+        rows = "".join(
+            _row(dq, "struck" if dq["state"] in (constants.DQ_STATE_OVERTURNED, constants.DQ_STATE_DECLINED) else "", with_status=True)
+            for dq in dqs
+        )
+        empty_text, after = ALL_NONE_TEXT, f'<p class="all-note">{_escape(ALL_NOTE)}</p>'
+    else:
+        shown = [dq for dq in dqs if dq["state"] in ENTER_STATES]
+        heading = HEADING_FORMAT.format(event=event, count=len(shown))
+        rows = "".join(_row(dq, with_status=True) for dq in shown)
+        empty_text, after = NONE_TEXT, ""
+        overturned = [dq for dq in dqs if dq["state"] == constants.DQ_STATE_OVERTURNED]
+        if overturned:
+            after += (
+                f'<h2>{_escape(OVERTURNED_HEADING)}</h2><table><thead>{HEAD_WITH_STATUS_HTML}</thead><tbody>'
+                + "".join(_row(dq, "struck", with_status=True) for dq in overturned)
+                + "</tbody></table>"
+            )
+        pending = [dq for dq in dqs if dq["state"] in NOT_YET_NOTIFIED_STATES]
+        if pending:
+            after += f'<p class="pending">{_escape(PENDING_FORMAT.format(count=len(pending)))}</p>'
+    if not shown:
+        rows = f'<tr><td colspan="{columns}" class="none">{_escape(empty_text)}</td></tr>'
     template = string.Template(SUMMARY_TEMPLATE_PATH.read_text("utf-8"))
     return template.substitute(
         title=_escape(TITLE_FORMAT.format(event=event)),
-        heading=_escape(ALL_TITLE_FORMAT.format(event=event, count=len(dqs))),
-        meet_name=_escape(meet_name),
-        event=_escape(event),
-        event_label=_escape(label),
-        count=str(len(dqs)),
+        heading=_escape(heading),
+        meta=_meta_html(meet, event, label, dqs, printed_at),
         head=HEAD_WITH_STATUS_HTML,
         rows=rows,
-        overturned="",
-        pending=f'<p class="all-note">{_escape(ALL_NOTE)}</p>',
-        printed=_escape((printed_at or datetime.now()).strftime(PRINTED_FORMAT)),
+        after=after,
         app_name=_escape(constants.APP_DISPLAY_NAME),
     ).encode("utf-8")
 

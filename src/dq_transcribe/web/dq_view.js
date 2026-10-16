@@ -37,7 +37,7 @@ const DQ_FILTER_HELP = [
   ["Overturned", "The DQ was overturned. Kept for the record; not entered in Meet Manager."],
   ["Declined", "The referee did not accept the call. Kept for the record."],
   ["\ud83d\udda8 Print requested", "A coach asked for a paper slip from the coach page. Shown only when there are requests."],
-  ["Group by event", "Shows one block per event, with Notify event and the DQ summary for the Meet Manager operator."],
+  ["Group by event", "One block per event, with Notify event and a printout: \ud83d\udda8 Report (every DQ and its status) until the event is notified, then \ud83d\udda8 Summary (the DQs to enter in Meet Manager). Slips reprints the event's slips."],
   ["Event #", "Type an event number to show only that event; \u00d7 clears it."],
   ["Gray code box", "The slip code, e.g. [5B]. Amber with a ? (e.g. [1J/3J?]) means the code depends on the stroke: pick one."],
 ];
@@ -449,21 +449,25 @@ function buildEventHeader(event, eventDqs) {
       actions.append(makeButton("notify-event", "Notify event (" + readiness.ready + ")", () => notifyEvent(event, notifiedBy.value, false)));
     }
   }
-  if (event && readiness.notified) {
-    // For the Meet Manager operator: offered prominently right after the event is notified.
-    const offered = summaryOfferEvent === event;
-    const summaryButton = makeButton(offered ? "primary event-summary offered" : "event-summary",
-      offered ? "\ud83d\udda8 Print DQ summary for event " + event : "\ud83d\udda8 Summary",
-      () => {
-        summaryOfferEvent = null;
-        window.open(CONFIG.eventSummaryRoute + "?" + CONFIG.eventQueryKey + "=" + encodeURIComponent(event), "_blank");
-        forceRefresh();
-      });
-    summaryButton.title = "DQ summary for the Meet Manager operator (codes to enter, times to invalidate)";
-    actions.append(summaryButton);
+  if (event) {
+    // Every event has a printout. Fully notified: the "Summary" for the Meet Manager operator
+    // (offered prominently right after Notify event). Not yet: the "Report" with every DQ and its status.
+    const notified = readiness.kind === "done" || readiness.kind === "declined";
+    const offered = notified && summaryOfferEvent === event;
+    let label = notified ? "\ud83d\udda8 Summary" : "\ud83d\udda8 Report";
+    if (offered) {
+      label = "\ud83d\udda8 Print DQ summary for event " + event;
+    }
+    const printButton = makeButton((offered ? "primary " : "") + "event-summary" + (offered ? " offered" : ""), label, () => {
+      summaryOfferEvent = null;
+      const query = "?" + CONFIG.eventQueryKey + "=" + encodeURIComponent(event) + (notified ? "" : "&" + CONFIG.allStatusesQueryKey + "=1");
+      window.open(CONFIG.eventSummaryRoute + query, "_blank");
+      forceRefresh();
+    });
+    actions.append(printButton);
   }
   if (event && readiness.total) {
-    const reprint = makeButton("event-reprint", "\ud83d\udda8", () => openSlips(CONFIG.eventQueryKey, event));
+    const reprint = makeButton("event-reprint", "Slips", () => openSlips(CONFIG.eventQueryKey, event));
     reprint.title = "Reprint this event's slips (only when a coach asks)";
     reprint.setAttribute("aria-label", "Reprint event " + event + " slips");
     actions.append(reprint);

@@ -535,6 +535,10 @@ ROUTE_EVENT_SUMMARY = "/event-summary"  # GET ?event=12 (displayed meet); no eve
 # The Reports link: http://localhost:8000/event-summary?all=1&suite_meet_id=<the main page's meet id>
 QUERY_KEY_ALL_STATUSES = "all"
 QUERY_KEY_SUITE_MEET_ID = "suite_meet_id"
+SUITE_MEET_CURRENT = "current"  # ?suite_meet_id=current: the main page's current meet (asked by the server)
+SUITE_FETCH_TIMEOUT_SECONDS = 3
+# The link in the main page's Reports pop-up (Officials Sign-In's constants.SUITE_REPORTS points here).
+EVENT_REPORT_URL = "http://localhost:8000/event-summary?all=1&suite_meet_id=current"
 EVENT_PICKER_FILENAME = "event_picker.html"
 RESPONSE_KEY_ADDED_TO_EXISTING = "added_to_existing"  # POST /api/dqs: the call was added to the swimmer's DQ
 # A new call waits for a person when its event is already notified, not in the meet file, or more
