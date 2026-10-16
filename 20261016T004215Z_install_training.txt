@@ -1,0 +1,15 @@
+task: 20261016T004215Z_install_training
+started: 2026-10-15T17:42:33-07:00
+finished: 2026-10-15T17:42:48-07:00
+work_repo_commit: 30db83d
+exit_code: 0
+--- output ---
+running 30db83d
+2026-10-15 17:42:36,986 whisper-server ready: ggml-base
+2026-10-15 17:42:37,501 whisper-server ready: ggml-small.en
+Training meet 2 ready: 169 DQs in 25 events {"called": 3, "incomplete": 18, "pending_notification": 27, "notified": 98, "protested": 1, "upheld": 8, "overturned": 4, "declined": 10}.
+
+real	0m9.822s
+user	0m4.490s
+sys	0m2.209s
+active meet: ['Workflow demo (test data)'] | meets: ['Workflow demo (test data)', '10/14 Test']
