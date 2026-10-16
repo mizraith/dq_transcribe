@@ -14,7 +14,7 @@ from pathlib import Path
 from dq_transcribe import constants
 from dq_transcribe.database import Database
 from dq_transcribe.demo_data import (
-    DEMO_MEET_NAME, DQS_PER_EVENT, EVENTS, LAST_NOTIFIED_EVENT, LAST_READY_EVENT, create_demo_meet, ensure_demo_meet,
+    DEMO_MEET_DATE, DEMO_MEET_NAME, DQS_PER_EVENT, LEGACY_DEMO_MEET_NAMES, EVENTS, LAST_NOTIFIED_EVENT, LAST_READY_EVENT, create_demo_meet, ensure_demo_meet,
 )
 from dq_transcribe.dq_store import DqStore
 from dq_transcribe.meet_files.store import MeetProgramStore
@@ -55,3 +55,15 @@ class DemoDataTests(unittest.TestCase):
         create_demo_meet(database, root / "recordings", replace=True)  # rebuild: same data, fresh times
         self.assertEqual(len(store.list_dqs(meet_id)), total)
         self.assertEqual([meet["name"] for meet in database.list_meets()].count(DEMO_MEET_NAME), 1)
+        meet = database.get_meet(meet_id)
+        self.assertEqual(meet["start_date"], DEMO_MEET_DATE)
+        self.assertTrue(all(len(dq["club"]) == 4 for dq in store.list_dqs(meet_id)))  # 4-letter club codes
+
+    def test_old_training_meet_is_renamed_and_rebuilt(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        database = Database(root / "test.db")
+        database.initialize()
+        old_id = database.create_meet(LEGACY_DEMO_MEET_NAMES[0], "2026-10-15")
+        self.assertEqual(ensure_demo_meet(database, root / "recordings"), old_id)
+        meet = database.get_meet(old_id)
+        self.assertEqual((meet["name"], meet["start_date"]), (DEMO_MEET_NAME, DEMO_MEET_DATE))

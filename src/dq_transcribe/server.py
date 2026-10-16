@@ -32,7 +32,9 @@ from dq_transcribe.database import Database
 from dq_transcribe.dq_store import DqError, DqStore, load_dq_codes
 from dq_transcribe.grouping import normalize_timestamp
 from dq_transcribe.meet_archive import archive_filename, build_meet_archive
+from dq_transcribe.auto_dq import AutoDqCreator
 from dq_transcribe.coach_server import CoachPage
+from dq_transcribe.event_summary import render_event_summary
 from dq_transcribe.demo_data import DEMO_MEET_NAME
 from dq_transcribe.officials_roster import RosterError, read_roster
 from dq_transcribe.slip_page import club_sort_key, print_requests_toolbar, render_slips
@@ -193,6 +195,8 @@ def build_web_config() -> dict[str, Any]:
         "coachPagePasswordRoute": constants.ROUTE_COACH_PAGE_PASSWORD,
         "coachPageKey": constants.RESPONSE_KEY_COACH_PAGE,
         "coachSignRoute": constants.ROUTE_COACH_SIGN,
+        "autoDqsRoute": constants.ROUTE_AUTO_DQS,
+        "eventSummaryRoute": constants.ROUTE_EVENT_SUMMARY,
         "printRequestedQueryKey": constants.QUERY_KEY_PRINT_REQUESTED,
         "layoutQueryKey": constants.QUERY_KEY_LAYOUT,
         "slipLayoutOnePerPage": constants.SLIP_LAYOUT_ONE_PER_PAGE,
@@ -369,6 +373,7 @@ class DqTranscribeServer(ThreadingHTTPServer):
         self.dq_store = DqStore(database, self.program_store)
         self.dq_store.initialize()
         self.coach_page = CoachPage(database, self.dq_store, coach_port)
+        self.auto_dqs = AutoDqCreator(database, self.dq_store)  # started by the app (not in tests)
         self.worker = worker
         super().__init__(server_address, RequestHandler)
 
@@ -430,6 +435,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_slips(parse_qs(url.query))
         elif path == constants.ROUTE_COACH_PAGE:
             self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_COACH_PAGE: self.server.coach_page.status()})
+        elif path == constants.ROUTE_EVENT_SUMMARY:
+            self._send_event_summary(parse_qs(url.query))
+        elif path == constants.ROUTE_AUTO_DQS:
+            self._send_json(HTTPStatus.OK, {constants.REQUEST_KEY_ENABLED: self.server.auto_dqs.enabled})
         elif path == constants.ROUTE_COACH_SIGN:
             self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, self._render_coach_sign())
         elif path.startswith(constants.ROUTE_VENDOR):
@@ -486,6 +495,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_rebuild_training_meet()
         elif path == constants.ROUTE_COACH_PAGE:
             self._handle_coach_page_switch()
+        elif path == constants.ROUTE_AUTO_DQS:
+            self._handle_auto_dqs_switch()
         elif path == constants.ROUTE_DQ_PRINT_REQUESTS:
             self._handle_print_requests()
         elif path == constants.ROUTE_COACH_PAGE_PASSWORD:
@@ -799,6 +810,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_slips(dqs, title, layout=layout))
 
+    def _send_event_summary(self, query: dict[str, list[str]]) -> None:
+        """The printed DQ summary of one event of the active meet (``?event=12``)."""
+        event = (query.get(constants.QUERY_KEY_EVENT) or [""])[0].strip()
+        meet_id = self.server.database.get_active_meet_id()
+        meet = self.server.database.get_meet(meet_id) if meet_id is not None else None
+        if not event or meet is None:
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "Say which event of the active meet: ?event=12")
+            return
+        dqs = [dq for dq in self.server.dq_store.list_dqs(meet_id) if (dq["event"] or "") == event]
+        self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_event_summary(meet["name"], event, dqs))
+
     def _send_font(self, filename: str) -> None:
         """Send a bundled font file (only plain file names inside web/fonts/)."""
         font_path = _WEB_DIRECTORY / constants.FONTS_DIRECTORY_NAME / filename
@@ -1014,6 +1036,18 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         meet_id = create_demo_meet(self.server.database, self.server.recordings_directory, replace=True)
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id})
+
+    def _handle_auto_dqs_switch(self) -> None:
+        """Turn automatic DQs on or off: ``{"enabled": true|false}``."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        enabled = payload.get(constants.REQUEST_KEY_ENABLED)
+        if not isinstance(enabled, bool):
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "enabled must be true or false")
+            return
+        self.server.auto_dqs.set_enabled(enabled)
+        self._send_json(HTTPStatus.OK, {constants.REQUEST_KEY_ENABLED: self.server.auto_dqs.enabled})
 
     def _handle_print_requests(self) -> None:
         """Clear coaches' print requests once printed (or put them back): ``{"dq_ids": [...], "requested": false}``."""

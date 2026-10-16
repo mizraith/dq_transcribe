@@ -512,3 +512,20 @@ REQUEST_KEY_REQUESTED = "requested"
 PRINT_REQUEST_PRINTED_NOTE = "requested printout printed"
 PRINT_REQUEST_NOTE = "printout requested"
 DQ_FILTER_PRINT_REQUESTED = "print_requested"  # the DQ list filter for requested printouts
+
+# --- Automatic DQs (auto_dq.py): detected calls become DQs without a tap -------------
+# Owner, 2026-10-15: do as much as possible automatically; the admin gates the notify step.
+SETTING_AUTO_CREATE_DQS = "auto_create_dqs"  # "1" (default) or "0"; switched in Meet setup
+AUTO_DQ_POLL_SECONDS = 3.0
+# Wait for the refine pass (better text) at most this long after a clip arrives.
+AUTO_DQ_MAX_REFINE_WAIT_SECONDS = 45
+# DQ field -> roster roles to take it from, in order, when the meet has exactly one such official.
+AUTO_DQ_ROSTER_FIELDS = {
+    "referee": ("Deck Referee", "Meet Referee"),
+    "chief_judge": ("Chief Judge",),
+}
+ROUTE_AUTO_DQS = "/api/auto-dqs"  # GET {"enabled"}; POST {"enabled": true|false}
+
+# Printed DQ summary of one event for the Meet Manager operator (offered at Notify event).
+EVENT_SUMMARY_FILENAME = "event_summary.html"
+ROUTE_EVENT_SUMMARY = "/event-summary"  # GET ?event=12 (active meet)

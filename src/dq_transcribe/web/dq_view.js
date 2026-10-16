@@ -44,6 +44,7 @@ let dqsSignature = "";
 let dqCount = 0;
 let dqFilter = loadDqFilter(); // a status from CONFIG.dqStatusLabels, or DQ_FILTER_ALL
 let dqGroupByEvent = loadSetting(DQ_GROUP_STORAGE_KEY, "false") === "true";
+let summaryOfferEvent = null; // the event just notified: its header offers "Print DQ summary"
 let dqEventPageKey = null; // which block of events the list shows (0 = events 1-10, ...), see eventPageKey
 let dqEventFilter = ""; // "Event #" box: show only this event (paging is off while it is set)
 const dqEventFilterInput = buildEventFilterInput(); // kept across redraws so typing is not interrupted
@@ -436,6 +437,19 @@ function buildEventHeader(event, eventDqs) {
       actions.append(makeButton("notify-event", "Notify event (" + readiness.ready + ")", () => notifyEvent(event, notifiedBy.value, false)));
     }
   }
+  if (event && readiness.notified) {
+    // For the Meet Manager operator: offered prominently right after the event is notified.
+    const offered = summaryOfferEvent === event;
+    const summaryButton = makeButton(offered ? "primary event-summary offered" : "event-summary",
+      offered ? "\ud83d\udda8 Print DQ summary for event " + event : "\ud83d\udda8 Summary",
+      () => {
+        summaryOfferEvent = null;
+        window.open(CONFIG.eventSummaryRoute + "?" + CONFIG.eventQueryKey + "=" + encodeURIComponent(event), "_blank");
+        forceRefresh();
+      });
+    summaryButton.title = "DQ summary for the Meet Manager operator (codes to enter, times to invalidate)";
+    actions.append(summaryButton);
+  }
   if (event && readiness.total) {
     const reprint = makeButton("event-reprint", "\ud83d\udda8", () => openSlips(CONFIG.eventQueryKey, event));
     reprint.title = "Reprint this event's slips (only when a coach asks)";
@@ -455,6 +469,7 @@ async function notifyEvent(event, notifiedBy, includeNotReady) {
   try {
     const reply = await postJson(CONFIG.notifyEventRoute, body);
     notify("\u2713 Event " + event + ": " + reply.notified.length + " DQ(s) notified (" + notifiedBy + ")");
+    summaryOfferEvent = event; // the event's header now offers its printed summary
   } catch (error) {
     notify("Could not notify event " + event + ": " + error.message, "error");
   }
@@ -604,6 +619,30 @@ function renderDqList(dqs) {
   }
 }
 
+/**
+ * The infractions for quick scanning: each slip code in a small gray box, then
+ * its description ("[5B] Out of sequence"). A code not chosen yet shows its
+ * candidates with a question mark ("[1J/3J?]").
+ */
+function buildInfractionSummary(infractions) {
+  const line = makeElement("span", "dq-infractions");
+  if (!infractions.length) {
+    line.append(document.createTextNode(" no infraction yet"));
+    return line;
+  }
+  infractions.forEach((item, index) => {
+    line.append(document.createTextNode(index ? "; " : " "));
+    const options = item.code_options || [];
+    if (item.code) {
+      line.append(makeElement("span", "code-chip", item.code));
+    } else if (options.length) {
+      line.append(makeElement("span", "code-chip unsure", options.slice(0, 3).join("/") + "?"));
+    }
+    line.append(document.createTextNode(" " + item.description));
+  });
+  return line;
+}
+
 /** One DQ in the list: a summary row; tap to open the editor. */
 function buildDqCard(dq) {
   const card = makeElement("section", "dq-card state-" + dq.state + " status-" + dq.status + (flashDqId === dq.id ? " flash" : ""));
@@ -614,7 +653,7 @@ function buildDqCard(dq) {
   if (dq.event_label && !dqGroupByEvent) {
     summary.append(makeElement("span", "dq-event-label", " " + dq.event_label)); // the event header shows it when grouped
   }
-  summary.append(makeElement("span", "", " " + (dq.infractions.map((item) => item.description).join("; ") || "no infraction yet")));
+  summary.append(buildInfractionSummary(dq.infractions));
   summary.append(makeElement("span", "badge dq-status-badge status-" + dq.status, CONFIG.dqStatusLabels[dq.status] || dq.status));
   if (dq.print_requested_at) {
     summary.append(makeElement("span", "badge print-requested-badge", PRINT_REQUESTED_LABEL));

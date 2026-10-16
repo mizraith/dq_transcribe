@@ -153,15 +153,17 @@ class DqStore:
 
     # --- Detected calls ------------------------------------------------------
 
-    def candidates(self, meet_id: int | None) -> list[dict[str, Any]]:
+    def candidates(self, meet_id: int | None, include_used: bool = False) -> list[dict[str, Any]]:
         """Detected calls for a meet's clips, minus those already used or dismissed.
 
         Args:
             meet_id: Meet whose clips to read (None = all clips).
+            include_used: Also list calls already made into DQs or dismissed,
+                marked ``"used": True`` (automatic DQs use this to see a late acknowledgment).
 
         Returns:
-            Candidate dictionaries (see ``CandidateCall.to_dict``) plus ``key`` and
-            ``group_id``, in time order.
+            Candidate dictionaries (see ``CandidateCall.to_dict``) plus ``key``,
+            ``group_id`` and ``used``, in time order.
         """
         clips = self._database.list_clips(newest_first=False, meet_id=meet_id)
         with self._database.connection() as connection:
@@ -193,8 +195,8 @@ class DqStore:
             if call.event in event_strokes:
                 choose_codes(call, event_strokes[call.event], stroke_is_certain=call.event in strokes_from_file)
             key = candidate_key(call)
-            if key not in used:
-                results.append({**call.to_dict(), "key": key, "group_id": group_id})
+            if key not in used or include_used:
+                results.append({**call.to_dict(), "key": key, "group_id": group_id, "used": key in used})
         self._add_program_details(results, meet_id)
         return results
 
@@ -237,7 +239,7 @@ class DqStore:
 
     # --- DQs ---------------------------------------------------------------
 
-    def create_dq(self, payload: dict[str, Any], meet_id: int | None) -> int:
+    def create_dq(self, payload: dict[str, Any], meet_id: int | None, note: str | None = None) -> int:
         """Create a DQ from a detected call or by hand.
 
         Args:
@@ -246,12 +248,14 @@ class DqStore:
                 {clip_id, utterance_id, start_seconds, end_seconds, role}),
                 ``accepted`` (bool) and optionally ``candidate_key``.
             meet_id: Meet the DQ belongs to.
+            note: The history note (default: how it was made, by tap or by hand).
 
         Returns:
             The new DQ's id.
 
         Raises:
-            DqError: If the payload is invalid.
+            DqError: If the payload is invalid, or the detected call is already a DQ
+                (it may have been made automatically a moment earlier).
         """
         fields = _text_fields(payload)
         infractions = _infractions(payload.get(constants.REQUEST_KEY_INFRACTIONS, []))
@@ -261,6 +265,8 @@ class DqStore:
         source = constants.DQ_SOURCE_AUTO if key else constants.DQ_SOURCE_MANUAL
         now = utc_now_iso()
         with self._database.transaction() as connection:
+            if isinstance(key, str) and connection.execute("SELECT 1 FROM dqs WHERE candidate_key = ?", (key,)).fetchone():
+                raise DqError("This call is already a DQ")
             columns = ", ".join(fields)
             placeholders = ", ".join("?" for _ in fields)
             cursor = connection.execute(
@@ -277,7 +283,7 @@ class DqStore:
             )
             connection.execute(
                 "INSERT INTO dq_history (dq_id, at, from_state, to_state, by_name, note) VALUES (?, ?, NULL, ?, ?, ?)",
-                (dq_id, now, state, None, "created from a detected call" if key else "created by hand"),
+                (dq_id, now, state, None, note or ("created from a detected call" if key else "created by hand")),
             )
         self._fill_from_program(dq_id)
         return dq_id

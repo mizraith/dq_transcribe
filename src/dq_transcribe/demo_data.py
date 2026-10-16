@@ -8,7 +8,7 @@ a terminal:
     PYTHONPATH=src python -m dq_transcribe.demo_data            # create it if missing
     PYTHONPATH=src python -m dq_transcribe.demo_data --replace  # rebuild it now
 
-The meet "Workflow demo (test data)" (it never touches other meets and does not
+The meet "DEMO MEET" (dated 1999-10-31; it never touches other meets and does not
 change which meet is active) has:
 
 * a meet program of 25 events (all strokes, two relays) with made-up swimmers
@@ -45,7 +45,10 @@ from dq_transcribe.dq_store import DqStore
 from dq_transcribe.meet_files.model import MeetProgram, ProgramEntry, ProgramEvent
 from dq_transcribe.meet_files.store import MeetProgramStore
 
-DEMO_MEET_NAME = "Workflow demo (test data)"
+DEMO_MEET_NAME = "DEMO MEET"
+DEMO_MEET_DATE = "1999-10-31"  # owner's choice: clearly not a real meet (the clips still carry today's times)
+# Earlier names of the training meet: a meet found under one is rebuilt under the new name.
+LEGACY_DEMO_MEET_NAMES = ("Workflow demo (test data)",)
 DEMO_SOURCE = "training meet (made-up data)"
 DEMO_NOTE = "Training data (made up)."
 RANDOM_SEED = 2026
@@ -76,7 +79,7 @@ EVENTS = (
 FIRST_NAMES = ("Avery", "Blake", "Casey", "Drew", "Emery", "Finley", "Harper", "Jordan", "Kai", "Logan", "Morgan",
                "Parker", "Quinn", "Riley", "Skyler", "Taylor", "Rowan", "Sage", "Reese", "Dakota")
 LAST_NAMES = ("Demo", "Sample", "Example", "Testa", "Mock", "Placeholder", "Fakename", "Trainee")
-CLUBS = ("AAA", "BBB", "CCC", "DDD", "EEE")
+CLUBS = ("AAAA", "BBBB", "CCCC", "DDDD", "EEEE")  # club codes are 4 letters, as in USA Swimming
 RELAY_LETTERS = ("A", "B")
 OFFICIALS = (
     ("Pat Judge", "Stroke & Turn Judge"), ("Chris Judge", "Stroke & Turn Judge"), ("Robin Judge", "Stroke & Turn Judge"),
@@ -177,8 +180,9 @@ def silent_wav(seconds: float) -> bytes:
 
 
 def find_demo_meet(database: Database) -> int | None:
-    """The training meet's id, or None if it does not exist."""
-    meet = next((meet for meet in database.list_meets() if meet["name"] == DEMO_MEET_NAME), None)
+    """The training meet's id (also under an earlier name), or None if it does not exist."""
+    names = (DEMO_MEET_NAME, *LEGACY_DEMO_MEET_NAMES)
+    meet = next((meet for meet in database.list_meets() if meet["name"] in names), None)
     return None if meet is None else int(meet["id"])
 
 
@@ -239,10 +243,10 @@ def create_demo_meet(database: Database, recordings_directory: Path, replace: bo
         _remove_demo_contents(database, meet_id, recordings_directory)
     else:
         active_meet_id = database.get_active_meet_id()
-        meet_id = database.create_meet(DEMO_MEET_NAME, now.astimezone().date().isoformat())
+        meet_id = database.create_meet(DEMO_MEET_NAME, DEMO_MEET_DATE)
         database.set_active_meet(active_meet_id)  # creating a meet makes it active: put the real one back
+    database.update_meet(meet_id, DEMO_MEET_NAME, DEMO_MEET_DATE, list(OFFICIALS))
     meet = database.get_meet(meet_id)
-    database.update_meet(meet_id, DEMO_MEET_NAME, meet["start_date"], list(OFFICIALS))
     program, heats_by_event = demo_program(randomizer)
     programs.save(meet_id, program, constants.MEET_FILE_FORMAT_TEXT, DEMO_SOURCE, DEMO_SOURCE)
     events = {event.number: event for event in program.events}
@@ -332,8 +336,15 @@ def create_demo_meet(database: Database, recordings_directory: Path, replace: bo
 
 
 def ensure_demo_meet(database: Database, recordings_directory: Path) -> int:
-    """Create the training meet if it does not exist yet (called when the app starts)."""
-    return create_demo_meet(database, recordings_directory, replace=False)
+    """Create the training meet if it does not exist yet (called when the app starts).
+
+    A training meet still under an earlier name (``LEGACY_DEMO_MEET_NAMES``) is
+    rebuilt once, so it gets the new name, date and club codes.
+    """
+    meet_id = find_demo_meet(database)
+    meet = database.get_meet(meet_id) if meet_id is not None else None
+    legacy = meet is not None and meet["name"] in LEGACY_DEMO_MEET_NAMES
+    return create_demo_meet(database, recordings_directory, replace=legacy)
 
 
 def main() -> None:

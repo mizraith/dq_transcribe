@@ -21,6 +21,7 @@ let meetProgram = null; // the meet's loaded Meet Manager file: {active, history
 let meetFileBusy = false;
 let coachPageStatus = null; // the coach page server: {enabled, running, urls, qr_urls, password, error}
 let coachPageBusy = false;
+let autoDqsEnabled = null; // automatic DQs from detected calls (null until loaded)
 
 /** Open the meet setup view for the active meet. */
 function openMeetSetup() {
@@ -38,6 +39,42 @@ function openMeetSetup() {
   setView("meet");
   loadMeetProgram();
   loadCoachPage();
+  loadAutoDqs();
+}
+
+/** Fetch whether detected calls become DQs automatically, then redraw. */
+async function loadAutoDqs() {
+  try {
+    autoDqsEnabled = (await (await fetch(CONFIG.autoDqsRoute)).json())[CONFIG.enabledKey];
+  } catch (error) {
+    autoDqsEnabled = null;
+  }
+  if (currentView === "meet") {
+    renderMeetView();
+  }
+}
+
+/** The "Create DQs automatically" switch (on by default; the admin still approves each notify). */
+function buildAutoDqsSwitch() {
+  const label = makeElement("label", "auto-dqs");
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.checked = autoDqsEnabled !== false;
+  box.disabled = autoDqsEnabled === null;
+  box.addEventListener("change", async () => {
+    try {
+      const body = {};
+      body[CONFIG.enabledKey] = box.checked;
+      autoDqsEnabled = (await postJson(CONFIG.autoDqsRoute, body))[CONFIG.enabledKey];
+      notify(autoDqsEnabled ? "\u2713 Detected calls become DQs automatically" : "Automatic DQs off: use + DQ in the transcript");
+    } catch (error) {
+      notify("Could not change automatic DQs: " + error.message, "error");
+    }
+    renderMeetView();
+  });
+  label.append(box, makeElement("span", "",
+    "Create DQs automatically from detected calls (you still approve each one at Notify)"));
+  return label;
 }
 
 /** Fetch the meet's loaded Meet Manager file (summary and events), then redraw. */
@@ -413,7 +450,7 @@ function renderMeetView() {
   dateInput.value = meetDraft.start_date;
   dateInput.addEventListener("input", () => { meetDraft.start_date = dateInput.value; markMeetDirty(); });
   dateLabel.append(dateInput);
-  details.append(nameLabel, dateLabel);
+  details.append(nameLabel, dateLabel, buildAutoDqsSwitch());
   page.append(details);
   page.append(buildCoachPageCard());
   page.append(buildMeetFileCard());

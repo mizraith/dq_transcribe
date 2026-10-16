@@ -125,6 +125,8 @@ def main() -> None:
     )
     # The coach page (read-only DQ list on the meet Wi-Fi) comes back on if the admin left it on.
     web_server.coach_page.restore()
+    # Detected calls become DQs on their own (switch in Meet setup); the admin approves at notify.
+    web_server.auto_dqs.start()
     # The training meet ships with the app: create it once, in the background (it takes a few seconds).
     threading.Thread(target=_ensure_training_meet, args=(database,), daemon=True).start()
     address = f"http://{constants.SERVER_DISPLAY_HOST}:{constants.SERVER_PORT}{constants.ROUTE_HOME}"
@@ -135,6 +137,7 @@ def main() -> None:
         print("\nStopping.")
     finally:
         web_server.coach_page.stop()
+        web_server.auto_dqs.stop()
         worker.stop()
         if refine_worker is not None:
             refine_worker.stop()
