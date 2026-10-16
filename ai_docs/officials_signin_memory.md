@@ -5,6 +5,19 @@ within each section.
 
 ## Decisions
 
+- **2026-10-15 (late): Edit, full-resolution photo, name check.** Owner: names are used
+  to credit officials after the meet, so they must be right, and a mistaken "Sign in" must
+  be fixable. Every signed-in row has **Edit** (name, years, roles, trainee); renaming
+  fixes the official everywhere and merges a duplicate record with the same name (the
+  tablet had "Mark \"Red\" Byer" typed and "Mark Red Byer" from the card). A name read by
+  the camera for someone new is highlighted "check the spelling". Root cause of the
+  tablet misreads: video frames are 1920x1080, so a phone at arm's length leaves the name
+  ~9 px tall. The still is now a real photo (ImageCapture.takePhoto, full sensor
+  resolution, focuses first) with video frames as backup; each still has its own screen
+  box and orientation (a photo can come out turned), with a half-turn retry. Diagnostics
+  now save the stills (the old code passed a canvas where a video was expected, so no
+  still images were saved). Headless Chrome, 4x throttle: 5.2 s upright and sideways.
+
 - **2026-10-15: still capture with a live guide (owner: names must be right; reads must
   take about 5 s).** The camera window no longer OCRs live frames. About 8 times a second a
   480-px preview frame is checked (no OCR): phone screen found (cell grid: bright

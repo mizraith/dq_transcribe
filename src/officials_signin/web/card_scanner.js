@@ -42,6 +42,7 @@ window.CardScanner = (function () {
   const QUARTER_TURN = 90;
   const HALF_TURN = 180;
   const THREE_QUARTER_TURN = 270;
+  const FULL_TURN = 360;
   const GUIDE = OCR.guide;
   const STATES = GUIDE.states;
   const FRAME_WAIT_MILLISECONDS = 200;
@@ -571,12 +572,14 @@ window.CardScanner = (function () {
       body[KEYS.record] = record;
       if (frameSource && diagnosticFrames < OCR.diagnosticsMaxFrames) {
         diagnosticFrames += 1;
-        const video = frameSource;
-        const scale = Math.min(1, OCR.maxFrameWidth / video.videoWidth);
+        // A video element or a canvas (stills).
+        const sourceWidth = frameSource.videoWidth || frameSource.width;
+        const sourceHeight = frameSource.videoHeight || frameSource.height;
+        const scale = Math.min(1, OCR.maxFrameWidth / Math.max(sourceWidth, sourceHeight));
         const canvas = document.createElement("canvas");
-        canvas.width = Math.round(video.videoWidth * scale);
-        canvas.height = Math.round(video.videoHeight * scale);
-        canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.width = Math.round(sourceWidth * scale);
+        canvas.height = Math.round(sourceHeight * scale);
+        canvas.getContext("2d").drawImage(frameSource, 0, 0, canvas.width, canvas.height);
         body[KEYS.image] = canvas.toDataURL("image/jpeg", OCR.diagnosticsJpegQuality);
       }
       fetch(CONFIG.routes.diagnostics, {
@@ -676,46 +679,96 @@ window.CardScanner = (function () {
      * Take a short burst of full-resolution frames and keep the sharpest.
      * @returns {Promise<{stills: HTMLCanvasElement[], box: object, sideways: boolean}>}
      */
-    async function captureStills(view) {
-      const video = options.video;
-      const candidates = [];
-      for (let index = 0; index < GUIDE.burstFrames; index += 1) {
-        const still = grabFrame(video);
-        const small = smallGray(still, still.width, still.height, analysisCanvas);
-        const screen = findScreen(small);
-        const area = screen.found ? screen : view.judgement.screen;
-        candidates.push({ still: still, score: sharpness(small, area), screen: area, small: small });
-        if (index < GUIDE.burstFrames - 1) { await sleep(GUIDE.burstIntervalMilliseconds); }
+    /**
+     * Take a full-resolution photo with the camera (ImageCapture), or null where the
+     * browser cannot, it fails, or it takes too long.
+     */
+    async function takePhoto() {
+      const track = stream ? stream.getVideoTracks()[0] : null;
+      if (!track || typeof window.ImageCapture === "undefined") { return null; }
+      try {
+        const imageCapture = new window.ImageCapture(track);
+        const timeout = new Promise(function (resolve) {
+          setTimeout(function () { resolve(null); }, GUIDE.photoTimeoutMilliseconds);
+        });
+        const blob = await Promise.race([imageCapture.takePhoto(), timeout]);
+        if (!blob) { return null; }
+        const bitmap = await createImageBitmap(blob, { imageOrientation: "from-image" });
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        canvas.getContext("2d").drawImage(bitmap, 0, 0);
+        return canvas;
+      } catch (error) {
+        diagnose({ kind: "photo_failed", error: String(error) }, null);
+        return null;
       }
-      candidates.sort(function (first, second) { return second.score - first.score; });
-      const kept = candidates.slice(0, GUIDE.stillsKept);
-      const best = kept[0];
-      const box = scaleBox(best.screen, best.small.width, best.small.height, best.still.width, best.still.height);
-      kept.forEach(function (candidate, index) {
-        diagnose({ kind: "still", rank: index + 1, sharpness: Math.round(candidate.score * 10) / 10, box: [box.left, box.top, box.width, box.height] }, candidate.still);
-      });
-      const ratio = sidewaysRatio(best.small, best.screen);
+    }
+
+    /** Measure one still: its own screen box (stills may differ in size and framing) and sharpness. */
+    function measureStill(canvas, fallbackScreen, source) {
+      const small = smallGray(canvas, canvas.width, canvas.height, analysisCanvas);
+      const found = findScreen(small);
+      const screen = found.found ? found : fallbackScreen;
+      const ratio = sidewaysRatio(small, screen);
       const sideways = ratio > GUIDE.sidewaysRatio;
-      const rotation = sideways ? sidewaysTurn(best.small, best.screen) : 0;
-      diagnose({ kind: "orientation", sideways_ratio: Math.round(ratio * 100) / 100, rotation: rotation }, null);
       return {
-        stills: kept.map(function (candidate) { return candidate.still; }),
-        box: box,
-        sideways: sideways,
-        rotation: rotation,
+        canvas: canvas,
+        small: small,
+        screen: screen,
+        score: sharpness(small, screen),
+        box: scaleBox(screen, small.width, small.height, canvas.width, canvas.height),
+        source: source,
+        found: found.found,
+        sidewaysRatio: ratio,
+        // Best guess at the turn that makes this still upright (each still may differ:
+        // a camera photo can come out turned relative to the video).
+        rotation: sideways ? sidewaysTurn(small, screen) : 0,
+        mirror: false,
       };
     }
 
+    /**
+     * Take the stills to read: a full-resolution photo (where supported) plus a short
+     * burst of video frames, keeping the photo and the sharpest frame (or the two
+     * sharpest frames when there is no photo).
+     * @returns {Promise<{stills: object[], sideways: boolean, rotation: number}>}
+     *   Each still has ``canvas`` and ``box`` (the screen in that still's pixels).
+     */
+    async function captureStills(view) {
+      const video = options.video;
+      const photoPromise = takePhoto();
+      const frames = [];
+      for (let index = 0; index < GUIDE.burstFrames; index += 1) {
+        frames.push(measureStill(grabFrame(video), view.judgement.screen, "video"));
+        if (index < GUIDE.burstFrames - 1) { await sleep(GUIDE.burstIntervalMilliseconds); }
+      }
+      frames.sort(function (first, second) { return second.score - first.score; });
+      const photoCanvas = await photoPromise;
+      const photo = photoCanvas ? measureStill(photoCanvas, null, "photo") : null;
+      const stills = photo && photo.found
+        ? [photo].concat(frames.slice(0, GUIDE.stillsKept - 1))
+        : frames.slice(0, GUIDE.stillsKept);
+      stills.forEach(function (still, index) {
+        diagnose({
+          kind: "still", rank: index + 1, source: still.source, size: [still.canvas.width, still.canvas.height],
+          sharpness: Math.round(still.score * 10) / 10, box: [still.box.left, still.box.top, still.box.width, still.box.height],
+          sideways_ratio: Math.round(still.sidewaysRatio * 100) / 100, rotation: still.rotation,
+        }, still.canvas);
+      });
+      return { stills: stills };
+    }
+
     /** OCR one prepared still on one worker and merge the result; returns the text. */
-    async function readStill(worker, still, box, rotation, mirror, layout) {
+    async function readStill(worker, still, rotation, mirror, layout) {
       passCount += 1;
       const passNumber = passCount;
       const started = performance.now();
-      const prepared = prepareStill(still, box, rotation, mirror);
+      const prepared = prepareStill(still.canvas, still.box, rotation, mirror);
       const ocrStarted = performance.now();
       const text = await recognize(worker, prepared, layout);
       diagnose({
-        kind: "pass", pass: passNumber, layout: layout, rotation: rotation, mirrored: mirror,
+        kind: "pass", pass: passNumber, source: still.source, layout: layout, rotation: rotation, mirrored: mirror,
         frame_size: [prepared.width, prepared.height], prepare_ms: Math.round(ocrStarted - started),
         ocr_ms: Math.round(performance.now() - ocrStarted), card_words: CARD_HINT.test(text), text: text,
       }, null);
@@ -739,48 +792,41 @@ window.CardScanner = (function () {
      * card is complete. Sideways screens are tried turned both ways first.
      */
     async function readCapture(workers, capture) {
-      const first = capture.stills[0];
-      const second = capture.stills[1] || first;
+      const stills = capture.stills;
+      const first = stills[0];
+      const second = stills[1] || first;
       const worker = function (index) { return workers[index % workers.length]; };
-      let rotation = 0;
-      let mirror = false;
-      if (capture.sideways) {
-        // Read both stills the way the header says is up; if neither shows card words,
-        // the guess was wrong, so read them the other way round.
-        rotation = capture.rotation;
-        await mergeNew(await Promise.all([
-          readStill(worker(0), first, capture.box, rotation, false, LAYOUT_SPARSE),
-          readStill(worker(1), second, capture.box, rotation, false, LAYOUT_COLUMN),
-        ]));
-        if (texts.length === 0 && !done && !cancelled) {
-          rotation = rotation === QUARTER_TURN ? THREE_QUARTER_TURN : QUARTER_TURN;
-          await mergeNew(await Promise.all([
-            readStill(worker(0), first, capture.box, rotation, false, LAYOUT_SPARSE),
-            readStill(worker(1), second, capture.box, rotation, false, LAYOUT_COLUMN),
-          ]));
-        }
-      } else {
-        await mergeNew(await Promise.all([
-          readStill(worker(0), first, capture.box, 0, false, LAYOUT_SPARSE),
-          readStill(worker(1), second, capture.box, 0, false, LAYOUT_SPARSE),
-        ]));
+
+      /** Read each still once (in parallel) with its current orientation; keep orientations that worked. */
+      async function readRound(items) {
+        const results = await Promise.all(items.map(function (item, index) {
+          return readStill(worker(index), item.still, item.still.rotation, item.still.mirror, item.layout);
+        }));
+        await mergeNew(results);
+        return results.map(function (text) { return CARD_HINT.test(text); });
       }
+
+      // Round 1: each still the way its own measurements say is up.
+      let found = await readRound([{ still: first, layout: LAYOUT_SPARSE }, { still: second, layout: LAYOUT_COLUMN }]);
       if (done || cancelled) { return; }
+      // No card words: turn those stills half round (wrong guess of which end is up).
+      const retry = [first, second].filter(function (still, index) { return !found[index]; });
+      if (retry.length === 2 || (retry.length === 1 && texts.length === 0)) {
+        retry.forEach(function (still) { still.rotation = (still.rotation + HALF_TURN) % FULL_TURN; });
+        found = await readRound(retry.map(function (still, index) {
+          return { still: still, layout: index === 0 ? LAYOUT_SPARSE : LAYOUT_COLUMN };
+        }));
+        if (done || cancelled) { return; }
+      }
       if (texts.length === 0) {
-        // No card words either way up: maybe a mirrored image.
-        mirror = true;
-        await mergeNew([await readStill(worker(0), first, capture.box, rotation, mirror, LAYOUT_SPARSE)]);
+        // Still nothing: maybe a mirrored image.
+        first.rotation = (first.rotation + HALF_TURN) % FULL_TURN;
+        first.mirror = true;
+        await readRound([{ still: first, layout: LAYOUT_SPARSE }]);
         if (done || cancelled || texts.length === 0) { return; }
       }
-      const followUps = capture.sideways
-        ? [[second, LAYOUT_SPARSE], [first, LAYOUT_COLUMN]]
-        : [[first, LAYOUT_COLUMN], [second, LAYOUT_COLUMN]];
-      for (let index = 0; index < followUps.length && !done && !cancelled; index += workers.length) {
-        const batch = followUps.slice(index, index + workers.length);
-        await mergeNew(await Promise.all(batch.map(function (job, offset) {
-          return readStill(worker(offset), job[0], capture.box, rotation, mirror, job[1]);
-        })));
-      }
+      // Follow-ups: the other layout on each still.
+      await readRound([{ still: first, layout: LAYOUT_COLUMN }, { still: second, layout: LAYOUT_SPARSE }]);
     }
 
     async function run() {
@@ -793,7 +839,7 @@ window.CardScanner = (function () {
         const view = await waitForGoodView(deadline);
         if (view === null) { break; }
         const capture = await captureStills(view);
-        showStill(capture.stills[0]);
+        showStill(capture.stills[0].canvas);
         guide(STATES.reading);
         const workers = await workersReady;
         await readCapture(workers, capture);

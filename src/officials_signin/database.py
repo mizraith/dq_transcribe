@@ -629,6 +629,78 @@ class Database:
             for row in rows
         ]
 
+    def edit_signin(
+        self,
+        signin_id: int,
+        name: str,
+        years_certified: int | None,
+        roles: list[str],
+        trainee: bool,
+        today: date,
+    ) -> int:
+        """Fix a sign-in after the fact: the official's name and years, and the roles and trainee flag.
+
+        Renaming fixes the official everywhere (later sessions and meets too). If another
+        official record now has the same name (the same person signed in twice, once
+        misread), it is merged into this one: its sign-ins move over (unless this official
+        already has one for that session), and details this record lacks (member ID, LSC,
+        club, years, card check) are copied before the duplicate is deleted.
+
+        Returns:
+            How many duplicate records were merged away.
+
+        Raises:
+            SigninError: If the sign-in is unknown, the name is empty or a role is unknown.
+        """
+        name = name.strip()[: constants.NAME_MAX_LENGTH]
+        if not name:
+            raise SigninError("A name is needed")
+        if not roles:
+            raise SigninError("Pick at least one role")
+        unknown = [role for role in roles if role not in constants.ROSTER_ROLES]
+        if unknown:
+            raise SigninError(f"Unknown role: {unknown[0]}")
+        key = name_key(name)
+        now = utc_now_iso()
+        with self._connect() as connection:
+            signin = connection.execute("SELECT official_id FROM signins WHERE id = ?", (signin_id,)).fetchone()
+            if signin is None:
+                raise SigninError("Sign-in not found")
+            official_id = signin["official_id"]
+            official = connection.execute("SELECT * FROM officials WHERE id = ?", (official_id,)).fetchone()
+            merged = 0
+            for duplicate in connection.execute(
+                "SELECT * FROM officials WHERE name_key = ? AND id != ?", (key, official_id)
+            ).fetchall():
+                if official["member_id"] and duplicate["member_id"] and official["member_id"] != duplicate["member_id"]:
+                    continue  # two different members who share a name
+                taken = {row["session_id"] for row in connection.execute(
+                    "SELECT session_id FROM signins WHERE official_id = ?", (official_id,))}
+                for row in connection.execute(
+                    "SELECT id, session_id FROM signins WHERE official_id = ?", (duplicate["id"],)
+                ).fetchall():
+                    if row["session_id"] in taken:
+                        connection.execute("DELETE FROM signins WHERE id = ?", (row["id"],))
+                    else:
+                        connection.execute("UPDATE signins SET official_id = ? WHERE id = ?", (official_id, row["id"]))
+                # Keep this record's details; fill gaps from the duplicate.
+                for column in ("member_id", "lsc", "club", "certified_since_year", "card_json", "card_meet_id"):
+                    if official[column] is None and duplicate[column] is not None:
+                        connection.execute(f"UPDATE officials SET {column} = ? WHERE id = ?", (duplicate[column], official_id))
+                connection.execute("DELETE FROM officials WHERE id = ?", (duplicate["id"],))
+                merged += 1
+            since_year = years_to_since_year(years_certified, today)
+            connection.execute(
+                "UPDATE officials SET name = ?, name_key = ?, certified_since_year = COALESCE(?, certified_since_year), "
+                "last_roles_json = ?, trainee = ?, updated_at = ? WHERE id = ?",
+                (name, key, since_year, json.dumps(roles), int(trainee), now, official_id),
+            )
+            connection.execute(
+                "UPDATE signins SET roles_json = ?, trainee = ? WHERE id = ?",
+                (json.dumps(roles), int(trainee), signin_id),
+            )
+        return merged
+
     def validate_signin_visually(self, signin_id: int) -> bool:
         """Mark a sign-in validated because the admin looked at the card.
 

@@ -50,6 +50,9 @@ _SESSION_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_SESSION_PREFIX)}(\d
 _SESSION_DELETE_PATTERN = re.compile(
     rf"^{re.escape(constants.ROUTE_SESSION_PREFIX)}(\d+){re.escape(constants.SESSION_DELETE_SUFFIX)}$"
 )
+_SIGNIN_EDIT_PATTERN = re.compile(
+    rf"^{re.escape(constants.ROUTE_SIGNIN_PREFIX)}(\d+){re.escape(constants.SIGNIN_EDIT_SUFFIX)}$"
+)
 _SIGNIN_TEAM_PATTERN = re.compile(
     rf"^{re.escape(constants.ROUTE_SIGNIN_PREFIX)}(\d+){re.escape(constants.SIGNIN_TEAM_SUFFIX)}$"
 )
@@ -80,6 +83,7 @@ def build_web_config() -> dict[str, Any]:
             "signinPrefix": constants.ROUTE_SIGNIN_PREFIX,
             "validateSuffix": constants.SIGNIN_VALIDATE_SUFFIX,
             "removeSuffix": constants.SIGNIN_REMOVE_SUFFIX,
+            "editSuffix": constants.SIGNIN_EDIT_SUFFIX,
             "roster": constants.ROUTE_ROSTER,
             "diagnostics": constants.ROUTE_DIAGNOSTICS,
             "teams": constants.ROUTE_TEAMS,
@@ -98,6 +102,7 @@ def build_web_config() -> dict[str, Any]:
             "sessionType": constants.KEY_SESSION_TYPE,
             "meetingTime": constants.KEY_OFFICIALS_MEETING_TIME,
             "signinCount": constants.KEY_SIGNIN_COUNT,
+            "merged": constants.KEY_MERGED,
             "meet": constants.KEY_MEET,
             "sessions": constants.KEY_SESSIONS,
             "activeSessionId": constants.KEY_ACTIVE_SESSION_ID,
@@ -193,6 +198,7 @@ def build_web_config() -> dict[str, Any]:
                 "burstFrames": constants.CAPTURE_BURST_FRAMES,
                 "burstIntervalMilliseconds": constants.CAPTURE_BURST_INTERVAL_MILLISECONDS,
                 "stillsKept": constants.CAPTURE_STILLS_KEPT,
+                "photoTimeoutMilliseconds": constants.CAPTURE_PHOTO_TIMEOUT_MILLISECONDS,
                 "uprightScreenWidth": constants.OCR_UPRIGHT_SCREEN_WIDTH,
                 "maxUpscale": constants.OCR_MAX_UPSCALE,
                 "messages": constants.GUIDE_MESSAGES,
@@ -413,6 +419,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_team_settings(payload)
             elif (match := _SIGNIN_TEAM_PATTERN.match(path)) is not None:
                 self._handle_signin_team(int(match.group(1)), payload)
+            elif (match := _SIGNIN_EDIT_PATTERN.match(path)) is not None:
+                self._handle_signin_edit(int(match.group(1)), payload)
             elif (match := _SIGNIN_ACTION_PATTERN.match(path)) is not None:
                 self._handle_signin_action(int(match.group(1)), match.group(2))
             else:
@@ -560,6 +568,21 @@ class RequestHandler(BaseHTTPRequestHandler):
                 constants.KEY_PROBLEMS: validations[active_session_id].problems,
             },
         )
+
+    def _handle_signin_edit(self, signin_id: int, payload: dict[str, Any]) -> None:
+        """Fix a sign-in: name (renames the official, merging a duplicate), years, roles, trainee."""
+        years = payload.get(constants.KEY_YEARS_CERTIFIED)
+        if years is not None and (not isinstance(years, int) or not 0 <= years <= constants.MAX_YEARS_CERTIFIED):
+            raise SigninError("Years certified must be a whole number")
+        roles = payload.get(constants.KEY_ROLES)
+        name = payload.get(constants.KEY_NAME)
+        if not isinstance(roles, list) or not isinstance(name, str):
+            raise SigninError("Name and roles are needed")
+        merged = self.server.database.edit_signin(
+            signin_id, name, years, [str(role) for role in roles], bool(payload.get(constants.KEY_TRAINEE)), date.today()
+        )
+        LOGGER.info("Edited sign-in %d (%d duplicate record(s) merged)", signin_id, merged)
+        self._send_json(HTTPStatus.OK, {constants.KEY_OK: True, constants.KEY_MERGED: merged})
 
     def _handle_signin_action(self, signin_id: int, action: str) -> None:
         """Validate a sign-in by eye, or remove it."""

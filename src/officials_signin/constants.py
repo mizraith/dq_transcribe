@@ -57,6 +57,8 @@ ROUTE_SIGNINS = "/api/signins"  # POST: sign an official in
 ROUTE_SIGNIN_PREFIX = "/api/signins/"  # POST /api/signins/<id>/validate or /remove
 SIGNIN_VALIDATE_SUFFIX = "/validate"
 SIGNIN_REMOVE_SUFFIX = "/remove"
+SIGNIN_EDIT_SUFFIX = "/edit"  # POST /api/signins/<id>/edit: fix name, years, roles, trainee
+KEY_MERGED = "merged"  # how many duplicate official records an edit merged away
 ROUTE_ROSTER = "/roster.json"
 ROUTE_ROSTER_DOWNLOAD = "/roster-download.json"
 
@@ -255,8 +257,13 @@ GUIDE_HEADER_SHARE = 0.15
 CAPTURE_BURST_FRAMES = 4
 CAPTURE_BURST_INTERVAL_MILLISECONDS = 70
 CAPTURE_STILLS_KEPT = 2
+# The main still is a real photo at the camera's full resolution where the browser
+# supports it (ImageCapture.takePhoto; it also focuses first): a video frame leaves
+# the name only ~9 pixels tall when the phone is held at arm's length. Video frames
+# are the backup. Give up on the photo after this long.
+CAPTURE_PHOTO_TIMEOUT_MILLISECONDS = 3000
 # Stills are cropped to the screen and scaled so the upright screen is this wide.
-OCR_UPRIGHT_SCREEN_WIDTH = 1000
+OCR_UPRIGHT_SCREEN_WIDTH = 1100  # name capitals ~22 px (Tesseract reads best at 20-40 px); larger is slower
 OCR_MAX_UPSCALE = 2.0
 GUIDE_STATE_NO_SCREEN = "no_screen"
 GUIDE_STATE_EDGE = "edge"

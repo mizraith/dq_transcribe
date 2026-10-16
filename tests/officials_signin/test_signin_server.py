@@ -160,6 +160,52 @@ class SigninServerTests(unittest.TestCase):
         _, officials, _ = self.request("GET", constants.ROUTE_OFFICIALS)
         self.assertEqual([item[constants.KEY_NAME] for item in officials[constants.KEY_OFFICIALS]], ['Pat "Skip" Example'])
 
+    def test_edit_renames_and_merges_a_duplicate(self) -> None:
+        self.set_up_meet()
+        # Signed in by name first, then (another session) by a misread card.
+        _, typed, _ = self.request("POST", constants.ROUTE_SIGNINS, {
+            constants.KEY_NAME: 'Pat "Skip" Example', constants.KEY_ROLES: ["Starter"], constants.KEY_YEARS_CERTIFIED: 6,
+        })
+        state = self.database.get_state()
+        evening = state[constants.KEY_SESSIONS][1][constants.KEY_ID]
+        self.request("POST", constants.ROUTE_ACTIVE_SESSION, {constants.KEY_SESSION_ID: evening})
+        garbled = CLEAN_CARD_TEXT.replace('PAT "SKIP" EXAMPLE', 'WIARN SKIP EXAMPLE')
+        reading = self.read_card(garbled, passes=2)
+        _, misread, _ = self.request("POST", constants.ROUTE_SIGNINS, {
+            constants.KEY_NAME: "Wiarn Skip Example", constants.KEY_ROLES: ["Starter"], constants.KEY_CARD: reading[constants.KEY_CARD],
+        })
+        _, officials, _ = self.request("GET", constants.ROUTE_OFFICIALS)
+        self.assertEqual(len(officials[constants.KEY_OFFICIALS]), 2)
+        path = constants.ROUTE_SIGNIN_PREFIX + str(misread[constants.KEY_SIGNINS][0]) + constants.SIGNIN_EDIT_SUFFIX
+        status, reply, _ = self.request("POST", path, {
+            constants.KEY_NAME: 'Pat "Skip" Example', constants.KEY_ROLES: ["Chief Judge"], constants.KEY_TRAINEE: False,
+        })
+        self.assertEqual(status, 200, reply)
+        self.assertEqual(reply[constants.KEY_MERGED], 1)
+        _, officials, _ = self.request("GET", constants.ROUTE_OFFICIALS)
+        merged = officials[constants.KEY_OFFICIALS]
+        self.assertEqual([item[constants.KEY_NAME] for item in merged], ['Pat "Skip" Example'])
+        self.assertEqual(merged[0][constants.KEY_CLUB], "PASA")  # kept from the card record
+        self.assertEqual(merged[0][constants.KEY_YEARS_CERTIFIED], 6)  # filled from the typed record
+        # Both sessions' sign-ins now belong to the one official.
+        morning = state[constants.KEY_SESSIONS][0][constants.KEY_ID]
+        self.assertEqual(self.database.list_signins(morning)[0][constants.KEY_NAME], 'Pat "Skip" Example')
+        self.assertEqual(self.database.list_signins(evening)[0][constants.KEY_ROLES], ["Chief Judge"])
+        # The next scan of this card finds the corrected name.
+        again = self.read_card(garbled)
+        self.assertEqual(again[constants.KEY_MATCH][constants.KEY_NAME], 'Pat "Skip" Example')
+
+    def test_edit_refuses_bad_input(self) -> None:
+        self.set_up_meet()
+        _, reply, _ = self.request("POST", constants.ROUTE_SIGNINS, {
+            constants.KEY_NAME: "Sam Newcomer", constants.KEY_ROLES: ["Starter"],
+        })
+        path = constants.ROUTE_SIGNIN_PREFIX + str(reply[constants.KEY_SIGNINS][0]) + constants.SIGNIN_EDIT_SUFFIX
+        self.assertEqual(self.request("POST", path, {constants.KEY_NAME: " ", constants.KEY_ROLES: ["Starter"]})[0], 400)
+        self.assertEqual(self.request("POST", path, {constants.KEY_NAME: "Sam", constants.KEY_ROLES: ["Timer"]})[0], 400)
+        missing = constants.ROUTE_SIGNIN_PREFIX + "999" + constants.SIGNIN_EDIT_SUFFIX
+        self.assertEqual(self.request("POST", missing, {constants.KEY_NAME: "Sam", constants.KEY_ROLES: ["Starter"]})[0], 400)
+
     def test_roster_has_one_line_per_role(self) -> None:
         self.set_up_meet()
         reading = self.read_card(CLEAN_CARD_TEXT)

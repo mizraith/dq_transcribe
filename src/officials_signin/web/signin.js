@@ -220,6 +220,7 @@ function drawSignins() {
     if (!signin[KEYS.validated]) {
       actions.appendChild(makeButton("Looks good", "go", function () { signinAction(signin, ROUTES.validateSuffix); }));
     }
+    actions.appendChild(makeButton("Edit", "", function () { openEditSheet(signin); }));
     const removeButton = makeButton("Remove", "", function () {
       if (removeButton.dataset.armed) {
         signinAction(signin, ROUTES.removeSuffix);
@@ -1009,9 +1010,13 @@ function openSheet(official, card, cardResult) {
     trainee: official ? official[KEYS.trainee] : false,
     laterSessionIds: [],
     official: official,
+    editSigninId: null,
   };
   // A known official keeps their stored name (an OCR slip must not rename them).
   sheetName.value = official ? official[KEYS.name] : ((card && card[KEYS.cardName]) || typedName);
+  // A name the camera read for someone new must be checked: it is what gets credited.
+  markNameForChecking(!official && Boolean(card && card[KEYS.cardName]));
+  showSheetMode(false);
   sheetYears.value = official && official[KEYS.yearsCertified] !== null ? official[KEYS.yearsCertified] : "";
   const clubSource = card || official;
   sheetClub.textContent = clubSource ? describeOfficial(clubSource) : "";
@@ -1030,6 +1035,61 @@ function openSheet(official, card, cardResult) {
     sheetLater.appendChild(chip);
   });
   sheetOverlay.hidden = false;
+}
+
+/** Highlight the name box and show "check the spelling" (or clear it). */
+function markNameForChecking(needsCheck) {
+  sheetName.classList.toggle("check", needsCheck);
+  element("sheet-name-hint").hidden = !needsCheck;
+}
+
+/** Sign-in mode (new sign-in) or edit mode (fix an existing sign-in). */
+function showSheetMode(editing) {
+  element("sheet-submit").textContent = editing ? "Save changes" : "Sign in";
+  element("sheet-scan").hidden = editing;
+  if (editing) { sheetLaterBlock.hidden = true; }
+}
+
+/**
+ * Open the sheet to fix a sign-in that is already in the list: name (renames the
+ * official everywhere), years certified, roles and trainee.
+ * @param {object} signin  Sign-in row from the list.
+ */
+function openEditSheet(signin) {
+  const official = {};
+  official[KEYS.id] = signin[KEYS.officialId];
+  official[KEYS.name] = signin[KEYS.name];
+  official[KEYS.yearsCertified] = signin[KEYS.yearsCertified];
+  official[KEYS.roles] = signin[KEYS.roles];
+  official[KEYS.trainee] = signin[KEYS.trainee];
+  official[KEYS.club] = signin[KEYS.club];
+  official[KEYS.lsc] = signin[KEYS.lsc];
+  official[KEYS.zone] = signin[KEYS.zone];
+  openSheet(official, null, null);
+  sheet.editSigninId = signin[KEYS.id];
+  showSheetMode(true);
+  sheetCheck.className = "check-line" + (signin[KEYS.validated] ? " ok" : " warn");
+  sheetCheck.textContent = signin[KEYS.validated] ? "✓ Checked" : "Admin will check: " + signin[KEYS.problems].join("; ");
+  sheetName.focus();
+}
+
+/** Save the edit sheet. */
+async function saveEdit() {
+  const body = {};
+  body[KEYS.name] = sheetName.value.trim();
+  const years = sheetYears.value.trim();
+  body[KEYS.yearsCertified] = years === "" ? null : Math.round(Number(years));
+  body[KEYS.roles] = sheet.roles;
+  body[KEYS.trainee] = sheet.trainee;
+  try {
+    const reply = await postJson(ROUTES.signinPrefix + sheet.editSigninId + ROUTES.editSuffix, body);
+    sheetOverlay.hidden = true;
+    const merged = reply[KEYS.merged];
+    showToast("✓ Saved" + (merged ? " (merged " + merged + " duplicate record" + (merged === 1 ? "" : "s") + ")" : ""));
+    await refresh();
+  } catch (error) {
+    showToast(error.message, true);
+  }
 }
 
 function drawSheetCheck() {
@@ -1066,6 +1126,10 @@ function drawSheetRoles() {
 }
 
 async function submitSheet() {
+  if (sheet.editSigninId) {
+    await saveEdit();
+    return;
+  }
   const body = {};
   body[KEYS.officialId] = sheet.officialId;
   body[KEYS.name] = sheetName.value.trim();
@@ -1115,6 +1179,7 @@ element("sheet-scan").addEventListener("click", function () {
   sheetOverlay.hidden = true;
   startCamera(sheet.official || null);
 });
+sheetName.addEventListener("input", function () { markNameForChecking(false); });
 element("sheet-cancel").addEventListener("click", function () { sheetOverlay.hidden = true; });
 element("sheet-submit").addEventListener("click", submitSheet);
 element("setup-button").addEventListener("click", function () { openSetup(false); });

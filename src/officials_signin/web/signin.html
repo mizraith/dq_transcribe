@@ -136,6 +136,8 @@
     .tag.fifteen { background: #e0f2fe; color: #075985; }
     .badge.team { background: #ede9fe; color: #5b21b6; }
     .diagnostics-option { font-size: 0.9rem; color: var(--muted); min-height: 2.4rem; }
+    .name-hint { display: block; margin-top: 0.3rem; font-size: 0.85rem; font-weight: 700; color: var(--warn); }
+    #sheet-name.check { border: 2px solid #f59e0b; background: var(--warn-soft); font-weight: 700; }
     #meeting-time { color: #fcd34d; font-weight: 700; white-space: nowrap; }
     .setup-grid label { display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); gap: 0.2rem; }
     .meet-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem; margin-bottom: 0.4rem; }
@@ -222,6 +224,7 @@
         <label>
           <span class="sheet-label">Name</span>
           <input id="sheet-name" type="text" autocomplete="off">
+          <span id="sheet-name-hint" class="name-hint" hidden>Read by the camera: check the spelling (used for credit after the meet)</span>
         </label>
         <label>
           <span class="sheet-label">Years certified</span>
