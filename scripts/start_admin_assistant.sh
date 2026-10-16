@@ -25,7 +25,10 @@ SCRIPTS_DIRECTORY="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || e
 DQ_SCRIPT="$SCRIPTS_DIRECTORY/start_dq.sh"
 SIGNIN_SCRIPT="$SCRIPTS_DIRECTORY/start_signin.sh"
 
-BROWSER_SETTLE_SECONDS=3
+# Android Chrome drops an "open this URL" that arrives while it is still loading another
+# tab (DQ Transcribe's, until it honours DQ_OPEN_BROWSER=0); 3 s was not enough on the
+# tablet (2026-10-16), so wait longer before opening the main page.
+BROWSER_SETTLE_SECONDS=8
 MAIN_PAGE_URL="http://localhost:8010/"
 
 COMMAND_START="start"
