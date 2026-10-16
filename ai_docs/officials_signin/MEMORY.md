@@ -1,7 +1,53 @@
-# Officials Sign-In: memory (decisions, facts, open items)
+# Officials Sign-In: memory
 
-Kept current by the assistant working on `src/officials_signin/`. Newest first
-within each section.
+What a new session needs to carry forward: the owner's preferences, gotchas learned the
+hard way, the dated decisions log (newest first), facts and open items. Companion files:
+`HANDOFF_PROMPT.md` (start here) and `GUIDELINES.md` (standing rules). Keep this current.
+
+## Owner preferences
+
+- Wants the result, not narration; several asks per message and more mid-task: answer
+  every one, plainly say what was not done.
+- Names must be right (they credit officials after the meet): camera names for someone
+  new need two matching reads, and a mistaken sign-in must be fixable (Edit).
+- Speed matters at the desk: a card read should take about 5 s.
+- Fewest taps; good defaults (officials meeting = start - 1 h, session names suggested,
+  default LSC Pacific Swimming); destructive actions behind a red warning.
+- Every pop-up gets an ✕ top right; buttons should not need scrolling to reach.
+- Pages and printouts: Club right after Name; LSC, not zone; one page where possible.
+- Coaches page looks like the officials page but in its own colours; separate tab.
+- Teams: equal teams, seniority blocks (random among equal years), ACJ then 15 m then
+  Relief off the teams, corner officials and unchecked officials never on teams; full
+  hand control (drag and drop, Team Lead star, job chips).
+- Shared code over copies (camera, styles, helpers). Docs kept current for handoffs.
+- Never his card or member ID in the repo; diagnostics stay on the tablet as test data.
+- Tell him before long tablet tasks; ask before restarting anything there.
+
+## Gotchas
+
+- `string.Template` web files: a literal dollar sign breaks the page (no JS template
+  literals; build strings with `+`).
+- Android Chrome can drop a second "open URL" that arrives while it is busy: the start
+  scripts wait 3 s between tabs.
+- The tablet's device agent updates with `git pull --ff-only`: a rewritten `main`
+  strands it (fixed once with a foreground task doing `git reset --keep` to the same
+  commit). Detached background processes on the tablet are refused by the auto-mode
+  classifier; keep tasks in the foreground.
+- `localhost` counts as a secure context (camera allowed); no Termux:API on the tablet.
+- Video frames are 1920x1080, so a phone at arm's length gives ~9 px names: the scanner
+  also takes a full-resolution `ImageCapture.takePhoto()` still. An upright phone does
+  not fit the frame: the guide says "turn sideways".
+- Mirrored pictures (some front cameras): the scanner tries half turn and mirror in
+  parallel and remembers a mirror per camera in localStorage.
+- Playwright: open extra pages from a `browser.new_context()` (not `page.context`);
+  `select_option` by `index` (option labels contain double spaces); the demo page
+  remembers its last size, so "+" may be disabled.
+- Importing a test class into another test module makes unittest run it twice: import
+  the module instead.
+- Demo mode is a cookie per browser (shared by its tabs); dq_transcribe's roster fetch
+  sends no cookie, so it always gets the real meet.
+- The two desk tabs share the server's active meet/session; they sync through a
+  `BroadcastChannel` plus refresh-when-shown and a 20 s refresh.
 
 ## Decisions
 
@@ -30,7 +76,7 @@ within each section.
   - Shared web code now: `desk.css` (styles), `card_camera.js` (camera window),
     `desk_shared.js` (LSC drop-down, club label, tab sync), `card_scanner.js` (OCR).
 - **2026-10-16 (00:50): Coaches Sign-In built here** (the owner asked for it; the separate
-  chat in `ai_docs/coaches_signin_handoff.md` was not used).
+  chat in `(a separate-chat handoff, removed 2026-10-16)` was not used).
   - `/coaches` ("Coach sign-in" button on the officials top bar, and in its ☰ menu; the
     coaches page has "Officials sign-in" back). Same desk, teal palette and a COACHES tag.
     Shares the meet, sessions, active session and demo mode. No teams, roles or years.
@@ -131,7 +177,7 @@ within each section.
     second still, and a mirror is remembered per camera and picture source in
     localStorage (`officials_signin.mirrored.<camera>.<photo|video>`).
   - **Coaches page** plugs in at `/coaches` through `officials_signin/coaches.py`
-    (`server._coaches_module`; handoff in `ai_docs/coaches_signin_handoff.md`, built by
+    (`server._coaches_module`; handoff in `(a separate-chat handoff, removed 2026-10-16)`, built by
     another chat). `CardScanner.scan` takes `readingRoute` so it can post to its own API.
   - **Privacy (owner, standing rule): never push his card to a repo.** The card example
     in `card_reader.py` held his real member ID (since the first commit) and his name was

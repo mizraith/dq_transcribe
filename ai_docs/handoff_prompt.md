@@ -1,7 +1,7 @@
 # Handoff prompt
 
 Paste this (or point a new session at this file) to resume work on dq_transcribe.
-For the separate Officials Sign-In app, use `ai_docs/officials_signin_handoff.md` instead.
+For the separate Officials Sign-In app, use `ai_docs/officials_signin/HANDOFF_PROMPT.md` instead.
 
 ---
 
