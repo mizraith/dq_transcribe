@@ -30,6 +30,9 @@ SERVER_PATTERN="python -m dq_transcribe"
 WHISPER_SERVER_PATTERN="whisper-server"
 AGENT_PATTERN="scripts/device_agent.sh"
 SERVER_STARTUP_TIMEOUT_SECONDS=15
+# How long the server gets to shut down cleanly before it is force-stopped. (2026-10-16: an old
+# server hung while shutting down and kept port 8000, so the new one could not start.)
+SERVER_SHUTDOWN_TIMEOUT_SECONDS=10
 
 COMMAND_START="start"
 COMMAND_STOP="stop"
@@ -45,8 +48,24 @@ show_status() {
   if is_running "$SERVER_PATTERN"; then say "app server:   running ($APP_URL)"; else say "app server:   stopped"; fi
 }
 
+# Stop the app server: ask it to shut down, wait, then force-stop it if it is still there.
+stop_server() {
+  pkill -f "$SERVER_PATTERN" 2>/dev/null || return 0
+  local waited=0
+  while is_running "$SERVER_PATTERN" && [ "$waited" -lt "$SERVER_SHUTDOWN_TIMEOUT_SECONDS" ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  if is_running "$SERVER_PATTERN"; then
+    pkill -9 -f "$SERVER_PATTERN" 2>/dev/null
+    sleep 1
+    say "the app server did not stop in ${SERVER_SHUTDOWN_TIMEOUT_SECONDS} s: force-stopped it"
+  fi
+  say "stopped the app server"
+}
+
 stop_all() {
-  pkill -f "$SERVER_PATTERN" 2>/dev/null && say "stopped the app server"
+  stop_server
   sleep 1
   pkill -f "$WHISPER_SERVER_PATTERN" 2>/dev/null && say "stopped leftover whisper servers"
   pkill -f "$AGENT_PATTERN" 2>/dev/null && say "stopped the device agent"
@@ -89,7 +108,7 @@ start_all() {
     say "device agent started (log: $AGENT_LOG)"
   fi
 
-  pkill -f "$SERVER_PATTERN" 2>/dev/null && sleep 1
+  stop_server
   PYTHONPATH=src nohup python -m dq_transcribe >"$SERVER_LOG" 2>&1 &
   disown
   if wait_for_server; then
