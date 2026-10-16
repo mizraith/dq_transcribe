@@ -1,35 +1,58 @@
 # Handoff prompt
 
-Paste this (or point a new session at this file) to resume work.
+Paste this (or point a new session at this file) to resume work on dq_transcribe.
+For the separate Officials Sign-In app, use `ai_docs/officials_signin_handoff.md` instead.
 
 ---
 
-You are continuing work on **dq_transcribe**, a local-first audio recording and transcription app, in the private repo `mizraith/dq_transcribe`.
+You are continuing work on **dq_transcribe**, part of the owner's *Swimming_Admin_Assistant*
+project, in the private repo `mizraith/dq_transcribe`. It records FRS radio calls between swim
+officials on a tablet, transcribes them locally, finds DQ calls, and manages DQs through
+notification and protests.
 
-**Read first:** `ai_docs/product_plan.md` (what the app is for: capturing swim-meet DQ radio calls, the four components, DQ record and state machine, roadmap), `ai_docs/guidelines.md` (coding standards and rules) and `ai_docs/memory.md` (facts, decisions, open items).
+**Read first:** `ai_docs/product_plan.md` (purpose, components, DQ states, design rule:
+automate first, fewest taps), `ai_docs/guidelines.md` (standards, safety) and
+`ai_docs/memory.md` (dated decisions and facts; newest at the bottom).
 
-**Current state (2026-10-10 pause point):** component 1 of 4 is built: a working capture-and-queue app.
-- **Capture page** (`web/app.html`, `app.js`, `capture_worklet.js`): Start/Stop with a blinking REC light, a level meter with a TOO LOUD clipping warning, touch sliders for capture settings, "Last audio received" time, a 12-hour clock, and uploads that never drop a clip.
-- **Server and pipeline:** stdlib `server.py`; SQLite `database.py`; turn splitting in `audio_analysis.py`; whisper.cpp in `transcriber.py`; a worker thread in `worker.py`; call/response grouping in `grouping.py` (gap < 5 s). Clips are stored in per-day folders.
-- **Tests and tablet:** verified on the tablet end to end with sample audio. Unit tests: `PYTHONPATH=src:tests python3 -m unittest discover -s tests` (23 pass).
-- **Start command:** `dq_transcribe` in Termux (`scripts/start_dq.sh`) starts the wake lock, git pull, device agent and server, and opens Chrome. Verified.
-- **Rulebook:** the 2026 USA Swimming rulebook is in `rulebook/`, with dated names and a README.
-- **Product design:** captured in detail in `ai_docs/product_plan.md`, covering DQ fields, states, protests, meets/sessions, publication, archive and install. Only two open questions remain there.
-- **Not yet tested:** real FRS audio over the radio cable, multi-hour sessions, a background capture tab while reviewing in another tab, and threshold tuning.
+**State on 2026-10-15 (all installed on the tablet):**
+- **Capture and transcription:** AudioWorklet capture with level check and too-loud warning;
+  two-pass whisper (base draft on whisper-server :8178, small.en refine :8179); clips grouped
+  into conversations; meets with per-meet folders.
+- **Call detection:** `call_parser.py` (rule-based, one candidate per lane) +
+  `data/infraction_phrases.csv` + `slip_codes.py` (ranks every slip line against what was
+  heard). Event stroke comes from the Meet Manager file when loaded, else learned from calls/DQs.
+- **DQs:** `dq_store.py`; states called / accepted / notified / protested / upheld /
+  overturned / declined; list status splits accepted into Incomplete / Pending notification;
+  filter bar + Group by event with readiness and **Notify event**; protest window = 30 min
+  from the call; late/extra protests need a reason. One-tap likely slip codes (with stroke tags).
+  **+ DQ** on any transcript line. Printable slip (`slip_page.py`, `web/dq_slip.html`, bundled
+  OFL script font) at `/slips?ids=` or `?event=`.
+- **Meet setup view** (`web/meet_view.js`): name/date, officials roster (auto-add), **Meet file**
+  (Hy-Tek database .zip/.mdb via mdbtools, PDF via pdftotext, HTML, text; `meet_files/`
+  package, versioned, newest active; fills swimmer/club, event labels, strokes), **End of meet**
+  (archive zip without Meet Manager files, close/reopen, empty trash only after close).
+- Tests: `PYTHONPATH=src:tests python3 -m unittest discover -s tests` (all pass). Keep new test
+  methods inside their class, above the `__main__` guard.
 
-**Environment:** the owner works from a Lenovo Idea Tab (Android 16, 8 GB RAM) with the Google Play build of Termux. There is no Linux container, and Termux:API is not used. Termux has all-files access (`~/storage/...`). You work in a cloud workspace and cannot connect to the tablet directly. The owner does not want to copy and paste code or commands.
+**Not verified yet:** the Meet Manager database reader against a real file (table names are
+from documentation); real PDF/HTML heat sheets (parser written from Hy-Tek's usual layout);
+radio audio through an attenuator; multi-hour capture (Friday 2026-10-16).
 
-**Running things on the tablet (the relay):** write a shell script, then run `COMMIT_TRAILERS="<trailers>" bash scripts/run_on_device.sh path/to/task.sh [wait_seconds]`. It commits the script to `device_tasks/` on `main`, and the tablet's `scripts/device_agent.sh` (which the owner starts once in Termux and leaves running) pulls it, runs it from the repo root, and publishes the output as a report on the `device-reports` branch. The helper prints the report. Round trips take roughly 15 to 40 seconds. If no report arrives, the agent is probably stopped: ask the owner to type `dq_transcribe` in Termux (shortcut for `scripts/start_dq.sh`, which starts the agent, the server and Chrome). Start with read-only probe scripts. Tasks run unattended with the owner's permissions, so keep them small and non-destructive.
+**Next (owner's order):** check the owner's real Meet Manager files (database, PDF, HTML) and
+fix the importers; then regrouping turns between conversations (per-utterance group override,
+drag plus one-tap up/down) and merge/split DQs; then sessions (from the Meet Manager data if
+present). After Friday: offline replay-and-score harness on the recorded audio.
 
-**Remind the owner first (he asked for these reminders):** do the radio-cable dry run before Friday 2026-10-16 (volume via the TOO LOUD indicator, sliders, USB-C adapter as Chrome's mic). See `ai_docs/product_plan.md` section 9b.
+**Environment:** tablet = Lenovo Idea Tab, Android 16, Termux (Google Play build, all-files
+access, no Termux:API), Chrome at http://localhost:8000. The owner does not copy and paste:
+deliver by committing, and run things on the tablet with the relay:
+`COMMIT_TRAILERS="<trailers>" bash scripts/run_on_device.sh path/to/task.sh [wait_seconds]`
+(the tablet's agent runs `device_tasks/` scripts, 600 s limit, and pushes reports to the
+`device-reports` branch). Tell the owner before long-running tablet tasks, and ask before
+restarting the app unless he has said to install as you go. Keep tasks small and
+non-destructive; never touch credentials.
 
-**Next steps (confirm with the owner before building):**
-1. Owner records 2-3 hours of FRS audio (Friday 2026-10-16), with the event/heat/lane of every DQ as ground truth. Afterward: inspect clips, tune thresholds (`SILENCE_DBFS`, `TURN_GAP_SECONDS`, capture levels), and judge transcript quality using the stored raw data.
-2. DQ slip codes are in `reference/dq_codes/` (rev. 1/24 current, rev. 7/19 kept). Use them for the description pick list and the matcher.
-3. Design the DQ data model (meet → day → session; DQ with several infractions; append-only state history) and the touch-friendly call-linking workflow.
-4. Measure whisper speed repeatably (`tiny`, `base`, `small`), and benchmark llama.cpp model sizes on the Friday audio.
-5. Inspect the Hy-Tek Meet Manager file format once the owner provides Friday's file.
+**Standards reminder:** readable names, full docstrings and file headers, no magic strings
+(use `constants.py`), platform-neutral core, honest about what was not tested.
 
-**Standards reminder:** readable names, full docstrings and file headers, no magic strings (use `constants.py`), platform-neutral core. State clearly what you could not test.
-
-**Before ending a session:** update `ai_docs/memory.md` and this file so the next session starts current.
+**Before ending a session:** update `ai_docs/memory.md` and this file.

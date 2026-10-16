@@ -797,6 +797,19 @@ listing that dq_transcribe ingests**.
   signing in again is one tap and club/zone/years are pre-filled.
 - **Pre-sign-up:** one tap per extra session ("also working: Sat PM").
 
+## 9.1 Built so far (2026-10-15)
+
+- Meet Manager import (database, PDF, HTML, text), versioned; auto-fill swimmer/club; event
+  strokes pick slip codes. Database reader unverified until the owner's file arrives.
+- Printable slip (rev. 1/24 layout, script names, coach copy).
+- Notify by event (Group by event, readiness, Notified by) and protests (time in, ruling,
+  window from the call, cycle limit with reason-based override).
+- Manual DQ from a transcript line or selected words.
+- End of meet: archive zip (no Meet Manager files: the meet computer keeps them), close/reopen,
+  empty trash only after close.
+- Held by the owner: regrouping turns and merge/split DQs (next), sessions (after seeing the
+  Meet Manager data).
+
 ## 9b. Next steps
 
 **Owner (reminders requested 2026-10-10):**

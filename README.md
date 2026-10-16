@@ -4,9 +4,12 @@ Local-first audio recording and transcription. Records from the device
 microphone, transcribes on-device, and keeps results in an editable local
 database. Nothing leaves the device.
 
-**Status:** capture-and-queue app working on the tablet. Open the page, tap
-**Start capturing**, and audio is cut into clips, transcribed turn by turn, grouped
-into call/response conversations, and stored in an editable local database.
+**Status:** working on the tablet end to end: capture radio calls, transcribe them,
+detect DQ calls (with likely slip codes), manage DQs (filter, group by event,
+notify, protests, printable slips), load the Hy-Tek Meet Manager file (swimmer and
+club fill in from event/heat/lane), and archive a meet as a zip. See
+`ai_docs/product_plan.md` for the full design and `ai_docs/handoff_prompt.md` for
+the current state.
 
 ## Run it (Termux)
 
@@ -42,6 +45,9 @@ foreground with the screen on (the page requests a screen wake lock).
 - **Check levels:** shows the live meter without recording anything, so levels can be set before capturing.
 - **Trash:** each clip has a trash icon, which asks for confirmation. The Trash view (left column) can restore a clip or delete it for good (also confirmed).
 - **Transcription vocabulary:** whisper is primed with swim-meet words from `src/dq_transcribe/data/whisper_prompt.txt`. Keep numbers out of it; whisper copies them into transcripts.
+- **Meet setup** (left column): officials roster, **Meet file** (Hy-Tek backup .zip/.mdb, PDF or HTML report; needs `pkg install poppler mdbtools` in Termux), and **End of meet** (archive zip, close meet, empty trash).
+- **DQs view:** status filter, **Group by event** with Notify event, protests, and **Print slip** / event slips.
+- **+ DQ** beside each transcript line makes a DQ by hand from that line (or the words selected in it).
 - The page `/mic-test` is the original microphone check.
 
 Run the tests with `PYTHONPATH=src:tests python3 -m unittest discover -s tests`.
