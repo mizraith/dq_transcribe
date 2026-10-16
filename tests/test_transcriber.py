@@ -94,5 +94,34 @@ class WhisperServerTranscriberTests(unittest.TestCase):
             self.transcriber.transcribe(self.wav_path)
 
 
+
+class PriorityTests(unittest.TestCase):
+    """Lower priority without preexec_fn (which can deadlock in a threaded server)."""
+
+    def test_with_nice(self) -> None:
+        from dq_transcribe.transcriber import with_nice
+
+        self.assertEqual(with_nice(["whisper"], 0), ["whisper"])
+        niced = with_nice(["whisper"], 5)
+        self.assertEqual(niced[-1], "whisper")
+        if len(niced) > 1:
+            self.assertEqual(niced[-3:-1], ["-n", "5"])
+
+    def test_lower_priority_of_a_child(self) -> None:
+        import os
+        import subprocess
+        import sys
+
+        from dq_transcribe.transcriber import lower_priority
+
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"])
+        try:
+            before = os.getpriority(os.PRIO_PROCESS, child.pid)
+            lower_priority(child.pid, 3)
+            self.assertEqual(os.getpriority(os.PRIO_PROCESS, child.pid), before + 3)
+        finally:
+            child.kill()
+            child.wait()
+
 if __name__ == "__main__":
     unittest.main()

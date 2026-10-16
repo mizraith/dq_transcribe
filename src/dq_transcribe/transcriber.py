@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import signal
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -205,6 +206,32 @@ def stop_leftover_servers(server_path: Path, port: int) -> int:
     return stopped
 
 
+NICE_PROGRAM = "nice"
+NICE_FLAG = "-n"
+
+
+def lower_priority(pid: int, increment: int) -> None:
+    """Lower a started process's CPU priority by ``increment`` (no-op for 0, or where unsupported).
+
+    Done from the parent after the process started, never with ``preexec_fn``: running
+    Python code in a child forked from a multi-threaded server can deadlock (2026-10-16:
+    a forked child hung before starting whisper-server, never released port 8000 and kept
+    the accurate pass from starting).
+    """
+    if not increment or not hasattr(os, "setpriority"):
+        return
+    try:
+        os.setpriority(os.PRIO_PROCESS, pid, os.getpriority(os.PRIO_PROCESS, pid) + increment)
+    except OSError as error:
+        LOGGER.warning("Could not lower the priority of process %d: %s", pid, error)
+
+
+def with_nice(command: list[str], increment: int) -> list[str]:
+    """``command`` run through ``nice`` to lower its priority (as is if 0 or ``nice`` is missing)."""
+    nice_path = shutil.which(NICE_PROGRAM) if increment else None
+    return [nice_path, NICE_FLAG, str(increment), *command] if nice_path else command
+
+
 class WhisperServerTranscriber:
     """Keeps a ``whisper-server`` process running with its model loaded.
 
@@ -356,8 +383,9 @@ class WhisperServerTranscriber:
                 stderr=subprocess.STDOUT,
                 env=whisper_environment(self._library_directory),
                 cwd=str(self._server_path.parent),
-                preexec_fn=self._lower_priority if self._nice_increment and hasattr(os, "nice") else None,
+                close_fds=True,
             )
+        lower_priority(self._process.pid, self._nice_increment)
         LOGGER.info("Started whisper-server (%s) on port %d", self.model_name, self._port)
         self._wait_until_ready()
 
@@ -381,9 +409,6 @@ class WhisperServerTranscriber:
             self._process.wait()
         self._process = None
 
-    def _lower_priority(self) -> None:
-        """Run in the child process before the server starts: lower its CPU priority."""
-        os.nice(self._nice_increment)
 
 
 class WhisperCppTranscriber:
@@ -429,10 +454,6 @@ class WhisperCppTranscriber:
         self._nice_increment = nice_increment
         self.model_name = model_path.stem
 
-    def _lower_priority(self) -> None:
-        """Run in the child process before whisper starts: lower its CPU priority."""
-        os.nice(self._nice_increment)
-
     def transcribe(self, wav_path: Path) -> TranscriptionResult:
         """Transcribe a 16 kHz mono WAV file with whisper.cpp.
 
@@ -469,6 +490,7 @@ class WhisperCppTranscriber:
                 command.append(_FLAG_SUPPRESS_NON_SPEECH)
             if self._prompt:
                 command.extend([_FLAG_PROMPT, self._prompt])
+            command = with_nice(command, self._nice_increment)
             try:
                 completed = subprocess.run(
                     command,
@@ -477,7 +499,6 @@ class WhisperCppTranscriber:
                     timeout=self._timeout_seconds,
                     env=environment,
                     check=False,
-                    preexec_fn=self._lower_priority if self._nice_increment and hasattr(os, "nice") else None,
                 )
             except subprocess.TimeoutExpired as error:
                 raise TranscriptionError(f"whisper-cli timed out after {self._timeout_seconds} s") from error
