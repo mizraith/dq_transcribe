@@ -1,0 +1,13 @@
+task: 20261016T164610Z_recover_dq
+started: 2026-10-16T09:46:23-07:00
+finished: 2026-10-16T09:47:29-07:00
+work_repo_commit: f990a04
+exit_code: 0
+--- output ---
+u0_a307  30467     1  2  1970 pts/0    01:11:53 bash /data/data/com.termux/files/usr/bin/bash /data/data/com.termux/file
+running f990a04
+2026-10-16 09:46:26,304 Coach page on port 8020
+2026-10-16 09:46:26,787 whisper-server ready: ggml-base
+DQ page 200
+event picker 200
+main page 200
