@@ -58,36 +58,57 @@ RELAY_LINE = re.compile(
 )
 RELAY_SWIMMER = re.compile(r"(?P<leg>[1-8])\)\s*(?P<last>[A-Za-z][A-Za-z'’.\- ]*?),\s*(?P<first>[A-Za-z][A-Za-z'’.\- ]*?)\s+[WMBG]?(?P<age>\d{1,2})\b")
 # Lines that are page furniture, never data.
-_IGNORED_LINE = re.compile(r"HY-TEK|Meet Manager|Page \d+|Lane\s+Name|Name\s+Age\s+Team|Team\s+Relay", re.IGNORECASE)
+_IGNORED_LINE = re.compile(
+    r"HY-TEK|Meet Manager|Page \d+|Lane\s+Name|Name\s+Age\s+Team|Team\s+Relay|^\s*[=_\-]{5,}\s*$|^\s*(?:Meet Program|Heat Sheet|Psych Sheet)\b",
+    re.IGNORECASE,
+)
+# The blank result columns of a printed heat sheet ("_________________    _______").
+_TRAILING_BLANKS = re.compile(r"(?:\s+_{3,})+\s*$")
 # Two-column pages: a header starting this far from the left marks the second column.
 MIN_SECOND_COLUMN_OFFSET = 20
-COLUMN_MARKER = re.compile(r"(?:Event\s+\d|Heat\s+\d)", re.IGNORECASE)
+# Where a column's content starts: an event or heat header, or a lane line ("3  Smith, Jane").
+COLUMN_MARKER = re.compile(r"(?:^|\s{2})(Event\s+\d|Heat\s+\d|\d{1,2}\s+[A-Z][A-Za-z'’.\- ]*,\s)")
+COLUMN_START_TOLERANCE = 6  # characters: starts this close together are the same column
+MIN_COLUMN_LINES = 3
 RELAY_TEAM_FORMAT = "{club}-{letter}"
 # A trailing middle initial ("Jane M") is dropped from first names.
 MIDDLE_INITIAL = re.compile(r"\s+[A-Z]\.?$")
+# Meet Manager prints "-" for a missing middle initial ("Lyon, Quincy -").
+# Report titles end in the meet date ("Candy Meet Block Party - 10/16/2026").
+TITLE_DATE_SUFFIX = re.compile(r"\s+-\s+\d{1,2}/\d{1,2}/\d{2,4}$")
+TRAILING_PUNCTUATION = re.compile(r"[\s\-.]+$")
 RELAY_TEAM_NAME_MAX_WORDS = 6
 UNREAD_LINES_WARNING = "{count} lines inside events were not understood (first: {example!r})"
 
 
 def split_columns(page_lines: list[str]) -> list[str]:
-    """Return a page's lines in reading order, splitting two-column layouts.
+    """Return a page's lines in reading order, splitting 2- and 3-column layouts.
 
-    ``pdftotext -layout`` keeps columns side by side. If headers ("Event 12",
-    "Heat 1 of 3") start well to the right on several lines, the page has two
-    columns: every line is cut at that position and the left column is read first.
+    ``pdftotext -layout`` keeps columns side by side. Each column's content starts
+    at the same position on many lines ("Event 12", "Heat 1 of 3", or a lane line
+    "3  Smith, Jane"). Positions well to the right that recur on several lines are
+    column starts: every line is cut there, and the columns are read left to right.
     """
-    right_starts = [
-        match.start()
+    starts = sorted(
+        match.start(1)
         for line in page_lines
         for match in COLUMN_MARKER.finditer(line)
-        if match.start() >= MIN_SECOND_COLUMN_OFFSET
-    ]
-    if len(right_starts) < 2:
+        if match.start(1) >= MIN_SECOND_COLUMN_OFFSET
+    )
+    columns: list[list[int]] = []
+    for start in starts:
+        if columns and start - columns[-1][-1] <= COLUMN_START_TOLERANCE:
+            columns[-1].append(start)
+        else:
+            columns.append([start])
+    cuts = [min(group) for group in columns if len(group) >= MIN_COLUMN_LINES]
+    if not cuts:
         return page_lines
-    split_at = min(right_starts)
-    left = [line[:split_at].rstrip() for line in page_lines]
-    right = [line[split_at:].rstrip() for line in page_lines]
-    return left + right
+    bounds = [0, *cuts, None]
+    ordered: list[str] = []
+    for left, right in zip(bounds, bounds[1:]):
+        ordered.extend(line[left:right].rstrip() for line in page_lines)
+    return ordered
 
 
 def parse_report_lines(lines: Iterable[str], meet_name: str = "") -> MeetProgram:
@@ -111,9 +132,11 @@ def parse_report_lines(lines: Iterable[str], meet_name: str = "") -> MeetProgram
     last_relay: ProgramEntry | None = None
     unread: list[str] = []
     for raw_line in lines:
-        line = raw_line.rstrip()
+        line = _TRAILING_BLANKS.sub("", raw_line.rstrip())
         if not line.strip():
             continue
+        if program.meet_name and " ".join(line.split()) == program.meet_name:
+            continue  # the title, repeated at the top of every page
         if (session := SESSION_HEADER.match(line)) is not None:
             number = session.group("number")
             current_session = sessions.setdefault(number, ProgramSession(number=number, name=(session.group("name") or "").strip()))
@@ -164,7 +187,7 @@ def parse_report_lines(lines: Iterable[str], meet_name: str = "") -> MeetProgram
                     event_number=current_event.number,
                     heat=current_heat,
                     lane=str(int(entry.group("lane"))) if current_heat else "",
-                    swimmer=format_swimmer_name(MIDDLE_INITIAL.sub("", entry.group("first")), entry.group("last")),
+                    swimmer=format_swimmer_name(clean_first_name(entry.group("first")), entry.group("last")),
                     club=club_code(entry.group("team")),
                     age=int(entry.group("age")),
                     seed_time=(entry.group("seed") or "").replace(" ", ""),
@@ -173,11 +196,17 @@ def parse_report_lines(lines: Iterable[str], meet_name: str = "") -> MeetProgram
             )
             continue
         unread.append(line.strip())
+    program.meet_name = TITLE_DATE_SUFFIX.sub("", program.meet_name)
     program.events = list(events.values())
     program.sessions = list(sessions.values())
     if unread:
         program.warnings.append(UNREAD_LINES_WARNING.format(count=len(unread), example=unread[0][:80]))
     return program
+
+
+def clean_first_name(first: str) -> str:
+    """"Jane M" -> "Jane", "Quincy -" -> "Quincy"."""
+    return MIDDLE_INITIAL.sub("", TRAILING_PUNCTUATION.sub("", first))
 
 
 def parse_report_text(text: str, meet_name: str = "") -> MeetProgram:

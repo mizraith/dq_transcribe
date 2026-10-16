@@ -9,6 +9,7 @@ Run from the repo root with:
 
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 import unittest
@@ -137,11 +138,11 @@ class MeetManagerDatabaseTests(unittest.TestCase):
         "team": [{"Team_no": "1", "Team_abbr": "PASA"}, {"Team_no": "2", "Team_abbr": "SCSC"}],
         "athlete": [{"Ath_no": "10", "Last_name": "Smith", "First_name": "Jane", "Pref_name": "", "Team_no": "1", "Ath_age": "10"},
                     {"Ath_no": "11", "Last_name": "Lee", "First_name": "Patrick", "Pref_name": "Pat", "Team_no": "2", "Ath_age": "9"}],
-        "event": [{"Event_ptr": "100", "Event_no": "12", "Event_ltr": "", "Event_sex": "F", "Event_dist": "50",
+        "event": [{"Event_ptr": "100", "Event_no": "12", "Event_ltr": "", "Event_sex": "G", "Event_gender": "F", "Event_dist": "50",
                    "Event_stroke": "C", "Low_age": "0", "High_Age": "10", "Ind_rel": "I"},
-                  {"Event_ptr": "101", "Event_no": "13", "Event_ltr": "", "Event_sex": "M", "Event_dist": "200",
+                  {"Event_ptr": "101", "Event_no": "13", "Event_ltr": "", "Event_sex": "B", "Event_gender": "M", "Event_dist": "200",
                    "Event_stroke": "E", "Low_age": "0", "High_Age": "10", "Ind_rel": "R"}],
-        "entry": [{"Event_ptr": "100", "Ath_no": "10", "Fin_heat": "2", "Fin_lane": "4", "Pre_heat": "0", "Pre_lane": "0"}],
+        "entry": [{"Event_ptr": "100", "Ath_no": "10", "Fin_heat": "2", "Fin_lane": "4", "Pre_heat": "0", "Pre_lane": "0", "ConvSeed_time": "71.52"}],
         "relay": [{"Relay_no": "7", "Event_ptr": "101", "Team_no": "2", "Team_ltr": "A", "Fin_heat": "1", "Fin_lane": "3"}],
         "relay_names": [{"Relay_no": "7", "Ath_no": "11", "Pos_no": "1"}],
         "session": [{"Sess_no": "1", "Sess_ptr": "500", "Sess_name": "Friday PM", "Sess_day": "1", "Sess_starttime": "46800"}],
@@ -170,7 +171,7 @@ class MeetManagerDatabaseTests(unittest.TestCase):
 
     def test_age_groups(self) -> None:
         self.assertEqual([mm_database.age_group_label(*ages) for ages in ((0, 10), (11, 12), (13, 109), (0, 109))],
-                         ["10 & Under", "11-12", "13 & Over", "Open"])
+                         ["10 & Under", "11-12", "13+", None])
 
 
 class ProgramStoreAndDqTests(unittest.TestCase):
@@ -216,8 +217,8 @@ class MeetSheetTests(unittest.TestCase):
         self.assertEqual((sheet.name, sheet.start_date.isoformat(), sheet.course), ("PASA All Treats No Tricks Candy Meet Block Party", "2026-10-16", "Yard"))
         self.assertEqual(len(sheet.events), 26)  # 13 lines, girls' and boys' numbers
         self.assertEqual((sheet.events[0].short_label, sheet.events[3].short_label, sheet.events[25].short_label),
-                         ("Girls Open 100 Freestyle", "Boys 8 & Under 25 Freestyle", "Boys Open 100 Individual Medley"))
-        self.assertEqual((sheet.sessions[0].start_time, sheet.sessions[0].name), ("16:45", "Session 1 (warm-up 4:00 PM)"))
+                         ("Girls 100 Freestyle", "Boys 8 & Under 25 Freestyle", "Boys 100 Individual Medley"))
+        self.assertEqual((sheet.sessions[0].start_time, sheet.sessions[0].name), ("16:45", "Friday 4:45 PM (warm-up 4:00 PM)"))
         self.assertEqual(sheet.officials, [])
         self.assertEqual(len(sheet.dates), 1)  # the entry deadline (October 14) is not a meet day
 
@@ -237,3 +238,138 @@ class MeetSheetTests(unittest.TestCase):
                          "https://docs.google.com/document/d/AbC_1-x/export?format=txt")
         self.assertEqual(download_address("https://drive.google.com/file/d/XyZ/view?usp=sharing"),
                          "https://drive.google.com/uc?export=download&id=XyZ")
+
+
+class RealLayoutTests(unittest.TestCase):
+    """A real Hy-Tek Meet Manager 8 meet program (names replaced) in 1, 2 and 3 columns, HTML and PDF."""
+
+    FIXTURE = Path(__file__).parent / "data" / "hytek_meet_program.htm"
+
+    def single_column(self):
+        """The fixture read as HTML (the reference result)."""
+        program, file_format = read_meet_file(self.FIXTURE)
+        self.assertEqual(file_format, constants.MEET_FILE_FORMAT_HTML)
+        return program
+
+    @staticmethod
+    def entries(program) -> dict:
+        return {(e.event_number, e.heat, e.lane): (e.swimmer, e.club, e.age, e.seed_time) for e in program.entries}
+
+    def test_html_report(self) -> None:
+        program = self.single_column()
+        self.assertEqual(program.meet_name, "Example Candy Meet Block Party")
+        self.assertEqual((len(program.events), len(program.entries), program.summary()["heats"], program.warnings), (26, 538, 78, []))
+        first = program.entries[0]
+        self.assertEqual((first.event_number, first.heat, first.lane, first.club, first.age, first.seed_time), ("1", "1", "1", "EXSC", 14, "1:11.52"))
+        self.assertEqual([event.short_label for event in program.events[:3]], ["Girls 100 Freestyle", "Boys 100 Freestyle", "Girls 8 & Under 25 Freestyle"])
+
+    def _columns(self, columns: int) -> str:
+        """The report re-laid out with N columns per page, as pdftotext -layout prints such pages."""
+        from dq_transcribe.meet_files.html_report import html_text
+        lines = [line for line in html_text(self.FIXTURE.read_text()).splitlines()]
+        rows_per_column, width = 45, 84
+        pages = []
+        per_page = rows_per_column * columns
+        for start in range(0, len(lines), per_page):
+            chunk = lines[start:start + per_page]
+            parts = [chunk[index:index + rows_per_column] for index in range(0, len(chunk), rows_per_column)]
+            page = []
+            for row in range(rows_per_column):
+                page.append("".join((part[row] if row < len(part) else "").ljust(width) for part in parts).rstrip())
+            pages.append("\n".join(page))
+        return "\f".join(pages)
+
+    def test_two_and_three_columns_read_the_same(self) -> None:
+        reference = self.entries(self.single_column())
+        for columns in (2, 3):
+            program = parse_report_text(self._columns(columns))
+            self.assertEqual(self.entries(program), reference, f"{columns} columns")
+
+    def test_pdf_with_result_blanks(self) -> None:
+        if shutil.which(constants.PDF_TO_TEXT_COMMAND) is None:
+            self.skipTest("pdftotext is not installed here")
+        try:
+            from reportlab.lib.pagesizes import landscape, letter
+            from reportlab.pdfgen import canvas
+        except ImportError:
+            self.skipTest("reportlab is not installed here")
+        from dq_transcribe.meet_files.html_report import html_text
+        folder = Path(tempfile.mkdtemp())
+        path = folder / "program.pdf"
+        pdf = canvas.Canvas(str(path), pagesize=landscape(letter))
+        pdf.setFont("Courier", 7)
+        y = 580
+        for line in html_text(self.FIXTURE.read_text()).splitlines():
+            if re.match(r"^\s{1,3}\d{1,2}\s", line):
+                line = line.rstrip() + "     _________________    _______"  # a printed heat sheet's result blanks
+            pdf.drawString(20, y, line)
+            y -= 8.5
+            if y < 20:
+                pdf.showPage()
+                pdf.setFont("Courier", 7)
+                y = 580
+        pdf.save()
+        program, file_format = read_meet_file(path)
+        self.assertEqual(file_format, constants.MEET_FILE_FORMAT_PDF)
+        self.assertEqual(self.entries(program), self.entries(self.single_column()))
+
+
+class RealMeetSheetTests(unittest.TestCase):
+    """Real meet sheets (public announcements, 2025-2026): the PDFs as pdftotext -layout text, and a Word file."""
+
+    FOLDER = Path(__file__).parent / "data" / "meet_sheets"
+    # file: (start date, days, course, event count, sessions as (day, start, warm-up or ""), officials as (title, name))
+    EXPECTED = {
+        "bac_cba.txt": ("2025-06-06", 3, "Meter", 51,
+                        [("2025-06-06", "16:30", "15:30"), ("2025-06-07", "08:30", "07:00"), ("2025-06-07", "12:00", ""),
+                         ("2025-06-08", "08:30", "07:00"), ("2025-06-08", "12:00", "")],
+                        {("Meet Referee", "Manus J-Cheng"), ("Meet Referee", "Lucille Glassman"), ("Admin Official", "Carol Waln"),
+                         ("Head Starter", "Jeff Hu"), ("Meet Director", "Tommy Dowley")}),
+        "cal.txt": ("2025-01-11", 2, "Yard", 28,
+                    [("2025-01-11", "09:00", "07:30"), ("2025-01-11", "13:00", ""), ("2025-01-12", "09:00", "07:30"), ("2025-01-12", "13:00", "")],
+                    {("Meet Referee", "Leo Lin"), ("Admin Ref", "Christopher Lam"), ("Head Starter", "Mark Ryan")}),
+        "pasa_cba.txt": ("2026-02-07", 2, "Yard", 38,
+                         [("2026-02-07", "09:00", "07:30"), ("2026-02-08", "09:00", "07:30")],
+                         {("Meet Referee", "Lucille Glassman"), ("Admin Official", "Amer Mirza"), ("Head Starter", "Manus J-Cheng")}),
+        "spring_ag.txt": ("2025-03-14", 3, "Yard", 100,
+                          [("2025-03-14", "09:00", "07:15"), ("2025-03-15", "09:00", "07:15"), ("2025-03-16", "09:00", "07:15")],
+                          {("Meet Referee", "Mike Piccardo"), ("Admin Official", "Angela Cardenas"), ("Head Starter", "Mette Graversen")}),
+        "vjo.txt": ("2025-05-30", 3, "Meter", 62,
+                    [("2025-05-30", "17:00", "15:30"), ("2025-05-31", "09:00", "07:30"), ("2025-06-01", "09:00", "07:30")],
+                    {("Meet Referee", "Don Bautista"), ("Admin Official", "Mike Abegg"), ("Head Starter", "Lesley Ruszel")}),
+        "happy_fall.txt": ("2025-10-11", 2, "Yard", 31, [("2025-10-11", "09:00", "08:00"), ("2025-10-12", "09:00", "08:00")], set()),
+        "merced.docx": ("2026-04-25", 2, "Meter", 68, [("2026-04-25", "09:00", "07:30"), ("2026-04-26", "09:00", "07:30")], set()),
+    }
+
+    def test_real_sheets(self) -> None:
+        from dq_transcribe.meet_files.meet_sheet import read_meet_sheet_file
+        for name, (start, days, course, event_count, sessions, officials) in self.EXPECTED.items():
+            with self.subTest(sheet=name):
+                sheet = read_meet_sheet_file(self.FOLDER / name)
+                self.assertEqual((sheet.start_date.isoformat(), len(sheet.dates), sheet.course, len(sheet.events)),
+                                 (start, days, course, event_count))
+                found_sessions = [(item.day, item.start_time, re.sub(r".*warm-up (.*)\)", r"\1", item.name) if "warm-up" in item.name else "")
+                                  for item in sheet.sessions]
+                expected_sessions = [(day, begin, _twelve(warmup) if warmup else "") for day, begin, warmup in sessions]
+                self.assertEqual(found_sessions, expected_sessions)
+                self.assertTrue(officials <= {(item["title"], item["name"]) for item in sheet.officials})
+
+    def test_titles(self) -> None:
+        from dq_transcribe.meet_files.meet_sheet import read_meet_sheet_file
+        self.assertEqual(read_meet_sheet_file(self.FOLDER / "pasa_cba.txt").name,
+                         "PACIFIC SWIMMING SHORT COURSE C/B/A+ MEET (PALO ALTO STANFORD AQUATICS)")
+        self.assertEqual(read_meet_sheet_file(self.FOLDER / "cal.txt").name, "CAL Invitational Swim Meet")
+        events = read_meet_sheet_file(self.FOLDER / "merced.docx").events
+        self.assertEqual([event.short_label for event in events[:4]],
+                         ["Girls 13+ 200 Freestyle", "Boys 13+ 200 Freestyle", "Girls 11-12 200 Freestyle", "Boys 11-12 200 Freestyle"])
+
+
+def _twelve(clock: str) -> str:
+    """"07:30" -> "7:30 AM"."""
+    from datetime import datetime
+    return datetime.strptime(clock, "%H:%M").strftime("%I:%M %p").lstrip("0")
+
+
+
+if __name__ == "__main__":
+    unittest.main()

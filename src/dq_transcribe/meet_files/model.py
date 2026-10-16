@@ -23,7 +23,7 @@ from dq_transcribe import constants
 
 # Spoken/printed stroke names, longest first, mapped to the app's stroke names.
 _STROKE_PATTERNS = (
-    (re.compile(r"\bmedley\s+relay\b", re.IGNORECASE), constants.STROKE_MEDLEY_RELAY),
+    (re.compile(r"\bmed(?:ley)?\.?\s+relay\b", re.IGNORECASE), constants.STROKE_MEDLEY_RELAY),
     (re.compile(r"\b(?:free(?:style)?|free)\s+relay\b", re.IGNORECASE), constants.STROKE_FREESTYLE_RELAY),
     (re.compile(r"\b(?:individual\s+medley|IM)\b", re.IGNORECASE), constants.STROKE_INDIVIDUAL_MEDLEY),
     (re.compile(r"\b(?:butterfly|fly)\b", re.IGNORECASE), constants.STROKE_BUTTERFLY),
@@ -33,14 +33,32 @@ _STROKE_PATTERNS = (
 )
 _DISTANCE_PATTERN = re.compile(r"\b(\d{2,4})\s*(Yard|Yd|Y|Meter|M|LC\s*Meter|SC\s*Meter)\b", re.IGNORECASE)
 # A distance written without a unit, right before the stroke ("Open 100 free" on a meet sheet).
-_BARE_DISTANCE_PATTERN = re.compile(r"\b(\d{2,4})\s+(?=(?:free|back|breast|fly|butterfly|im\b|individual|medley))", re.IGNORECASE)
+_BARE_DISTANCE_PATTERN = re.compile(r"\b(\d{2,4})\s+(?=(?:free|back|breast|fly|butterfly|im\b|individual|medley|med\b))", re.IGNORECASE)
 _GENDER_PATTERN = re.compile(r"\b(Girls|Boys|Women|Men|Mixed|Female|Male)\b", re.IGNORECASE)
 _AGE_GROUP_PATTERN = re.compile(
-    r"\b(\d{1,2}\s*(?:&|and)\s*(?:Under|Over|Up)|\d{1,2}\s*-\s*\d{1,2}|Open|Senior)\b", re.IGNORECASE
+    r"\b(\d{1,2}\s*(?:&|and)\s*(?:Under|Over|Up)\b|\d{1,2}\s*-\s*\d{1,2}\b|\d{1,2}\+|Open\b|Senior\b)", re.IGNORECASE
 )
 _RELAY_WORD = "relay"
 # Club codes are often printed with the swimming region (LSC): "PASA-PC".
 _CLUB_REGION_SUFFIX = re.compile(r"-[A-Z]{2}$")
+
+
+OPEN_AGE_GROUP = "open"
+
+
+# "13 & Over", "13 and over", "13/over", "13 & Up" are shown as "13+" (owner's preference).
+_OVER_AGE_GROUP = re.compile(r"^(\d{1,2})\s*(?:&|and|/|-)?\s*(?:over|up|o)$", re.IGNORECASE)
+AGE_OVER_FORMAT = "{age}+"
+
+
+def _age_group(text: str) -> str | None:
+    """"8 & under" -> "8 & Under"; "13 & Over" -> "13+"; "Open" -> None (reports print no age group for open events)."""
+    label = " ".join(text.split())
+    over = _OVER_AGE_GROUP.match(label)
+    if over:
+        return AGE_OVER_FORMAT.format(age=over.group(1))
+    label = label.title()
+    return None if label.lower() == OPEN_AGE_GROUP else label
 
 
 def stroke_from_description(description: str) -> str | None:
@@ -70,6 +88,8 @@ def club_code(team: str) -> str:
 
 def format_swimmer_name(first: str, last: str) -> str:
     """A swimmer's name as written on a DQ (see ``SWIMMER_NAME_FORMAT``)."""
+    if (first + last).isupper():
+        first, last = first.title(), last.title()  # some databases store a name in capitals
     if not first:
         return last.strip()
     return constants.SWIMMER_NAME_FORMAT.format(first=first.strip(), last=last.strip()).strip(" ,")
@@ -119,7 +139,7 @@ class ProgramEvent:
             number=normalize_event_number(number),
             description=description,
             gender=gender.group(1).title() if gender else None,
-            age_group=" ".join(age.group(1).split()).title() if age else None,
+            age_group=_age_group(age.group(1)) if age else None,
             distance=distance_value,
             course=course,
             stroke=stroke_from_description(description),

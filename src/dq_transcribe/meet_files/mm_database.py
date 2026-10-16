@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -53,8 +54,10 @@ INDIVIDUAL_STROKES = {
 }
 RELAY_STROKES = {"A": constants.STROKE_FREESTYLE_RELAY, "E": constants.STROKE_MEDLEY_RELAY}
 RELAY_CODE = "R"
-GENDER_WORDS = {"F": ("Girls", "Women"), "G": ("Girls", "Women"), "W": ("Girls", "Women"),
-                "M": ("Boys", "Men"), "B": ("Boys", "Men"), "X": ("Mixed", "Mixed")}
+# Event_sex holds the printed word's letter (G Girls, B Boys, W Women, M Men, X Mixed);
+# Event_gender holds F/M/X. Event_sex is used when present.
+EVENT_SEX_WORDS = {"G": "Girls", "B": "Boys", "W": "Women", "M": "Men", "X": "Mixed"}
+GENDER_WORDS = {"F": ("Girls", "Women"), "M": ("Boys", "Men"), "X": ("Mixed", "Mixed")}
 # Ages above this are adult age groups (Women/Men instead of Girls/Boys).
 YOUTH_MAX_AGE = 18
 # Meet Manager stores "no upper age" as a large number.
@@ -70,11 +73,12 @@ TABLE_NAMES = {
 }
 COLUMNS = {
     "event_ptr": ("Event_ptr",), "event_no": ("Event_no",), "event_letter": ("Event_ltr",),
-    "event_sex": ("Event_sex", "Event_gender"), "event_distance": ("Event_dist",),
+    "event_sex": ("Event_sex",), "event_gender": ("Event_gender",), "event_distance": ("Event_dist",),
     "event_stroke": ("Event_stroke",), "low_age": ("Low_age",), "high_age": ("High_Age", "High_age"),
     "individual_relay": ("Ind_rel",), "athlete_no": ("Ath_no",), "last_name": ("Last_name",),
     "first_name": ("First_name",), "preferred_name": ("Pref_name",), "athlete_age": ("Ath_age",),
-    "team_no": ("Team_no",), "team_abbr": ("Team_abbr",), "team_name": ("Team_name",),
+    "team_no": ("Team_no",), "team_abbr": ("Team_abbr",), "team_short": ("Team_short",), "team_name": ("Team_name",),
+    "seed_time": ("ConvSeed_time", "ActualSeed_time"), "meet_start": ("Meet_start",),
     "final_heat": ("Fin_heat",), "final_lane": ("Fin_lane",), "prelim_heat": ("Pre_heat",),
     "prelim_lane": ("Pre_lane",), "team_letter": ("Team_ltr",), "relay_no": ("Relay_no",),
     "position": ("Pos_no", "Relay_leg"), "session_no": ("Sess_no",), "session_ptr": ("Sess_ptr",),
@@ -82,6 +86,8 @@ COLUMNS = {
     "meet_name": ("Meet_name1", "Meet_name"),
 }
 SECONDS_PER_HOUR = 3600
+NO_TIME = "NT"
+MEET_DATE_FORMAT = "%m/%d/%y"
 SECONDS_PER_MINUTE = 60
 
 
@@ -103,14 +109,36 @@ def _positive_int(text: str) -> int:
 
 
 def age_group_label(low: int, high: int) -> str | None:
-    """Meet Manager ages as an age-group label: "10 & Under", "11-12", "13 & Over", "Open"."""
+    """Meet Manager ages as an age-group label: "10 & Under", "11-12", "13 & Over", or None for open
+    (Meet Manager's reports print no age group for open events)."""
     if low <= 0 and (high <= 0 or high >= NO_UPPER_AGE):
-        return "Open"
+        return None
     if low <= 0:
         return f"{high} & Under"
     if high <= 0 or high >= NO_UPPER_AGE:
-        return f"{low} & Over"
+        return f"{low}+"
     return f"{low}-{high}"
+
+
+def seed_time_text(text: str) -> str:
+    """Seconds as printed on a heat sheet: 71.52 -> "1:11.52", 23.7 -> "23.70", 0 or empty -> "NT"."""
+    try:
+        seconds = float(text)
+    except ValueError:
+        return NO_TIME
+    if seconds <= 0:
+        return NO_TIME
+    minutes, rest = divmod(round(seconds * 100) / 100, SECONDS_PER_MINUTE)
+    return f"{int(minutes)}:{rest:05.2f}" if minutes else f"{rest:.2f}"
+
+
+def _meet_day(meet_start: str, day_number: str) -> str | None:
+    """A session's date: day 1 is the meet's first day ("10/16/26 00:00:00")."""
+    try:
+        start = datetime.strptime(meet_start.split()[0], MEET_DATE_FORMAT)
+        return (start + timedelta(days=max(_positive_int(day_number), 1) - 1)).date().isoformat()
+    except (ValueError, IndexError):
+        return None
 
 
 def _start_time(text: str) -> str | None:
@@ -180,10 +208,16 @@ def _read_database(path: Path) -> MeetProgram:
     program = MeetProgram()
     warnings = program.warnings
     meets = reader.table("meet", warnings)
+    meet_start = ""
     if meets:
         program.meet_name = _column(meets[0], "meet_name")
+        meet_start = _column(meets[0], "meet_start")
 
-    teams = {_column(row, "team_no"): club_code(_column(row, "team_abbr") or _column(row, "team_name")) for row in reader.table("team", warnings)}
+    # The club as Meet Manager's heat sheets print it: the short name ("PASA", "UC Sharks").
+    teams = {
+        _column(row, "team_no"): club_code(_column(row, "team_short") or _column(row, "team_abbr") or _column(row, "team_name"))
+        for row in reader.table("team", warnings)
+    }
     athletes: dict[str, dict[str, Any]] = {}
     for row in reader.table("athlete", warnings):
         first = _column(row, "preferred_name") or _column(row, "first_name")
@@ -199,8 +233,10 @@ def _read_database(path: Path) -> MeetProgram:
         stroke_code = _column(row, "event_stroke").upper()
         stroke = (RELAY_STROKES if relay else INDIVIDUAL_STROKES).get(stroke_code)
         low, high = _positive_int(_column(row, "low_age")), _positive_int(_column(row, "high_age"))
-        youth_word, adult_word = GENDER_WORDS.get(_column(row, "event_sex").upper()[:1], ("", ""))
-        gender = youth_word if 0 < high <= YOUTH_MAX_AGE or (high <= 0 and low <= YOUTH_MAX_AGE) else adult_word
+        gender = EVENT_SEX_WORDS.get(_column(row, "event_sex").upper()[:1])
+        if gender is None:
+            youth_word, adult_word = GENDER_WORDS.get(_column(row, "event_gender").upper()[:1], ("", ""))
+            gender = youth_word if low <= YOUTH_MAX_AGE else adult_word
         distance = _positive_int(_column(row, "event_distance")) or None
         age_group = age_group_label(low, high)
         number = normalize_event_number(_column(row, "event_no") + _column(row, "event_letter"))
@@ -220,7 +256,8 @@ def _read_database(path: Path) -> MeetProgram:
             if heat and lane:
                 program.entries.append(ProgramEntry(
                     event_number=event.number, heat=str(heat), lane=str(lane), swimmer=athlete["name"],
-                    club=athlete["club"], age=athlete["age"], round=round_name,
+                    club=athlete["club"], age=athlete["age"], seed_time=seed_time_text(_column(row, "seed_time")),
+                    round=round_name,
                 ))
 
     relay_swimmers: dict[str, list[tuple[int, str]]] = {}
@@ -247,7 +284,7 @@ def _read_database(path: Path) -> MeetProgram:
     for row in reader.table("session", warnings):
         session = ProgramSession(
             number=_column(row, "session_no"), name=_column(row, "session_name"),
-            day=_column(row, "session_day") or None, start_time=_start_time(_column(row, "session_start")),
+            day=_meet_day(meet_start, _column(row, "session_day")), start_time=_start_time(_column(row, "session_start")),
         )
         sessions_by_pointer[_column(row, "session_ptr") or session.number] = session
     for row in reader.table("session_item", warnings):
