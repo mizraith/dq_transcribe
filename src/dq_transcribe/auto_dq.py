@@ -10,6 +10,9 @@ call (``DqStore.candidates``):
   referee's acknowledgment was heard, otherwise as Called. The swimmer and club
   are filled from the meet file (``DqStore.create_dq`` does that), and the
   referee and chief judge from the roster when the meet has exactly one of each;
+* **adds later calls on the same swimmer** (same event, heat and lane) to that
+  DQ instead of making another: calls come in pieces many seconds apart (IM,
+  longer races) and are sometimes repeated (``DqStore.add_call``);
 * **marks it Accepted later** if the acknowledgment arrives in a later clip, as
   long as nobody has changed the DQ's state by hand.
 
@@ -163,9 +166,9 @@ class AutoDqCreator:
         """Make DQs from the active meet's new calls, and accept those whose acknowledgment came later.
 
         Returns:
-            ``{"created": [dq ids], "accepted": [dq ids]}``.
+            ``{"created": [dq ids], "added_to": [dq ids a later call was added to], "accepted": [dq ids]}``.
         """
-        result: dict[str, list[int]] = {"created": [], "accepted": []}
+        result: dict[str, list[int]] = {"created": [], "added_to": [], "accepted": []}
         meet_id = self.database.get_active_meet_id()
         if meet_id is None or not self.enabled:
             return result
@@ -190,13 +193,13 @@ class AutoDqCreator:
             if not candidate.get("lane") or FLAG_NOT_UNDERSTOOD in (candidate.get("flags") or []):
                 continue  # not enough to go on: a person makes this one from the transcript
             try:
-                dq_id = self.dq_store.create_dq(candidate_payload(candidate, roster_fill), meet_id, note=CREATED_NOTE)
+                dq_id, added = self.dq_store.add_call(candidate_payload(candidate, roster_fill), meet_id, note=CREATED_NOTE)
             except DqError as error:
                 LOGGER.info("Automatic DQs: skipped call %s (%s)", candidate["key"], error)
                 continue
-            result["created"].append(dq_id)
-        if result["created"] or result["accepted"]:
-            LOGGER.info("Automatic DQs in %s: created %s, accepted %s", meet.get("name"), result["created"], result["accepted"])
+            result["added_to" if added else "created"].append(dq_id)
+        if any(result.values()):
+            LOGGER.info("Automatic DQs in %s: %s", meet.get("name"), result)
         # Our own changes alter the signature: take it after them, so the next pass skips.
         self._last_signature = None if waiting else self._signature(meet_id)
         return result
@@ -248,7 +251,7 @@ class AutoDqCreator:
             return None
         with self.database.connection() as connection:
             row = connection.execute(
-                "SELECT id, state, source FROM dqs WHERE candidate_key = ? AND trashed_at IS NULL", (candidate["key"],)
+                "SELECT id, state, source FROM dqs WHERE id = ? AND trashed_at IS NULL", (self.dq_store.dq_for_call(candidate["key"]),)
             ).fetchone()
             if row is None or row["state"] != constants.DQ_STATE_CALLED or row["source"] != constants.DQ_SOURCE_AUTO:
                 return None

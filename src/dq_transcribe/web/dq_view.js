@@ -168,7 +168,9 @@ async function createDqFromCandidate(candidate) {
   body[CONFIG.candidateKeyKey] = candidate.key;
   try {
     const reply = await postJson(CONFIG.dqsRoute, body);
-    notify("\u2713 Created DQ #" + reply.dq_id + " (" + eventHeatLane(candidate) + "). Open the DQs view to complete it.");
+    notify(reply[CONFIG.addedToExistingKey]
+      ? "\u2713 Added to DQ #" + reply.dq_id + " (" + eventHeatLane(candidate) + ": same swimmer)."
+      : "\u2713 Created DQ #" + reply.dq_id + " (" + eventHeatLane(candidate) + "). Open the DQs view to complete it.");
   } catch (error) {
     setStatus("Could not create the DQ: " + error.message);
   }

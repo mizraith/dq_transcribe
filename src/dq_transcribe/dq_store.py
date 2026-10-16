@@ -87,6 +87,14 @@ _CREATE_TABLES = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS candidate_links (
+        candidate_key TEXT PRIMARY KEY,
+        dq_id INTEGER NOT NULL,
+        meet_id INTEGER,
+        linked_at TEXT NOT NULL
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS candidate_dismissals (
         candidate_key TEXT PRIMARY KEY,
         meet_id INTEGER,
@@ -95,6 +103,11 @@ _CREATE_TABLES = (
     """,
 )
 _EVENT_SORT_PATTERN = re.compile(r"^(\d+)(.*)$")
+# History notes when a later call is added to a DQ (see DqStore.add_call).
+CALL_ADDED_NOTE = "another call added: {infractions}"
+CALL_REPEATED_NOTE = "same call heard again"
+CALL_AFTER_NOTIFY_NOTE = "call heard after notification (not added; check it): {infractions}"
+ACKNOWLEDGMENT_HEARD_NOTE = "acknowledgment heard on the radio"
 # Parsed calls are cached per conversation group and recomputed only when the
 # group's turns or their text change (parsing every group on every page refresh
 # was too slow on the tablet). The cache is cleared when it grows past this size.
@@ -169,6 +182,7 @@ class DqStore:
         with self._database.connection() as connection:
             used = {row[0] for row in connection.execute("SELECT candidate_key FROM dqs WHERE candidate_key IS NOT NULL")}
             used |= {row[0] for row in connection.execute("SELECT candidate_key FROM candidate_dismissals")}
+            used |= {row[0] for row in connection.execute("SELECT candidate_key FROM candidate_links")}
         groups: dict[int, list[dict[str, Any]]] = {}
         for clip in clips:
             groups.setdefault(clip["group_id"], []).append(clip)
@@ -265,7 +279,9 @@ class DqStore:
         source = constants.DQ_SOURCE_AUTO if key else constants.DQ_SOURCE_MANUAL
         now = utc_now_iso()
         with self._database.transaction() as connection:
-            if isinstance(key, str) and connection.execute("SELECT 1 FROM dqs WHERE candidate_key = ?", (key,)).fetchone():
+            if isinstance(key, str) and connection.execute(
+                "SELECT 1 FROM dqs WHERE candidate_key = ? UNION SELECT 1 FROM candidate_links WHERE candidate_key = ?", (key, key)
+            ).fetchone():
                 raise DqError("This call is already a DQ")
             columns = ", ".join(fields)
             placeholders = ", ".join("?" for _ in fields)
@@ -287,6 +303,127 @@ class DqStore:
             )
         self._fill_from_program(dq_id)
         return dq_id
+
+    def add_call(self, payload: dict[str, Any], meet_id: int | None, note: str | None = None) -> tuple[int, bool]:
+        """A detected call: added to the DQ already made for the same swimmer, or a new DQ.
+
+        Calls on one swimmer often come in pieces, many seconds apart (an IM or a
+        longer race), and the same call is sometimes repeated. So when the meet
+        already has a DQ (not in the trash) for the same event, heat and lane, the
+        call is added to it instead of making a second DQ:
+
+        * its audio is added to the DQ's evidence ("Heard in");
+        * an infraction the DQ does not list yet is added, while the DQ is still
+          Called or Accepted (once the coach was told, it is written in the history
+          for the admin to decide);
+        * a repeated infraction adds nothing but the evidence (and fills in a slip
+          code the DQ was missing);
+        * an acknowledgment heard with it accepts a DQ that was still Called;
+        * the call is remembered as used, pointing to that DQ.
+
+        Calls without an event, heat or lane always make a new DQ.
+
+        Args:
+            payload: As for ``create_dq``, with ``candidate_key``.
+            meet_id: The meet.
+            note: History note for a new DQ.
+
+        Returns:
+            ``(dq_id, added_to_existing)``.
+
+        Raises:
+            DqError: If the payload is invalid or the call was already used.
+        """
+        spot = tuple(payload.get(name) for name in ("event", "heat", "lane"))
+        existing = self._dq_for_spot(meet_id, *spot) if all(spot) else None
+        if existing is None:
+            return self.create_dq(payload, meet_id, note), False
+        self._merge_call(existing, payload, meet_id)
+        return existing, True
+
+    def _dq_for_spot(self, meet_id: int | None, event: Any, heat: Any, lane: Any) -> int | None:
+        """The meet's DQ for an event, heat and lane (not trashed; a declined one only if there is no other)."""
+        wanted = (normalize_event_number(str(event)), _number_text(heat), _number_text(lane))
+        with self._database.connection() as connection:
+            rows = connection.execute(
+                "SELECT id, event, heat, lane, state FROM dqs WHERE meet_id IS ? AND trashed_at IS NULL ORDER BY id", (meet_id,)
+            ).fetchall()
+        matches = [row for row in rows
+                   if (normalize_event_number(row["event"] or ""), _number_text(row["heat"]), _number_text(row["lane"])) == wanted]
+        live = [row for row in matches if row["state"] != constants.DQ_STATE_DECLINED]
+        chosen = (live or matches)
+        return int(chosen[0]["id"]) if chosen else None
+
+    def _merge_call(self, dq_id: int, payload: dict[str, Any], meet_id: int | None) -> None:
+        """Add a call to an existing DQ (see ``add_call``)."""
+        key = payload.get(constants.REQUEST_KEY_CANDIDATE_KEY)
+        infractions = _infractions(payload.get(constants.REQUEST_KEY_INFRACTIONS, []))
+        evidence = _evidence(payload.get(constants.REQUEST_KEY_EVIDENCE, []))
+        now = utc_now_iso()
+        accept = False
+        with self._database.transaction() as connection:
+            if isinstance(key, str):
+                used = connection.execute(
+                    "SELECT 1 FROM dqs WHERE candidate_key = ? UNION SELECT 1 FROM candidate_links WHERE candidate_key = ?", (key, key)
+                ).fetchone()
+                if used:
+                    raise DqError("This call is already a DQ")
+                connection.execute(
+                    "INSERT INTO candidate_links (candidate_key, dq_id, meet_id, linked_at) VALUES (?, ?, ?, ?)", (key, dq_id, meet_id, now)
+                )
+            row = connection.execute("SELECT state FROM dqs WHERE id = ?", (dq_id,)).fetchone()
+            known_evidence = {(item["clip_id"], item["utterance_id"], item["start_seconds"])
+                              for item in connection.execute("SELECT clip_id, utterance_id, start_seconds FROM dq_evidence WHERE dq_id = ?", (dq_id,))}
+            connection.executemany(
+                "INSERT INTO dq_evidence (dq_id, clip_id, utterance_id, start_seconds, end_seconds, role) VALUES (?, ?, ?, ?, ?, ?)",
+                [(dq_id, *item) for item in evidence if (item[0], item[1], item[2]) not in known_evidence],
+            )
+            current = connection.execute(
+                "SELECT id, description, code, position FROM dq_infractions WHERE dq_id = ? ORDER BY position", (dq_id,)
+            ).fetchall()
+            by_description = {item["description"].casefold(): item for item in current}
+            position = max((item["position"] for item in current), default=-1)
+            added, late = [], []
+            editable = row["state"] in (constants.DQ_STATE_CALLED, constants.DQ_STATE_ACCEPTED)
+            for description, code, revision, phases, detail, options in infractions:
+                same = by_description.get(description.casefold())
+                if same is not None:
+                    if code and not same["code"]:
+                        connection.execute("UPDATE dq_infractions SET code = ?, slip_revision = ? WHERE id = ?", (code, revision, same["id"]))
+                    continue
+                if not editable:
+                    late.append(description)
+                    continue
+                position += 1
+                connection.execute(
+                    "INSERT INTO dq_infractions (dq_id, position, description, code, slip_revision, phases, detail, code_options) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (dq_id, position, description, code, revision, phases, detail, options),
+                )
+                by_description[description.casefold()] = {"id": None, "code": code}
+                added.append(description)
+            if added:
+                history_note = CALL_ADDED_NOTE.format(infractions=", ".join(added))
+            elif late:
+                history_note = CALL_AFTER_NOTIFY_NOTE.format(infractions=", ".join(late))
+            else:
+                history_note = CALL_REPEATED_NOTE
+            connection.execute("UPDATE dqs SET updated_at = ? WHERE id = ?", (now, dq_id))
+            connection.execute(
+                "INSERT INTO dq_history (dq_id, at, from_state, to_state, by_name, note) VALUES (?, ?, ?, ?, ?, ?)",
+                (dq_id, now, row["state"], row["state"], None, history_note),
+            )
+            accept = bool(payload.get("accepted")) and row["state"] == constants.DQ_STATE_CALLED
+        if accept:
+            self.change_state(dq_id, constants.DQ_STATE_ACCEPTED, None, ACKNOWLEDGMENT_HEARD_NOTE)
+
+    def dq_for_call(self, key: str) -> int | None:
+        """The DQ a detected call was made into or added to (None if it was not used)."""
+        with self._database.connection() as connection:
+            row = connection.execute(
+                "SELECT id FROM dqs WHERE candidate_key = ? UNION ALL SELECT dq_id FROM candidate_links WHERE candidate_key = ?", (key, key)
+            ).fetchone()
+        return int(row[0]) if row else None
 
     def update_dq(self, dq_id: int, payload: dict[str, Any]) -> bool:
         """Change a DQ's text fields and/or replace its infractions.
@@ -780,6 +917,12 @@ def _evidence(items: Any) -> list[tuple[int, int | None, float, float, str]]:
         except (KeyError, TypeError, ValueError, AttributeError) as error:
             raise DqError(f"bad evidence item: {error}") from error
     return rows
+
+
+def _number_text(value: Any) -> str:
+    """"04" -> "4" (heat and lane compared as numbers); other text as is, lower case."""
+    text = str(value or "").strip().lower()
+    return str(int(text)) if text.isdigit() else text
 
 
 def _replace_infractions(connection: sqlite3.Connection, dq_id: int, rows: list[tuple]) -> None:

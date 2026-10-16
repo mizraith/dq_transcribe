@@ -529,3 +529,4 @@ ROUTE_AUTO_DQS = "/api/auto-dqs"  # GET {"enabled"}; POST {"enabled": true|false
 # Printed DQ summary of one event for the Meet Manager operator (offered at Notify event).
 EVENT_SUMMARY_FILENAME = "event_summary.html"
 ROUTE_EVENT_SUMMARY = "/event-summary"  # GET ?event=12 (active meet)
+RESPONSE_KEY_ADDED_TO_EXISTING = "added_to_existing"  # POST /api/dqs: the call was added to the swimmer's DQ

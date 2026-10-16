@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime, timedelta
 import unittest
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from dq_transcribe.database import Database
 from dq_transcribe.dq_store import DqError, DqStore
 
 MEET_NAME = "Candy Meet"
-CLIP_START = "2026-10-16T23:00:{second:02d}+00:00"
+CLIP_START_TIME = "2026-10-16T23:00:00+00:00"
 
 
 class AutoDqTests(unittest.TestCase):
@@ -28,7 +29,8 @@ class AutoDqTests(unittest.TestCase):
 
     def _add_clip(self, texts: list[str], second: int = 0, refine_status: str | None = None) -> int:
         """A transcribed clip in the meet, one utterance per text."""
-        clip_id = self.database.add_clip("clip.wav", None, CLIP_START.format(second=second), CLIP_START.format(second=second + 5), meet_id=self.meet_id)
+        start = datetime.fromisoformat(CLIP_START_TIME) + timedelta(seconds=second)
+        clip_id = self.database.add_clip("clip.wav", None, start.isoformat(), (start + timedelta(seconds=5)).isoformat(), meet_id=self.meet_id)
         with self.database.transaction() as connection:
             connection.execute(
                 "UPDATE clips SET status = ?, refine_status = ?, duration_seconds = 5 WHERE id = ?",
@@ -60,6 +62,31 @@ class AutoDqTests(unittest.TestCase):
         self._add_clip(["Accepted."], second=8)
         self.assertEqual(self.auto.run_once()["accepted"], [dq_id])
         self.assertEqual(self.store.list_dqs(self.meet_id)[0]["state"], constants.DQ_STATE_ACCEPTED)
+
+    def test_later_calls_on_the_same_swimmer_are_added_to_its_dq(self) -> None:
+        self._add_clip(["Event 5, heat 2, lane 3, scissors kick."])
+        dq_id = self.auto.run_once()["created"][0]
+        self._add_clip(["Event 5, heat 2, lane 3, one hand touch."], second=95)  # later in the race
+        self._add_clip(["Event 5, heat 2, lane 3, scissors kick."], second=180)  # the same call again
+        result = self.auto.run_once()
+        self.assertEqual((result["created"], result["added_to"]), ([], [dq_id, dq_id]))
+        dqs = self.store.list_dqs(self.meet_id)
+        self.assertEqual(len(dqs), 1)
+        self.assertEqual([item["description"] for item in dqs[0]["infractions"]], ["Kick: scissors", "One hand touch"])
+        self.assertEqual(len({item["utterance_id"] for item in dqs[0]["evidence"]}), 3)  # every call is in "Heard in"
+        self.assertEqual(self.store.candidates(self.meet_id), [])  # every call is used, pointing to the DQ
+        self.assertIn("same call heard again", [entry["note"] for entry in dqs[0]["history"]])
+
+    def test_call_after_notification_is_noted_not_added(self) -> None:
+        self._add_clip(["Event 5, heat 2, lane 3, scissors kick.", "Accepted."])
+        dq_id = self.auto.run_once()["created"][0]
+        self.store.update_dq(dq_id, {"swimmer": "Pat", "club": "PASA", "official": "Lee", "referee": "Kim"})
+        self.store.change_state(dq_id, constants.DQ_STATE_NOTIFIED, "Admin Official")
+        self._add_clip(["Event 5, heat 2, lane 3, one hand touch."], second=95)
+        self.assertEqual(self.auto.run_once()["added_to"], [dq_id])
+        dq = self.store.list_dqs(self.meet_id)[0]
+        self.assertEqual(len(dq["infractions"]), 1)
+        self.assertTrue(any("after notification" in (entry["note"] or "") for entry in dq["history"]))
 
     def test_waits_for_the_refine_pass(self) -> None:
         self._add_clip(["Event 6, heat 4, lane 2, scissors kick."], refine_status=constants.CLIP_STATUS_QUEUED)

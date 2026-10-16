@@ -196,6 +196,7 @@ def build_web_config() -> dict[str, Any]:
         "coachPageKey": constants.RESPONSE_KEY_COACH_PAGE,
         "coachSignRoute": constants.ROUTE_COACH_SIGN,
         "autoDqsRoute": constants.ROUTE_AUTO_DQS,
+        "addedToExistingKey": constants.RESPONSE_KEY_ADDED_TO_EXISTING,
         "eventSummaryRoute": constants.ROUTE_EVENT_SUMMARY,
         "printRequestedQueryKey": constants.QUERY_KEY_PRINT_REQUESTED,
         "layoutQueryKey": constants.QUERY_KEY_LAYOUT,
@@ -961,12 +962,17 @@ class RequestHandler(BaseHTTPRequestHandler):
         payload = self._read_json_object()
         if payload is None:
             return
+        meet_id = self.server.database.get_active_meet_id()
         try:
-            dq_id = self.server.dq_store.create_dq(payload, self.server.database.get_active_meet_id())
+            if payload.get(constants.REQUEST_KEY_CANDIDATE_KEY):
+                # A detected call: added to the DQ already made for the same swimmer, if any.
+                dq_id, added = self.server.dq_store.add_call(payload, meet_id)
+            else:
+                dq_id, added = self.server.dq_store.create_dq(payload, meet_id), False
         except DqError as error:
             self._send_json_error(HTTPStatus.BAD_REQUEST, str(error))
             return
-        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_DQ_ID: dq_id})
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_DQ_ID: dq_id, constants.RESPONSE_KEY_ADDED_TO_EXISTING: added})
 
     def _handle_update_dq(self, dq_id: int) -> None:
         """Change a DQ's fields or infractions."""

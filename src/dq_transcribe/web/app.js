@@ -1294,18 +1294,23 @@ function buildClipRow(clip) {
 //
 // Each conversation card gets one status, so the transcript can be filtered to what
 // needs a person. In workflow order:
-//   Needs you    - a detected call was left for a person (no lane heard, not understood,
-//                  automatic DQs off), or a clip failed to transcribe;
-//   Transcribing - a clip is waiting for, or in, the first pass;
-//   Rough text   - first-pass text, the accurate pass is still to come (calls wait for it);
-//   DQ made      - every call in it is a DQ;
-//   No call      - final text with no call in it (chatter, acknowledgments).
+//   Processing  - still being transcribed: waiting, the quick first pass, or the more
+//                 accurate second pass (detected calls wait for it before becoming DQs);
+//   Transcribed - final text, with no DQ call in it (chatter, acknowledgments);
+//   DQ made     - every call in it is in a DQ (new, or added to the swimmer's DQ);
+//   Needs you   - a detected call was left for a person (no lane heard, not understood,
+//                 automatic DQs off), or a clip failed to transcribe.
 const TRANSCRIPT_STATUSES = {
-  needs_you: "\u26a0 Needs you",
-  transcribing: "Transcribing",
-  rough: "Rough text",
+  processing: "Processing",
+  transcribed: "Transcribed",
   dq_made: "\u2713 DQ made",
-  no_call: "No call",
+  needs_you: "\u26a0 Needs you",
+};
+const TRANSCRIPT_STATUS_HINTS = {
+  processing: "Still being transcribed (first pass, or the more accurate second pass)",
+  transcribed: "Final text with no DQ call in it",
+  dq_made: "Every call in it is in a DQ",
+  needs_you: "A call the app could not make into a DQ by itself, or a clip that failed",
 };
 const TRANSCRIPT_FILTER_ALL = "all";
 const TRANSCRIPT_FILTER_STORAGE_KEY = "dq_transcribe.transcriptFilter";
@@ -1339,18 +1344,18 @@ function conversationStatus(groupClips) {
     return "needs_you";
   }
   if (groupClips.some((clip) => PENDING_CLIP_STATUSES.includes(clip.status))) {
-    return "transcribing";
+    return "processing";
   }
   const final = groupClips.every((clip) => !PENDING_CLIP_STATUSES.includes(clip.refine_status));
   const openCalls = (candidatesByGroup.get(groupClips[0].group_id) || []).length;
   if (openCalls) {
-    return final ? "needs_you" : "rough"; // automatic DQs wait for the accurate pass
+    return final ? "needs_you" : "processing"; // automatic DQs wait for the accurate pass
   }
   const inDq = groupClips.some((clip) => clip.utterances.some((utterance) => (dqsByUtterance.get(utterance.id) || []).length));
   if (inDq) {
     return "dq_made";
   }
-  return final ? "no_call" : "rough";
+  return final ? "transcribed" : "processing";
 }
 
 /** The filter buttons above the transcript: All, then each status with its count. */
@@ -1361,6 +1366,9 @@ function buildTranscriptFilterBar(statuses) {
     const button = makeButton("dq-filter-button transcript-" + filter + (on ? " on" : "") + (count ? "" : " empty"), "", () => setTranscriptFilter(filter));
     button.append(document.createTextNode(label + " "), makeElement("span", "dq-filter-count", String(count)));
     button.setAttribute("aria-pressed", on ? "true" : "false");
+    if (TRANSCRIPT_STATUS_HINTS[filter]) {
+      button.title = TRANSCRIPT_STATUS_HINTS[filter];
+    }
     bar.append(button);
   };
   addButton(TRANSCRIPT_FILTER_ALL, "All", statuses.length);
@@ -1378,7 +1386,9 @@ function buildGroupCard(groupClips, status) {
   const header = makeElement("div", "group-header", formatTime(clipStartDate(first)) + " – " + formatTime(clipEndDate(last)));
   header.append(makeElement("span", "", " · " + groupClips.length + " clip" + (groupClips.length === 1 ? "" : "s")));
   if (status) {
-    header.append(makeElement("span", "badge workflow-" + status, TRANSCRIPT_STATUSES[status]));
+    const badge = makeElement("span", "badge workflow-" + status, TRANSCRIPT_STATUSES[status]);
+    badge.title = TRANSCRIPT_STATUS_HINTS[status];
+    header.append(badge);
   }
   card.append(header);
   groupClips.forEach((clip) => card.append(buildClipRow(clip)));
