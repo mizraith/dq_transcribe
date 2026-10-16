@@ -43,9 +43,10 @@
     .copy { color: #b91c1c; font-weight: 700; font-size: 10pt; white-space: nowrap; }
     .hint { font-size: 7pt; font-style: italic; font-variant: normal; text-align: center; }
     /* Two per page: two columns per sheet (sheets are printed one per page). */
-    .two-up .sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25in; width: 7.8in; margin: 0.3in auto; padding: 0.35in; background: #fff; box-shadow: 0 0.2rem 0.8rem rgba(0,0,0,0.2); page-break-after: always; break-after: page; }
+    /* At least 0.5in between the two slips, so the page can be cut in half. */
+    .two-up .sheet { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 0.5in; width: 7.8in; margin: 0.3in auto; padding: 0.35in; background: #fff; box-shadow: 0 0.2rem 0.8rem rgba(0,0,0,0.2); page-break-after: always; break-after: page; }
     .two-up .sheet:last-child { page-break-after: auto; break-after: auto; }
-    .two-up .slip { width: auto; margin: 0; padding: 0; box-shadow: none; font-size: 7.8pt; line-height: 1.3; page-break-after: auto; break-after: auto; }
+    .two-up .slip { width: auto; margin: 0; padding: 0.1in 0.12in; border: 1px solid #000; box-shadow: none; font-size: 7.8pt; line-height: 1.3; page-break-after: auto; break-after: auto; }
     .two-up .slip h1 { font-size: 10.5pt; }
     .two-up .blank.big { font-size: 10.5pt; }
     .two-up .blank.name { font-size: 14pt; }
@@ -69,7 +70,7 @@
       .row { margin: 0.025in 0; }
       .section { margin-top: 0.06in; }
       .two-up .sheet { width: auto; margin: 0; padding: 0; box-shadow: none; }
-      .two-up .slip { line-height: 1.28; }
+      .two-up .slip { padding: 0.1in 0.12in; border: 1px solid #000; line-height: 1.28; }
       .item.chosen { background: none; }
     }
   </style>
