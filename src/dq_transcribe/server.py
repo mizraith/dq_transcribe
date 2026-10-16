@@ -11,6 +11,7 @@ device and nowhere else on the network.
 
 from __future__ import annotations
 
+import html
 import io
 import json
 import logging
@@ -31,6 +32,7 @@ from dq_transcribe.database import Database
 from dq_transcribe.dq_store import DqError, DqStore, load_dq_codes
 from dq_transcribe.grouping import normalize_timestamp
 from dq_transcribe.meet_archive import archive_filename, build_meet_archive
+from dq_transcribe.coach_server import CoachPage
 from dq_transcribe.demo_data import DEMO_MEET_NAME
 from dq_transcribe.officials_roster import RosterError, read_roster
 from dq_transcribe.slip_page import render_slips
@@ -186,6 +188,11 @@ def build_web_config() -> dict[str, Any]:
         "dqTrashSuffix": constants.DQ_TRASH_SUFFIX,
         "importOfficialsRoute": constants.ROUTE_IMPORT_OFFICIALS,
         "rebuildTrainingMeetRoute": constants.ROUTE_REBUILD_TRAINING_MEET,
+        "coachPageRoute": constants.ROUTE_COACH_PAGE,
+        "coachPagePasswordRoute": constants.ROUTE_COACH_PAGE_PASSWORD,
+        "coachPageKey": constants.RESPONSE_KEY_COACH_PAGE,
+        "coachSignRoute": constants.ROUTE_COACH_SIGN,
+        "enabledKey": constants.REQUEST_KEY_ENABLED,
         "meetFromSheetRoute": constants.ROUTE_MEET_FROM_SHEET,
         "sheetTextKey": constants.REQUEST_KEY_SHEET_TEXT,
         "sheetKey": constants.RESPONSE_KEY_SHEET,
@@ -306,6 +313,7 @@ def render_app_page() -> bytes:
         constants.APP_PAGE_FILENAME,
         {
             "script_route": constants.ROUTE_APP_SCRIPT,
+            "qr_script_route": constants.ROUTE_VENDOR + constants.QR_SCRIPT_FILENAME,
             "dq_script_route": constants.ROUTE_DQ_SCRIPT,
             "meet_script_route": constants.ROUTE_MEET_SCRIPT,
             "transcript_route": constants.ROUTE_TRANSCRIPT_TEXT,
@@ -335,6 +343,7 @@ class DqTranscribeServer(ThreadingHTTPServer):
         recordings_directory: Path,
         database: Database,
         worker: TranscriptionWorker | None = None,
+        coach_port: int = constants.COACH_SERVER_PORT,
     ) -> None:
         """Create the server and make sure the recordings directory exists.
 
@@ -343,6 +352,7 @@ class DqTranscribeServer(ThreadingHTTPServer):
             recordings_directory: Directory where uploaded audio is saved.
             database: Queue and transcript storage.
             worker: Transcription worker to wake on new clips.
+            coach_port: Port for the coach page server (not started here; see ``CoachPage``).
         """
         self.recordings_directory = recordings_directory
         self.recordings_directory.mkdir(parents=True, exist_ok=True)
@@ -352,6 +362,7 @@ class DqTranscribeServer(ThreadingHTTPServer):
         self.program_store.initialize()
         self.dq_store = DqStore(database, self.program_store)
         self.dq_store.initialize()
+        self.coach_page = CoachPage(database, self.dq_store, coach_port)
         self.worker = worker
         super().__init__(server_address, RequestHandler)
 
@@ -411,6 +422,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
         elif path == constants.ROUTE_SLIPS:
             self._send_slips(parse_qs(url.query))
+        elif path == constants.ROUTE_COACH_PAGE:
+            self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_COACH_PAGE: self.server.coach_page.status()})
+        elif path == constants.ROUTE_COACH_SIGN:
+            self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, self._render_coach_sign())
+        elif path.startswith(constants.ROUTE_VENDOR):
+            self._send_vendor_script(path[len(constants.ROUTE_VENDOR):])
         elif path.startswith(constants.ROUTE_FONTS):
             self._send_font(path[len(constants.ROUTE_FONTS):])
         elif (match := _MEET_ARCHIVE_PATTERN.match(path)) is not None:
@@ -461,6 +478,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_import_officials()
         elif path == constants.ROUTE_REBUILD_TRAINING_MEET:
             self._handle_rebuild_training_meet()
+        elif path == constants.ROUTE_COACH_PAGE:
+            self._handle_coach_page_switch()
+        elif path == constants.ROUTE_COACH_PAGE_PASSWORD:
+            self.server.coach_page.new_password()
+            self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_COACH_PAGE: self.server.coach_page.status()})
         elif path == constants.ROUTE_DQ_FROM_UTTERANCE:
             self._handle_dq_from_utterance()
         elif (match := _DQ_STATE_PATTERN.match(path)) is not None:
@@ -969,6 +991,42 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         meet_id = create_demo_meet(self.server.database, self.server.recordings_directory, replace=True)
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id})
+
+    def _handle_coach_page_switch(self) -> None:
+        """Turn the coach page on or off: ``{"enabled": true|false}``. Replies with its status."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        enabled = payload.get(constants.REQUEST_KEY_ENABLED)
+        if not isinstance(enabled, bool):
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "enabled must be true or false")
+            return
+        self.server.coach_page.set_enabled(enabled)
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_COACH_PAGE: self.server.coach_page.status()})
+
+    def _render_coach_sign(self) -> bytes:
+        """A printable sign for the coaches' area: the QR code, the address and the password."""
+        status = self.server.coach_page.status()
+        meet_id = self.server.database.get_active_meet_id()
+        meet = self.server.database.get_meet(meet_id) if meet_id is not None else None
+        return _render(
+            constants.COACH_SIGN_FILENAME,
+            {
+                "meet_name": html.escape(meet["name"] if meet else ""),
+                "url": html.escape(status["urls"][0] if status["urls"] else ""),
+                "qr_url": json.dumps(status["qr_urls"][0] if status["qr_urls"] else ""),
+                "password": html.escape(status["password"]),
+                "qr_script_route": constants.ROUTE_VENDOR + constants.QR_SCRIPT_FILENAME,
+            },
+        )
+
+    def _send_vendor_script(self, filename: str) -> None:
+        """Send a bundled third-party script from web/vendor/ as it is (not a template)."""
+        script_path = _WEB_DIRECTORY / constants.VENDOR_DIRECTORY_NAME / filename
+        if "/" in filename or filename.startswith(".") or not filename.endswith(".js") or not script_path.is_file():
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such script")
+            return
+        self._send_bytes(HTTPStatus.OK, constants.JAVASCRIPT_CONTENT_TYPE, script_path.read_bytes())
 
     def _handle_import_officials(self) -> None:
         """Read an officials roster from the Sign-In app: the file as the body, or {"url": ...}.

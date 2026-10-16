@@ -1,0 +1,54 @@
+<!doctype html>
+<!--
+  The coach page (phones on the meet Wi-Fi): the DQ list by event, or the
+  password form. Filled in by dq_transcribe.coach_page. Plain HTML that reloads
+  itself, so it works on any phone browser with no script.
+  This file is a string.Template: never use a literal dollar sign here.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${refresh}
+  <title>${title}</title>
+  <style>
+    :root { --ink: #111827; --muted: #6b7280; --line: #e5e7eb; --card: #fff; --page: #f3f4f6; --accent: #1e3a8a; --dq: #b91c1c; --ok: #15803d; --warn: #a16207; }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink: #f3f4f6; --muted: #9ca3af; --line: #374151; --card: #1f2937; --page: #111827; --accent: #93c5fd; --dq: #f87171; --ok: #4ade80; --warn: #facc15; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page); color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 1rem; line-height: 1.35; }
+    header { padding: 0.9rem 1rem 0.6rem; }
+    h1 { font-size: 1.2rem; margin: 0; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    main { padding: 0 0.6rem 2rem; max-width: 40rem; margin: 0 auto; }
+    .clubs { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.2rem 0.4rem 0.8rem; }
+    .clubs a { padding: 0.35rem 0.8rem; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--ink); text-decoration: none; font-size: 0.95rem; }
+    .clubs a.on { background: var(--accent); border-color: var(--accent); color: var(--page); font-weight: 700; }
+    .event { background: var(--card); border: 1px solid var(--line); border-radius: 0.6rem; margin-bottom: 0.8rem; overflow: hidden; }
+    .event h2 { font-size: 1rem; margin: 0; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--line); }
+    .event h2 span { font-weight: 400; color: var(--muted); }
+    a.dq { display: block; padding: 0.65rem 0.8rem; color: var(--ink); text-decoration: none; border-top: 1px solid var(--line); }
+    a.dq:first-of-type { border-top: 0; }
+    .dq .line1 { display: flex; justify-content: space-between; gap: 0.6rem; }
+    .dq .who { font-weight: 700; }
+    .dq .where { color: var(--muted); white-space: nowrap; }
+    .dq .what { margin-top: 0.15rem; }
+    .dq .status { margin-top: 0.2rem; font-size: 0.9rem; }
+    .status .dq-label { color: var(--dq); font-weight: 700; }
+    .status .review { color: var(--warn); font-weight: 700; }
+    .status .clear { color: var(--ok); font-weight: 700; }
+    .dq.overturned .who, .dq.overturned .what { text-decoration: line-through; color: var(--muted); }
+    .chevron { color: var(--muted); }
+    .empty { padding: 2rem 1rem; text-align: center; color: var(--muted); }
+    form { background: var(--card); border: 1px solid var(--line); border-radius: 0.6rem; padding: 1rem; margin: 1rem 0; }
+    label { display: block; font-weight: 700; margin-bottom: 0.4rem; }
+    input { width: 100%; font-size: 1.3rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 0.4rem; background: var(--page); color: var(--ink); letter-spacing: 0.1em; }
+    button { margin-top: 0.8rem; width: 100%; font-size: 1.1rem; padding: 0.7rem; border: 0; border-radius: 0.4rem; background: var(--accent); color: var(--page); font-weight: 700; }
+    .error { color: var(--dq); font-weight: 700; }
+  </style>
+</head>
+<body>
+  ${body}
+</body>
+</html>

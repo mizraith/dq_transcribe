@@ -19,6 +19,8 @@ let meetDraftDirty = false;
 let quickAddRole = null; // the role the quick-add row keeps between names
 let meetProgram = null; // the meet's loaded Meet Manager file: {active, history, events, sessions}
 let meetFileBusy = false;
+let coachPageStatus = null; // the coach page server: {enabled, running, urls, qr_urls, password, error}
+let coachPageBusy = false;
 
 /** Open the meet setup view for the active meet. */
 function openMeetSetup() {
@@ -35,6 +37,7 @@ function openMeetSetup() {
   meetProgram = null;
   setView("meet");
   loadMeetProgram();
+  loadCoachPage();
 }
 
 /** Fetch the meet's loaded Meet Manager file (summary and events), then redraw. */
@@ -88,12 +91,124 @@ async function loadMeetFile(file, url) {
   renderMeetView();
 }
 
+/** Fetch the coach page's status, then redraw. */
+async function loadCoachPage() {
+  try {
+    const reply = await (await fetch(CONFIG.coachPageRoute)).json();
+    coachPageStatus = reply[CONFIG.coachPageKey];
+  } catch (error) {
+    coachPageStatus = null;
+  }
+  if (currentView === "meet") {
+    renderMeetView();
+  }
+}
+
+/** Turn the coach page on or off, or pick a new password ({} for the password route). */
+async function changeCoachPage(route, body, doneText) {
+  coachPageBusy = true;
+  renderMeetView();
+  try {
+    const reply = await postJson(route, body);
+    coachPageStatus = reply[CONFIG.coachPageKey];
+    notify(doneText);
+  } catch (error) {
+    notify("Could not change the coach page: " + error.message, "error");
+  }
+  coachPageBusy = false;
+  renderMeetView();
+}
+
+/** A QR code (SVG) for a link, drawn on the tablet by the bundled qrcode-generator script. */
+function makeQrCode(link) {
+  const box = makeElement("div", "coach-qr");
+  try {
+    const code = qrcode(0, "M");
+    code.addData(link);
+    code.make();
+    box.innerHTML = code.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+  } catch (error) {
+    box.textContent = "QR code unavailable";
+  }
+  return box;
+}
+
+/**
+ * The "Coach page" card: coaches on the meet Wi-Fi scan a QR code and see the
+ * posted DQs on their phones (read-only; no audio or transcripts). Start/stop,
+ * the address and password, a printable sign, and a new password.
+ */
+function buildCoachPageCard() {
+  const card = makeElement("section", "meet-card coach-page");
+  const status = coachPageStatus;
+  const title = makeElement("h3", "", "Coach page (Wi-Fi) ");
+  if (status && status.running) {
+    title.append(makeElement("span", "coach-page-on", "\u25CF On"));
+  }
+  card.append(title);
+  if (status === null) {
+    card.append(makeElement("p", "note", "Checking\u2026"));
+    return card;
+  }
+  if (status.error) {
+    card.append(makeElement("p", "unsaved", status.error));
+  }
+  if (!status.running) {
+    card.append(makeElement("p", "note",
+      "Coaches on this Wi-Fi scan a QR code and see the notified DQs by event on their phones, and each DQ's slip. No audio, transcripts or editing. One password for the meet."));
+    const start = makeButton("primary", coachPageBusy ? "Starting\u2026" : "Start coach page", () =>
+      changeCoachPage(CONFIG.coachPageRoute, { [CONFIG.enabledKey]: true }, "\u2713 Coach page is on"));
+    start.disabled = coachPageBusy;
+    card.append(start);
+    return card;
+  }
+  const body = makeElement("div", "coach-page-body");
+  if (status.qr_urls.length) {
+    body.append(makeQrCode(status.qr_urls[0]));
+  }
+  const facts = makeElement("div", "coach-page-facts");
+  if (status.urls.length) {
+    facts.append(makeElement("div", "note", "Address"));
+    for (const url of status.urls) {
+      facts.append(makeElement("div", "big", url));
+    }
+  } else {
+    facts.append(makeElement("p", "unsaved", "The tablet is not on a Wi-Fi network. Join the meet Wi-Fi (or turn on its hotspot), then tap Refresh."));
+  }
+  facts.append(makeElement("div", "note", "Password"));
+  facts.append(makeElement("div", "big", status.password));
+  facts.append(makeElement("p", "note", "Scanning the code signs a phone in. Only notified DQs are shown."));
+  body.append(facts);
+  card.append(body);
+
+  const row = makeElement("div", "meet-file-actions");
+  row.append(makeButton("primary", "Print sign", () => window.open(CONFIG.coachSignRoute, "_blank")));
+  row.append(makeButton("", "Refresh", loadCoachPage));
+  const newPassword = makeButton("", "New password\u2026", () => {
+    if (newPassword.dataset.armed) {
+      changeCoachPage(CONFIG.coachPagePasswordRoute, {}, "\u2713 New password: every phone signs in again");
+    } else {
+      newPassword.dataset.armed = "1";
+      newPassword.textContent = "Tap again: signs every phone out";
+      setTimeout(() => { delete newPassword.dataset.armed; newPassword.textContent = "New password\u2026"; }, 4000);
+    }
+  });
+  row.append(newPassword);
+  const stop = makeButton("", coachPageBusy ? "Stopping\u2026" : "Stop coach page", () =>
+    changeCoachPage(CONFIG.coachPageRoute, { [CONFIG.enabledKey]: false }, "Coach page is off"));
+  stop.disabled = coachPageBusy;
+  row.append(stop);
+  card.append(row);
+  return card;
+}
+
 /** Seconds the "Reset Demo" warning stays open before it closes by itself. */
 const RESET_DEMO_WARNING_MS = 10000;
 
 /**
- * The top of the meet setup page: its title and, for the demo (training) meet
- * only, a red "Reset Demo" button at the top right.
+ * The top of the meet setup page: its title ("Meet setup · <meet>", in place of
+ * the shared view title) and, for the demo (training) meet only, a red
+ * "Reset Demo" button at the top right.
  *
  * Reset asks first: a warning panel opens under the header with
  * "Yes, reset demo" and "Cancel" (it closes by itself after a few seconds).
@@ -102,7 +217,7 @@ const RESET_DEMO_WARNING_MS = 10000;
  */
 function buildMeetSetupHeader() {
   const header = makeElement("div", "meet-setup-header");
-  header.append(makeElement("h2", "", "Meet setup"));
+  header.append(makeElement("h2", "", VIEW_TITLES.meet + " \u00b7 " + activeMeet.name));
   if (activeMeet.name !== CONFIG.trainingMeetName) {
     return [header];
   }
@@ -300,6 +415,7 @@ function renderMeetView() {
   dateLabel.append(dateInput);
   details.append(nameLabel, dateLabel);
   page.append(details);
+  page.append(buildCoachPageCard());
   page.append(buildMeetFileCard());
   page.append(buildEndOfMeetCard());
 

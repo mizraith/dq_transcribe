@@ -444,3 +444,44 @@ UPLOAD_RETRY_SECONDS = 3
 # If no audio chunk arrives for this long while capturing, the page warns and tries to recover.
 CAPTURE_STALL_SECONDS = 4.0
 CAPTURE_WATCHDOG_INTERVAL_SECONDS = 2.0
+
+# --- Coach page (read-only DQ list for coaches on the meet Wi-Fi) ------------------
+# A second, separate web server that other devices on the Wi-Fi can open. It serves
+# only the active meet's DQs after the coach was told (no audio, no transcripts, no
+# editing), behind one meet password. The admin pages stay on 127.0.0.1 only.
+COACH_SERVER_HOST = "0.0.0.0"  # every network the tablet is on (meet Wi-Fi, or its own hotspot)
+COACH_SERVER_PORT = 8020
+COACH_ROUTE_LIST = "/"
+COACH_ROUTE_LOGIN = "/login"  # POST the password form
+COACH_ROUTE_DQ = "/dq/"  # /dq/<id>: one DQ's slip
+COACH_QUERY_KEY_PASSWORD = "key"  # the QR code's link carries the password, so scanning signs in
+COACH_QUERY_KEY_CLUB = "club"  # list filter: one club's DQs
+COACH_FORM_FIELD_PASSWORD = "password"
+COACH_COOKIE_NAME = "dq_coach"
+COACH_COOKIE_MAX_AGE_SECONDS = 24 * 60 * 60  # one meet day
+COACH_PAGE_REFRESH_SECONDS = 30
+COACH_PASSWORD_LENGTH = 6
+COACH_PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"  # no 0/o, 1/l/i: easy to read off a sign
+MAX_COACH_FORM_BYTES = 1024
+# App settings (database ``settings`` table).
+SETTING_COACH_PAGE_ENABLED = "coach_page_enabled"  # "1" = serve it (also after a restart)
+SETTING_COACH_PAGE_PASSWORD = "coach_page_password"
+SETTING_COACH_COOKIE_SECRET = "coach_cookie_secret"
+SETTING_TRUE = "1"
+SETTING_FALSE = "0"
+# Where to "connect" a UDP socket to learn the tablet's own address (nothing is sent).
+# A public address finds the default route; the private ones cover a Wi-Fi without internet.
+ADDRESS_PROBE_TARGETS = ("8.8.8.8", "10.255.255.254", "172.31.255.254", "192.168.255.254")
+ADDRESS_PROBE_PORT = 9
+COACH_PAGE_FILENAME = "coach.html"
+COACH_SIGN_FILENAME = "coach_sign.html"
+# Admin (localhost) routes for the coach page.
+ROUTE_COACH_PAGE = "/api/coach-page"  # GET status; POST {"enabled": true|false}
+ROUTE_COACH_PAGE_PASSWORD = "/api/coach-page/password"  # POST: a new password (signs everyone out)
+ROUTE_COACH_SIGN = "/coach-sign"  # printable sign with the QR code, to post for coaches
+REQUEST_KEY_ENABLED = "enabled"
+RESPONSE_KEY_COACH_PAGE = "coach_page"
+# Bundled third-party scripts (web/vendor/), served as they are (not templates).
+ROUTE_VENDOR = "/vendor/"
+VENDOR_DIRECTORY_NAME = "vendor"
+QR_SCRIPT_FILENAME = "qrcode.js"  # qrcode-generator 1.4.4 (MIT, Kazuhiko Arase)

@@ -1,0 +1,58 @@
+<!doctype html>
+<!--
+  Printable sign for the coaches' area: scan the QR code (on the meet Wi-Fi) to
+  open the DQ list. Filled in by dq_transcribe.server; the QR code is drawn by the
+  bundled qrcode-generator script, so it works with no internet.
+  This file is a string.Template: never use a literal dollar sign here.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coach DQ list sign</title>
+  <style>
+    @page { size: letter; margin: 0.6in; }
+    body { margin: 0; background: #e5e7eb; color: #111; font-family: Arial, Helvetica, sans-serif; }
+    .toolbar { display: flex; gap: 0.6rem; align-items: center; padding: 0.6rem 1rem; background: #111827; color: #fff; }
+    .toolbar button { font-size: 1.1rem; padding: 0.5rem 1.2rem; border: 0; border-radius: 0.4rem; background: #1e3a8a; color: #fff; font-weight: 700; }
+    .sign { max-width: 7in; margin: 0.4in auto; padding: 0.5in; background: #fff; text-align: center; box-shadow: 0 0.2rem 0.8rem rgba(0,0,0,0.2); }
+    h1 { font-size: 30pt; margin: 0 0 0.1in; }
+    .meet { font-size: 15pt; margin-bottom: 0.3in; }
+    #qr svg { width: 4.2in; height: 4.2in; }
+    .steps { text-align: left; font-size: 15pt; line-height: 1.6; margin: 0.3in auto 0; max-width: 5.6in; }
+    .blank { display: inline-block; min-width: 2.6in; border-bottom: 2px solid #111; }
+    .big { font-size: 20pt; font-weight: 700; letter-spacing: 0.08em; }
+    .note { font-size: 11pt; color: #444; margin-top: 0.3in; }
+    .missing { color: #b91c1c; font-size: 15pt; font-weight: 700; }
+    @media print { body { background: #fff; } .toolbar { display: none; } .sign { box-shadow: none; margin: 0; } }
+  </style>
+</head>
+<body>
+  <div class="toolbar"><button type="button" onclick="window.print()">Print</button><span>Post this where coaches can scan it.</span></div>
+  <section class="sign">
+    <h1>DQs for coaches</h1>
+    <div class="meet">${meet_name}</div>
+    <div id="qr"></div>
+    <ol class="steps">
+      <li>Join the Wi-Fi: <span class="blank"></span></li>
+      <li>Scan the code, or open <span class="big">${url}</span></li>
+      <li>Password: <span class="big">${password}</span></li>
+    </ol>
+    <p class="note">Tap a DQ to see its slip. The list refreshes by itself.</p>
+  </section>
+  <script src="${qr_script_route}"></script>
+  <script>
+    "use strict";
+    const link = ${qr_url};
+    const box = document.getElementById("qr");
+    if (link) {
+      const code = qrcode(0, "M");
+      code.addData(link);
+      code.make();
+      box.innerHTML = code.createSvgTag({ cellSize: 8, margin: 2, scalable: true });
+    } else {
+      box.innerHTML = '<p class="missing">The tablet is not on a Wi-Fi network: join the meet Wi-Fi, then reload.</p>';
+    }
+  </script>
+</body>
+</html>

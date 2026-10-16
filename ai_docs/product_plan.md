@@ -564,7 +564,7 @@ The owner listed these possible outputs:
 
 - **Printout:** **first output (stated):** a list of published DQs sorted by
   event/heat/lane, for posting. A per-DQ slip like the paper one can come later.
-- **Local network page (stated, the preferred route):**
+- **Local network page (stated, the preferred route; built 2026-10-15, see 9.1):**
   - The tablet joins the meet's local network and serves a small coach page
     itself.
   - The app shows a **QR code** that coaches scan to open the page.
@@ -807,6 +807,8 @@ listing that dq_transcribe ingests**.
 - Manual DQ from a transcript line or selected words.
 - End of meet: archive zip (no Meet Manager files: the meet computer keeps them), close/reopen,
   empty trash only after close.
+- Coach page on the meet Wi-Fi (section 8): read-only server on port 8020, QR code and printable
+  sign, one meet password, notified DQs by event with their slips. Off until started in Meet setup.
 - Held by the owner: regrouping turns and merge/split DQs (next), sessions (after seeing the
   Meet Manager data).
 

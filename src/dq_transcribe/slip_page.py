@@ -169,13 +169,24 @@ def render_slip(dq: dict[str, Any], code_rows: list[dict[str, str]], revision: s
     return "".join(parts)
 
 
-def render_slips(dqs: list[dict[str, Any]], title: str, revision: str = constants.CURRENT_SLIP_REVISION) -> bytes:
-    """A printable page with one slip per DQ (one per printed page).
+PRINT_TOOLBAR_FORMAT = '<div class="toolbar"><button type="button" onclick="window.print()">Print</button><span>{text}</span></div>'
+BACK_TOOLBAR_FORMAT = '<div class="toolbar"><a href="{url}">\u2190 {label}</a></div>'
+
+
+def render_slips(
+    dqs: list[dict[str, Any]],
+    title: str,
+    revision: str = constants.CURRENT_SLIP_REVISION,
+    back_link: tuple[str, str] | None = None,
+) -> bytes:
+    """A page with one slip per DQ (one per printed page).
 
     Args:
         dqs: DQs as returned by ``DqStore.list_dqs``.
         title: The page title (shown in the browser tab and print header).
         revision: Slip revision whose layout to use.
+        back_link: ``(url, label)`` for a back link in place of the Print button
+            (the coach page shows one slip on a phone).
     """
     code_rows = load_dq_codes(revision)
     printed_at = datetime.now()
@@ -186,6 +197,10 @@ def render_slips(dqs: list[dict[str, Any]], title: str, revision: str = constant
     return template.substitute(
         title=_escape(title),
         font_url=constants.ROUTE_FONTS + constants.SLIP_FONT_FILENAME,
-        toolbar_text=_escape(f"{len(dqs)} slip(s) · {revision_label(revision)} · tap Print, or use the browser's Share > Print"),
+        toolbar=(
+            BACK_TOOLBAR_FORMAT.format(url=_escape(back_link[0]), label=_escape(back_link[1]))
+            if back_link
+            else PRINT_TOOLBAR_FORMAT.format(text=_escape(f"{len(dqs)} slip(s) · {revision_label(revision)} · tap Print, or use the browser's Share > Print"))
+        ),
         slips=slips,
     ).encode("utf-8")

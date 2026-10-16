@@ -1195,6 +1195,7 @@ function updateViewButtons() {
   trashViewButton.classList.toggle("active", currentView === "trash");
   dqViewButton.textContent = "DQs" + (dqCount ? " (" + dqCount + ")" : "");
   viewTitle.textContent = VIEW_TITLES[currentView] + (activeMeetName ? " · " + activeMeetName : "");
+  viewTitle.hidden = currentView === "meet"; // Meet setup draws its own title row (with Reset Demo)
 }
 
 /** Redraw the current view now, even if the data looks unchanged. */

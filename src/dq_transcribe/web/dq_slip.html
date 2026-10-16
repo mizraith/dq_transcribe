@@ -3,6 +3,7 @@
   Printable DQ slips (one per page), laid out like the USA Swimming
   "Disqualification Report" slip of the revision in use. Filled in by
   dq_transcribe.slip_page.render_slips. Names are written in a script font.
+  The toolbar is a Print button for the admin, or a back link on the coach page.
   This file is a string.Template: never use a literal dollar sign here.
 -->
 <html lang="en">
@@ -16,6 +17,7 @@
     @page { size: letter; margin: 0.4in; }
     body { margin: 0; background: #e5e7eb; color: var(--ink); font-family: Arial, Helvetica, sans-serif; }
     .toolbar { position: relative; top: 0; display: flex; gap: 0.6rem; align-items: center; padding: 0.6rem 1rem; background: #111827; color: #fff; z-index: 2; }
+    .toolbar a { color: #fff; font-size: 1.1rem; font-weight: 700; text-decoration: none; padding: 0.4rem 0.2rem; }
     .toolbar button { font-size: 1.1rem; padding: 0.5rem 1.2rem; border: 0; border-radius: 0.4rem; background: #1e3a8a; color: #fff; font-weight: 700; }
     .slip { width: 5.2in; margin: 0.4in auto; padding: 0.35in 0.4in; background: #fff; box-shadow: 0 0.2rem 0.8rem rgba(0,0,0,0.2); font-size: 9.5pt; line-height: 1.45; font-variant: small-caps; page-break-after: always; break-after: page; }
     .slip:last-child { page-break-after: auto; break-after: auto; }
@@ -37,6 +39,9 @@
     .footer { display: flex; justify-content: space-between; margin-top: 0.15in; font-size: 8pt; font-variant: normal; }
     .copy { color: #b91c1c; font-weight: 700; font-size: 11pt; }
     .hint { font-size: 7pt; font-style: italic; font-variant: normal; text-align: center; }
+    @media (max-width: 6in) {
+      .slip { width: auto; margin: 0.5rem; padding: 0.8rem; font-size: 9pt; }
+    }
     @media print {
       body { background: #fff; }
       .toolbar { display: none; }
@@ -48,10 +53,7 @@
   </style>
 </head>
 <body>
-  <div class="toolbar">
-    <button type="button" onclick="window.print()">Print</button>
-    <span>${toolbar_text}</span>
-  </div>
+  ${toolbar}
   ${slips}
 </body>
 </html>

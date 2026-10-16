@@ -14,4 +14,4 @@ dependencies = []
 where = ["src"]
 
 [tool.setuptools.package-data]
-dq_transcribe = ["web/*.html", "web/*.js", "web/fonts/*", "data/*.txt", "data/*.csv"]
+dq_transcribe = ["web/*.html", "web/*.js", "web/fonts/*", "web/vendor/*", "data/*.txt", "data/*.csv"]

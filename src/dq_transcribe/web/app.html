@@ -35,11 +35,17 @@
     .panel a { display: block; padding: 0.35rem 0; font-size: 0.95rem; }
     [hidden] { display: none !important; }
     .meet-setup { max-width: 52rem; }
-    .meet-setup-header { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-bottom: 0.6rem; }
-    .meet-setup-header h2 { margin: 0; font-size: 1.2rem; }
+    .meet-setup-header { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin: -0.3rem 0 0.6rem; }
+    .meet-setup-header h2 { margin: 0; font-size: 1.15rem; }
     button.reset-demo { font-weight: 700; padding: 0.55rem 1rem; }
     .reset-demo-warning { border: 2px solid var(--rec); }
     .reset-demo-warning h3 { color: var(--rec); }
+    .coach-page-body { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+    .coach-qr { width: 11rem; height: 11rem; background: #fff; padding: 0.3rem; border-radius: 0.4rem; }
+    .coach-qr svg { width: 100%; height: 100%; display: block; }
+    .coach-page-facts { flex: 1; min-width: 14rem; }
+    .coach-page-facts .big { font-size: 1.3rem; font-weight: 700; letter-spacing: 0.06em; }
+    .coach-page-on { color: #15803d; font-weight: 700; }
     .meet-card { background: var(--card); border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.8rem 1rem; margin-bottom: 0.9rem; }
     .meet-card h3 { margin: 0 0 0.5rem; font-size: 1.05rem; }
     .meet-field { display: flex; flex-direction: column; font-size: 0.9rem; color: #555b66; margin-bottom: 0.6rem; max-width: 26rem; }
@@ -335,6 +341,7 @@
 </main>
 </div>
 
+  <script src="${qr_script_route}"></script>
   <script src="${script_route}"></script>
   <script src="${dq_script_route}"></script>
   <script src="${meet_script_route}"></script>

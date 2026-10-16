@@ -660,6 +660,17 @@ class Database:
             cursor = connection.executemany("UPDATE clips SET meet_id = ? WHERE id = ?", [(meet_id, clip_id) for clip_id in clip_ids])
             return cursor.rowcount
 
+    def get_setting(self, key: str, default: str = "") -> str:
+        """An app setting (``default`` if it was never stored)."""
+        with self._connection() as connection:
+            row = connection.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return default if row is None else row["value"]
+
+    def set_setting(self, key: str, value: str) -> None:
+        """Store an app setting."""
+        with self._transaction() as connection:
+            self._set_setting(connection, key, value)
+
     @staticmethod
     def _set_setting(connection: sqlite3.Connection, key: str, value: str) -> None:
         """Store an app setting (inside the caller's transaction)."""
