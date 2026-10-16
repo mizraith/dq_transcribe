@@ -6,7 +6,8 @@
 #   3. Starts the device agent in the background, if it is not already running,
 #      so the AI assistant can run commands here.
 #   4. (Re)starts the app server, so it always runs the latest code.
-#   5. Opens the app in Chrome at http://localhost:8000.
+#   5. Opens the app in Chrome at http://localhost:8000, unless DQ_OPEN_BROWSER=0
+#      (scripts/start_admin_assistant.sh sets that and opens only the main page).
 #
 # Usage:
 #     bash ~/dq_transcribe/scripts/start_dq.sh          # start (or refresh) everything
@@ -99,7 +100,9 @@ start_all() {
     exit 1
   fi
 
-  if command -v termux-open-url >/dev/null; then
+  if [ "${DQ_OPEN_BROWSER:-1}" = "0" ]; then
+    say "not opening the browser (DQ_OPEN_BROWSER=0: the Admin Assistant main page opens it)"
+  elif command -v termux-open-url >/dev/null; then
     termux-open-url "$APP_URL" && say "opened $APP_URL in the browser"
   else
     say "open $APP_URL in Chrome"

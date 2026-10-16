@@ -104,13 +104,16 @@ _ADDED_CLIP_COLUMNS = {
     "refine_seconds": "REAL",
     "refined_at": "TEXT",
     "meet_id": "INTEGER",
+    # The Admin Assistant session the clip was recorded in (the suite's id and the name shown then).
+    "session_id": "INTEGER",
+    "session_name": "TEXT",
 }
 _ADDED_UTTERANCE_COLUMNS = {"refined_text": "TEXT", "refined_raw_output": "TEXT"}
 
 _CLIP_SUMMARY_COLUMNS = (
     "id, created_at, started_at, ended_at, audio_filename, status, error_message, duration_seconds, "
     "peak_dbfs, rms_dbfs, whisper_model, transcribe_seconds, processed_at, trashed_at, "
-    "refine_status, refine_model, refine_seconds, refined_at, meet_id"
+    "refine_status, refine_model, refine_seconds, refined_at, meet_id, session_id, session_name"
 )
 _CLIP_JSON_COLUMNS = ("capture_info_json", "levels_json", "pauses_json", "analysis_params_json")
 _UTTERANCE_SUMMARY_COLUMNS = (
@@ -216,6 +219,9 @@ class Database:
             existing_columns = {row["name"] for row in connection.execute("PRAGMA table_info(meets)")}
             if "closed_at" not in existing_columns:
                 connection.execute("ALTER TABLE meets ADD COLUMN closed_at TEXT")
+            if "suite_meet_id" not in existing_columns:
+                # The same meet on the Admin Assistant main page (Officials Sign-In server), if linked.
+                connection.execute("ALTER TABLE meets ADD COLUMN suite_meet_id INTEGER")
             existing_columns = {row["name"] for row in connection.execute("PRAGMA table_info(utterances)")}
             for column, column_type in _ADDED_UTTERANCE_COLUMNS.items():
                 if column not in existing_columns:
@@ -228,6 +234,8 @@ class Database:
         started_at: str | None = None,
         ended_at: str | None = None,
         meet_id: int | None = None,
+        session_id: int | None = None,
+        session_name: str | None = None,
     ) -> int:
         """Queue a newly uploaded clip for transcription.
 
@@ -236,16 +244,19 @@ class Database:
             capture_info_json: What the browser reported about the capture, as JSON text.
             started_at: When the clip's audio began (UTC ISO text), if the browser reported it.
             ended_at: When the clip's audio ended (UTC ISO text), if the browser reported it.
-            meet_id: Meet the clip belongs to (normally the active meet), or None.
+            meet_id: Meet the clip belongs to (the meet being recorded to), or None.
+            session_id: The Admin Assistant session it was recorded in (the suite's id), if known.
+            session_name: That session's name ("Friday PM"), if known.
 
         Returns:
             The new clip's id.
         """
         with self._transaction() as connection:
             cursor = connection.execute(
-                "INSERT INTO clips (created_at, started_at, ended_at, audio_filename, status, capture_info_json, meet_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (utc_now_iso(), started_at, ended_at, audio_filename, constants.CLIP_STATUS_QUEUED, capture_info_json, meet_id),
+                "INSERT INTO clips (created_at, started_at, ended_at, audio_filename, status, capture_info_json, meet_id, "
+                "session_id, session_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (utc_now_iso(), started_at, ended_at, audio_filename, constants.CLIP_STATUS_QUEUED, capture_info_json, meet_id,
+                 session_id, session_name),
             )
             return int(cursor.lastrowid)
 
@@ -562,7 +573,7 @@ class Database:
         """All meets, newest first (by start date, then name), with their clip counts."""
         with self._connection() as connection:
             rows = connection.execute(
-                "SELECT m.id, m.name, m.start_date, m.created_at, m.closed_at, "
+                "SELECT m.id, m.name, m.start_date, m.created_at, m.closed_at, m.suite_meet_id, "
                 "(SELECT COUNT(*) FROM clips c WHERE c.meet_id = m.id AND c.trashed_at IS NULL) AS clip_count "
                 "FROM meets m ORDER BY m.start_date DESC, m.name"
             )
@@ -602,8 +613,37 @@ class Database:
     def get_meet(self, meet_id: int) -> dict[str, Any] | None:
         """One meet, or None if there is no such meet."""
         with self._connection() as connection:
-            row = connection.execute("SELECT id, name, start_date, closed_at FROM meets WHERE id = ?", (meet_id,)).fetchone()
+            row = connection.execute(
+                "SELECT id, name, start_date, closed_at, suite_meet_id FROM meets WHERE id = ?", (meet_id,)
+            ).fetchone()
         return None if row is None else dict(row)
+
+    def link_suite_meet(self, suite_meet_id: int, name: str, start_date: str) -> int:
+        """The DQ meet for an Admin Assistant meet, linking or creating it quietly.
+
+        Looks for the DQ meet already linked to ``suite_meet_id``; otherwise one with
+        the same name and first day, which is linked from now on; otherwise creates
+        one with that name and day. Never changes which meet is active.
+
+        Returns:
+            The DQ meet's id.
+        """
+        with self._transaction() as connection:
+            row = connection.execute("SELECT id FROM meets WHERE suite_meet_id = ?", (suite_meet_id,)).fetchone()
+            if row is not None:
+                return int(row["id"])
+            row = connection.execute(
+                "SELECT id FROM meets WHERE suite_meet_id IS NULL AND name = ? AND start_date = ? ORDER BY id LIMIT 1",
+                (name, start_date),
+            ).fetchone()
+            if row is not None:
+                connection.execute("UPDATE meets SET suite_meet_id = ? WHERE id = ?", (suite_meet_id, row["id"]))
+                return int(row["id"])
+            cursor = connection.execute(
+                "INSERT INTO meets (name, start_date, created_at, suite_meet_id) VALUES (?, ?, ?, ?)",
+                (name, start_date, utc_now_iso(), suite_meet_id),
+            )
+            return int(cursor.lastrowid)
 
     def set_meet_closed(self, meet_id: int, closed: bool) -> bool:
         """Close a meet (unlocks permanent deletes from its trash) or reopen it.

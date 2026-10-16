@@ -320,6 +320,38 @@ class ServerTests(unittest.TestCase):
         program = json.loads(self._request("GET", f"{constants.ROUTE_MEETS}/{reply[constants.RESPONSE_KEY_MEET_ID]}{constants.ROUTE_MEET_PROGRAM_SUFFIX}").read())
         self.assertEqual(program[constants.RESPONSE_KEY_PROGRAM]["active"]["file_format"], constants.MEET_FILE_FORMAT_HTML)
 
+    def test_suite_link_finds_links_or_creates_the_meet(self) -> None:
+        existing = self.database.create_meet("Candy Meet", "2026-10-16")
+        other = self.database.create_meet("Other", "2026-10-01")  # now the active meet
+        linked = json.loads(self._post_json(constants.ROUTE_SUITE_LINK, {
+            constants.REQUEST_KEY_SUITE_MEET_ID: 1, constants.REQUEST_KEY_MEET_NAME: "Candy Meet",
+            constants.REQUEST_KEY_MEET_START_DATE: "2026-10-16"}).read())[constants.RESPONSE_KEY_MEET_ID]
+        self.assertEqual(linked, existing)  # matched by name and date, and linked
+        self.assertEqual(self.database.get_active_meet_id(), existing)  # the display follows the suite
+        self.assertEqual(self.database.get_meet(existing)["suite_meet_id"], 1)
+        renamed = json.loads(self._post_json(constants.ROUTE_SUITE_LINK, {
+            constants.REQUEST_KEY_SUITE_MEET_ID: 1, constants.REQUEST_KEY_MEET_NAME: "Candy Meet (renamed)",
+            constants.REQUEST_KEY_MEET_START_DATE: "2026-10-16"}).read())[constants.RESPONSE_KEY_MEET_ID]
+        self.assertEqual(renamed, existing)  # linked by id from now on
+        created = json.loads(self._post_json(constants.ROUTE_SUITE_LINK, {
+            constants.REQUEST_KEY_SUITE_MEET_ID: 9, constants.REQUEST_KEY_MEET_NAME: "New Meet",
+            constants.REQUEST_KEY_MEET_START_DATE: "2026-11-01"}).read())[constants.RESPONSE_KEY_MEET_ID]
+        self.assertNotIn(created, (existing, other))
+        self.assertEqual(self._post_json(constants.ROUTE_SUITE_LINK, {constants.REQUEST_KEY_SUITE_MEET_ID: 9}).status, 400)
+
+    def test_clips_record_to_the_target_meet_and_session(self) -> None:
+        recording = self.database.create_meet("Candy Meet", "2026-10-16")
+        displayed = self.database.create_meet("Other", "2026-10-01")  # someone switched the display
+        query = (f"?{constants.QUERY_KEY_MEET_ID}={recording}&{constants.QUERY_KEY_SESSION_ID}=4"
+                 f"&{constants.QUERY_KEY_SESSION_NAME}=Friday%20PM")
+        headers = {constants.CONTENT_TYPE_HEADER: constants.WAV_UPLOAD_MEDIA_TYPE}
+        response = self._request("POST", constants.ROUTE_CLIPS + query, build_wav_bytes(TWO_TURN_PATTERN), headers)
+        self.assertEqual(response.status, 200)
+        clip_id = json.loads(response.read())[constants.RESPONSE_KEY_CLIP_ID]
+        clip = next(item for item in self.database.list_clips(meet_id=recording) if item["id"] == clip_id)
+        self.assertEqual((clip["session_id"], clip["session_name"]), (4, "Friday PM"))
+        self.assertEqual(self.database.get_setting(constants.SETTING_RECORDING_MEET_ID), str(recording))
+        self.assertEqual(self.database.get_active_meet_id(), displayed)  # recording does not move the display
 
 
 if __name__ == "__main__":

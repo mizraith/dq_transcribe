@@ -196,6 +196,19 @@ def build_web_config() -> dict[str, Any]:
         "coachPageKey": constants.RESPONSE_KEY_COACH_PAGE,
         "coachSignRoute": constants.ROUTE_COACH_SIGN,
         "autoDqsRoute": constants.ROUTE_AUTO_DQS,
+        "appDisplayName": constants.APP_DISPLAY_NAME,
+        "suiteName": constants.SUITE_NAME,
+        "suiteCurrentUrl": constants.SUITE_CURRENT_URL,
+        "suiteSelectUrl": constants.SUITE_SELECT_URL,
+        "suitePollMs": constants.SUITE_POLL_SECONDS * 1000,
+        "suiteApps": [{"label": label, "tab": tab, "url": url} for label, tab, url in constants.SUITE_APPS],
+        "windowName": constants.WINDOW_NAME,
+        "suiteLinkRoute": constants.ROUTE_SUITE_LINK,
+        "suiteMeetIdKey": constants.REQUEST_KEY_SUITE_MEET_ID,
+        "demoKey": constants.REQUEST_KEY_DEMO,
+        "meetIdQueryKey": constants.QUERY_KEY_MEET_ID,
+        "sessionIdQueryKey": constants.QUERY_KEY_SESSION_ID,
+        "sessionNameQueryKey": constants.QUERY_KEY_SESSION_NAME,
         "addedToExistingKey": constants.RESPONSE_KEY_ADDED_TO_EXISTING,
         "eventSummaryRoute": constants.ROUTE_EVENT_SUMMARY,
         "printRequestedQueryKey": constants.QUERY_KEY_PRINT_REQUESTED,
@@ -302,6 +315,15 @@ def _render(filename: str, values: dict[str, str]) -> bytes:
     """
     template = string.Template((_WEB_DIRECTORY / filename).read_text("utf-8"))
     return template.substitute(values).encode("utf-8")
+
+
+def _is_iso_date(text: str) -> bool:
+    """True for a ``YYYY-MM-DD`` date."""
+    try:
+        datetime.strptime(text, constants.MEET_START_DATE_FORMAT)
+    except ValueError:
+        return False
+    return True
 
 
 def render_mic_test_page() -> bytes:
@@ -482,6 +504,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_reprocess(int(match.group(1)))
         elif path == constants.ROUTE_MEETS:
             self._handle_create_meet()
+        elif path == constants.ROUTE_SUITE_LINK:
+            self._handle_suite_link()
         elif path == constants.ROUTE_MEET_FROM_SHEET:
             self._handle_meet_from_sheet(urlsplit(self.path).query)
         elif path == constants.ROUTE_DQS:
@@ -571,7 +595,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         database = self.server.database
-        meet_id = database.get_active_meet_id()
+        target = self._recording_target()
+        meet_id = target["meet_id"]
         meet = None if meet_id is None else database.get_meet(meet_id)
         clip_directory = self.server.recordings_directory
         if meet is not None:
@@ -583,8 +608,11 @@ class RequestHandler(BaseHTTPRequestHandler):
         capture_info_json = self._read_capture_info(self.headers.get(constants.CAPTURE_INFO_HEADER, ""))
         started_at, ended_at = self._read_capture_times(capture_info_json)
         clip_id = database.add_clip(
-            relative_clip_name, capture_info_json, started_at, ended_at, meet_id=None if meet is None else meet_id
+            relative_clip_name, capture_info_json, started_at, ended_at, meet_id=None if meet is None else meet_id,
+            session_id=target["session_id"], session_name=target["session_name"],
         )
+        if meet is not None:
+            database.set_setting(constants.SETTING_RECORDING_MEET_ID, str(meet_id))
         if self.server.worker is not None:
             self.server.worker.wake()
         LOGGER.info("Queued clip %d (%s, %d bytes)", clip_id, relative_clip_name, len(audio_bytes))
@@ -596,6 +624,49 @@ class RequestHandler(BaseHTTPRequestHandler):
                 constants.RESPONSE_KEY_SIZE_BYTES: len(audio_bytes),
             },
         )
+
+    def _recording_target(self) -> dict[str, Any]:
+        """Where an uploaded clip is filed: the meet and session in the upload's query
+        (fixed when capturing started, even if the displayed meet changed since), else
+        the active meet. An unknown meet id falls back to the active meet."""
+        query = parse_qs(urlsplit(self.path).query)
+        first = lambda key: (query.get(key) or [""])[0].strip()  # noqa: E731
+        meet_text, session_text = first(constants.QUERY_KEY_MEET_ID), first(constants.QUERY_KEY_SESSION_ID)
+        meet_id = int(meet_text) if meet_text.isdigit() and self.server.database.get_meet(int(meet_text)) else None
+        return {
+            "meet_id": meet_id if meet_id is not None else self.server.database.get_active_meet_id(),
+            "session_id": int(session_text) if session_text.isdigit() else None,
+            "session_name": first(constants.QUERY_KEY_SESSION_NAME)[: constants.MAX_SESSION_NAME_CHARS] or None,
+        }
+
+    def _handle_suite_link(self) -> None:
+        """Show the Admin Assistant's current meet: find, link or create the DQ meet for it, and make it active.
+
+        Body: ``{"suite_meet_id", "name", "start_date"}``, or ``{"demo": true}`` for DQ's training meet.
+        Replies ``{"meet_id"}``. Recording is not affected: uploads carry their own target.
+        """
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        database = self.server.database
+        if payload.get(constants.REQUEST_KEY_DEMO) is True:
+            from dq_transcribe.demo_data import find_demo_meet  # local import: demo_data uses this module
+
+            meet_id = find_demo_meet(database)
+            if meet_id is None:
+                self._send_json_error(HTTPStatus.NOT_FOUND, "The DEMO MEET is still being built; try again in a moment")
+                return
+        else:
+            suite_meet_id = payload.get(constants.REQUEST_KEY_SUITE_MEET_ID)
+            name = str(payload.get(constants.REQUEST_KEY_MEET_NAME) or "").strip()[: constants.MAX_MEET_NAME_CHARS]
+            start_date = str(payload.get(constants.REQUEST_KEY_MEET_START_DATE) or "").strip()
+            if not isinstance(suite_meet_id, int) or not name or not _is_iso_date(start_date):
+                self._send_json_error(HTTPStatus.BAD_REQUEST, "Send suite_meet_id, name and start_date (YYYY-MM-DD)")
+                return
+            meet_id = database.link_suite_meet(suite_meet_id, name, start_date)
+        if database.get_active_meet_id() != meet_id:
+            database.set_active_meet(meet_id)
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id})
 
     def _handle_reprocess(self, clip_id: int) -> None:
         """Put a finished or failed clip back in the queue."""

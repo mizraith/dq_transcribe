@@ -52,7 +52,7 @@ class AutoDqTests(unittest.TestCase):
                          {("1", constants.DQ_STATE_ACCEPTED, constants.DQ_SOURCE_AUTO), ("3", constants.DQ_STATE_ACCEPTED, constants.DQ_SOURCE_AUTO)})
         self.assertEqual(self.auto.run_once()["created"], [])  # nothing new
         self.store.trash_dq(created[0])
-        self.auto._last_signature = None
+        self.auto._last_signatures.clear()
         self.assertEqual(self.auto.run_once()["created"], [])  # a trashed auto DQ is never made again
 
     def test_late_acknowledgment_accepts_the_dq(self) -> None:

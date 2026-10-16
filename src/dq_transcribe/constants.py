@@ -537,3 +537,32 @@ RESPONSE_KEY_ADDED_TO_EXISTING = "added_to_existing"  # POST /api/dqs: the call 
 # (a late call for the previous event is normal; further back is most likely a misheard number).
 REVIEW_EVENTS_BEHIND = 1
 REVIEW_RECENT_DQ_COUNT = 3
+
+# --- Admin Assistant suite (the main page and shared meet/session live on the Officials
+# Sign-In server; see ai_docs/officials_signin/DQ_SUITE_HANDOFF.md) -------------------------
+APP_DISPLAY_NAME = "DQ Transcribe"  # the name people see; package and command stay dq_transcribe
+SUITE_NAME = "Admin Assistant"
+SUITE_BASE_URL = "http://localhost:8010"
+SUITE_CURRENT_URL = SUITE_BASE_URL + "/api/suite/current"  # GET: the current meet and session (poll)
+SUITE_SELECT_URL = SUITE_BASE_URL + "/api/suite/select"  # POST {"meet_id"} / {"session_id"}: moves every app
+SUITE_POLL_SECONDS = 3
+WINDOW_NAME = "dq_transcribe"  # this page's tab name, so the launcher switches to it without reloading
+# The suite's apps: (menu label, tab name, address). The page opens each in its named tab.
+SUITE_APPS = (
+    ("Meets & Main Page", "admin_assistant", SUITE_BASE_URL + "/"),
+    ("DQ Transcribe", WINDOW_NAME, ""),
+    ("Officials Sign-In", "officials_signin", SUITE_BASE_URL + "/officials"),
+    ("Coaches Sign-In", "coaches_signin", SUITE_BASE_URL + "/coaches"),
+)
+# POST {"suite_meet_id", "name", "start_date"} or {"demo": true}: the DQ meet for the suite's current
+# meet (linked by id, else by name and date, else created quietly); it becomes the displayed meet.
+ROUTE_SUITE_LINK = "/api/suite-link"
+REQUEST_KEY_SUITE_MEET_ID = "suite_meet_id"
+REQUEST_KEY_DEMO = "demo"
+# Clip uploads say where they record to (the meet and session when capturing started; see app.js):
+# POST /api/clips?meet_id=3&session_id=1&session_name=Friday%20PM
+QUERY_KEY_MEET_ID = "meet_id"
+QUERY_KEY_SESSION_ID = "session_id"
+QUERY_KEY_SESSION_NAME = "session_name"
+MAX_SESSION_NAME_CHARS = 80
+SETTING_RECORDING_MEET_ID = "recording_meet_id"  # the meet last recorded to (automatic DQs also watch it)

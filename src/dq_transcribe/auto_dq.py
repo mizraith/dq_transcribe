@@ -2,7 +2,7 @@
 
 The owner's rule for the first real meet (2026-10-16): the app does as much as
 it can on its own and the admin is the gatekeeper at the **notify** step. So a
-background thread watches the active meet's transcripts and, for each detected
+background thread watches the transcripts (displayed meet and recording meet) and, for each detected
 call (``DqStore.candidates``):
 
 * **creates the DQ** with what was heard: event, heat, lane, infractions and their
@@ -30,8 +30,9 @@ What it leaves alone, for a person:
 * anything already a DQ, dismissed, or moved to the trash (a trashed auto DQ is
   never made again).
 
-Turned on and off in Meet setup (an app setting, on by default). Work only
-happens when the meet's clips, transcripts or DQs changed since the last look.
+Turned on and off in Meet setup (an app setting, on by default). It watches the
+displayed meet and the meet being recorded to. Work only happens when a meet's
+clips, transcripts or DQs changed since the last look.
 """
 
 from __future__ import annotations
@@ -134,7 +135,7 @@ class AutoDqCreator:
         self._poll_seconds = poll_seconds
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._last_signature: tuple[Any, ...] | None = None
+        self._last_signatures: dict[int, tuple[Any, ...]] = {}  # meet id -> signature at the last look
 
     @property
     def enabled(self) -> bool:
@@ -144,7 +145,7 @@ class AutoDqCreator:
     def set_enabled(self, enabled: bool) -> None:
         """Turn automatic DQs on or off (remembered across restarts)."""
         self.database.set_setting(constants.SETTING_AUTO_CREATE_DQS, constants.SETTING_TRUE if enabled else constants.SETTING_FALSE)
-        self._last_signature = None  # look again at once when turned back on
+        self._last_signatures.clear()  # look again at once when turned back on
 
     def start(self) -> None:
         """Start the background thread."""
@@ -167,17 +168,31 @@ class AutoDqCreator:
                 LOGGER.exception("Automatic DQs: unexpected error")
 
     def run_once(self, now: datetime | None = None) -> dict[str, list[int]]:
-        """Make DQs from the active meet's new calls, and accept those whose acknowledgment came later.
+        """Make DQs from new calls, and accept those whose acknowledgment came later.
+
+        Looks at the displayed (active) meet and at the meet being recorded to: while
+        recording, someone may be looking at another meet in the Admin Assistant.
 
         Returns:
             ``{"created": [dq ids], "added_to": [dq ids a later call was added to], "accepted": [dq ids]}``.
         """
         result: dict[str, list[int]] = {"created": [], "added_to": [], "accepted": []}
-        meet_id = self.database.get_active_meet_id()
-        if meet_id is None or not self.enabled:
+        if not self.enabled:
             return result
+        recording = self.database.get_setting(constants.SETTING_RECORDING_MEET_ID)
+        meet_ids = {self.database.get_active_meet_id(), int(recording) if recording.isdigit() else None} - {None}
+        for meet_id in sorted(meet_ids):
+            if self.database.get_meet(meet_id) is None:
+                continue
+            for key, ids in self._run_meet(meet_id, now).items():
+                result[key].extend(ids)
+        return result
+
+    def _run_meet(self, meet_id: int, now: datetime | None) -> dict[str, list[int]]:
+        """``run_once`` for one meet."""
+        result: dict[str, list[int]] = {"created": [], "added_to": [], "accepted": []}
         signature = self._signature(meet_id)
-        if signature == self._last_signature:
+        if signature == self._last_signatures.get(meet_id):
             return result
         now = now or datetime.now(timezone.utc)
         clips = {clip["id"]: clip for clip in self.database.list_clips(meet_id=meet_id)}
@@ -207,7 +222,10 @@ class AutoDqCreator:
         if any(result.values()):
             LOGGER.info("Automatic DQs in %s: %s", meet.get("name"), result)
         # Our own changes alter the signature: take it after them, so the next pass skips.
-        self._last_signature = None if waiting else self._signature(meet_id)
+        if waiting:
+            self._last_signatures.pop(meet_id, None)
+        else:
+            self._last_signatures[meet_id] = self._signature(meet_id)
         return result
 
     # --- Helpers ---------------------------------------------------------------------
