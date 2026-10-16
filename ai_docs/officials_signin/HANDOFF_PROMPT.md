@@ -57,20 +57,18 @@ data in `~/.officials_signin/` (SQLite), stdlib Python only.
   servers, opens only the main page).
 - `DQ_SUITE_HANDOFF.md`: what the DQ Transcribe chat must change to join the suite.
 
-## State (2026-10-16, 08:40)
+## State (2026-10-16, 08:50)
 
-The Admin Assistant main page, the suite API and the shared top bar are built, tested
-and pushed (commit 3342e3c). The tablet still runs the previous code until it pulls
-(the owner is asked first: the server restarts itself on pull). Today's meet is set up
+The Admin Assistant main page, the suite API and the shared top bar are built, tested,
+pushed and running on the tablet (owner's OK; checked by device task
+`signin_suite_update`). DQ's "10/14 Test" is in the meets list. Today's meet is set up
 on the tablet: "All Treats No Tricks Candy Meet Block Party", Friday PM, 4:45 PM,
 officials meeting 3:45 PM.
 
 ## Next
 
-1. With the owner's OK: update the tablet, then import DQ's "10/14 Test" (2026-10-14)
-   into the suite's meets through the app API (one session needed).
-2. The DQ Transcribe chat works from `DQ_SUITE_HANDOFF.md`; answer its questions.
-3. The owner's feedback from the Candy Meet.
-4. Open items at the end of `MEMORY.md` (coach card requirements, Team Lead rule, ...).
-5. Before every pause, update `MEMORY.md` (newest decision first), this file's State and
+1. The DQ Transcribe chat works from `DQ_SUITE_HANDOFF.md`; answer its questions.
+2. The owner's feedback from the Candy Meet.
+3. Open items at the end of `MEMORY.md` (coach card requirements, Team Lead rule, ...).
+4. Before every pause, update `MEMORY.md` (newest decision first), this file's State and
    Next, and `GUIDELINES.md` if a standing rule changed; then commit and push.
