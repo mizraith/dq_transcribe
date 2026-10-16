@@ -9,6 +9,8 @@ from __future__ import annotations
 import http.client
 import json
 import random
+import sys
+import types
 import tempfile
 import threading
 import unittest
@@ -89,7 +91,7 @@ class ReportTests(unittest.TestCase):
         )
         for index in range(7):
             self.sign_in(f"Judge {index}", 20 - index, member_id=SECRET_MEMBER_ID if index == 0 else None)
-        self.sign_in('Mark "Red" Byer', 12, role="Starter")
+        self.sign_in('Pat "Skip" Sample', 12, role="Starter")
 
     def sign_in(self, name: str, years: int, role: str = constants.TEAM_POOL_ROLE, member_id: str | None = None) -> None:
         official = self.database.save_official(None, name, years, None, None, MEET_DATE)
@@ -114,7 +116,7 @@ class ReportTests(unittest.TestCase):
             self.assertIn("Candy &lt;Meet&gt;", page)
             self.assertNotIn("<Meet>", page)
             self.assertNotIn(SECRET_MEMBER_ID, page)
-        self.assertIn("Mark &quot;Red&quot; Byer", self.pages()[0])
+        self.assertIn("Pat &quot;Skip&quot; Sample", self.pages()[0])
 
     def test_session_summary_lists_everyone(self) -> None:
         page = self.pages()[0]
@@ -233,6 +235,156 @@ class DemoServerTests(unittest.TestCase):
         status, _, _ = self.request("POST", constants.ROUTE_TEAMS_SETTINGS, {constants.KEY_ROTATION_MODE: "sideways"},
                                     cookie=cookie)
         self.assertEqual(status, 400)
+
+    def test_meet_overview_lists_real_meets_and_switches(self) -> None:
+        first = self.database.list_meets()[0][constants.KEY_ID]
+        second = self.database.create_meet("Second Meet", "2026-11-01")
+        self.database.add_session("Saturday AM", "2026-11-01", "08:00", "AM", "07:00")
+        _, overview, _ = self.request("GET", constants.ROUTE_MEETS)
+        self.assertEqual([meet[constants.KEY_NAME] for meet in overview[constants.KEY_MEETS]], ["Second Meet", "Real Meet"])
+        self.assertEqual(overview[constants.KEY_ACTIVE_MEET_ID], second)
+        self.assertEqual(overview[constants.KEY_MEETS][0][constants.KEY_SESSIONS_COUNT], 1)
+        self.assertFalse(overview[constants.KEY_DEMO_READY])
+        status, _, _ = self.request("POST", f"{constants.ROUTE_MEET_PREFIX}{first}{constants.MEET_OPEN_SUFFIX}", {})
+        self.assertEqual(status, 200)
+        _, state, _ = self.request("GET", constants.ROUTE_STATE)
+        self.assertEqual(state[constants.KEY_MEET][constants.KEY_NAME], "Real Meet")
+        status, _, _ = self.request("POST", f"{constants.ROUTE_MEET_PREFIX}999{constants.MEET_OPEN_SUFFIX}", {})
+        self.assertEqual(status, 400)
+
+    def test_open_meet_picks_todays_or_next_session(self) -> None:
+        meet = self.database.create_meet("Two Day", "2026-10-16")
+        friday = self.database.add_session("Friday PM", "2026-10-16", "13:00", "PM", "12:00")
+        saturday = self.database.add_session("Saturday AM", "2026-10-17", "08:00", "AM", "07:00")
+        self.database.open_meet(meet, date(2026, 10, 17))
+        self.assertEqual(self.database.get_state()[constants.KEY_ACTIVE_SESSION_ID], saturday)
+        self.database.open_meet(meet, date(2026, 10, 1))
+        self.assertEqual(self.database.get_state()[constants.KEY_ACTIVE_SESSION_ID], friday)
+        self.database.open_meet(meet, date(2026, 12, 1))  # meet is over: its last session
+        self.assertEqual(self.database.get_state()[constants.KEY_ACTIVE_SESSION_ID], saturday)
+
+    def test_overview_from_demo_still_lists_real_meets(self) -> None:
+        cookie = self.start_demo()
+        _, overview, _ = self.request("GET", constants.ROUTE_MEETS, cookie=cookie)
+        self.assertTrue(overview[constants.KEY_DEMO])
+        self.assertTrue(overview[constants.KEY_DEMO_READY])
+        self.assertEqual([meet[constants.KEY_NAME] for meet in overview[constants.KEY_MEETS]], ["Real Meet"])
+        # Opening a real meet leaves demo mode.
+        meet_id = overview[constants.KEY_MEETS][0][constants.KEY_ID]
+        _, _, headers = self.request("POST", f"{constants.ROUTE_MEET_PREFIX}{meet_id}{constants.MEET_OPEN_SUFFIX}", {},
+                                     cookie=cookie)
+        self.assertIn("Max-Age=0", headers[constants.SET_COOKIE_HEADER])
+
+    def test_demo_open_builds_a_default_demo(self) -> None:
+        status, _, headers = self.request("POST", constants.ROUTE_DEMO_OPEN, {})
+        self.assertEqual(status, 200)
+        cookie = headers[constants.SET_COOKIE_HEADER].split(";")[0]
+        _, state, _ = self.request("GET", constants.ROUTE_STATE, cookie=cookie)
+        self.assertEqual(len(state[constants.KEY_SESSIONS]), constants.DEMO_DEFAULT_SESSIONS)
+
+    def test_demo_reset_erases_changes_and_keeps_the_size(self) -> None:
+        cookie = self.start_demo()  # 13 judges, 2 trainees, 2 sessions, head officials
+        _, state, _ = self.request("GET", constants.ROUTE_STATE, cookie=cookie)
+        signin_id = state[constants.KEY_SIGNINS][0][constants.KEY_ID]
+        self.request("POST", f"{constants.ROUTE_SIGNIN_PREFIX}{signin_id}{constants.SIGNIN_REMOVE_SUFFIX}", {},
+                     cookie=cookie)
+        _, state, _ = self.request("GET", constants.ROUTE_STATE, cookie=cookie)
+        before = len(state[constants.KEY_SIGNINS])
+        status, _, _ = self.request("POST", constants.ROUTE_DEMO_RESET, {}, cookie=cookie)
+        self.assertEqual(status, 200)
+        _, state, _ = self.request("GET", constants.ROUTE_STATE, cookie=cookie)
+        self.assertEqual(len(state[constants.KEY_SESSIONS]), 2)
+        self.assertEqual(len(state[constants.KEY_SIGNINS]), before + 1)
+        _, real, _ = self.request("GET", constants.ROUTE_STATE)
+        self.assertEqual(real[constants.KEY_MEET][constants.KEY_NAME], "Real Meet")
+
+    def save(self, body: dict[str, Any], cookie: str | None = None) -> tuple[int, Any]:
+        status, reply, _ = self.request("POST", constants.ROUTE_MEET_SAVE, body, cookie=cookie)
+        return status, reply
+
+    @staticmethod
+    def session_row(name: str, day: str, start: str | None, session_id: int | None = None) -> dict[str, Any]:
+        return {constants.KEY_ID: session_id, constants.KEY_NAME: name, constants.KEY_DATE: day,
+                constants.KEY_START_TIME: start, constants.KEY_SESSION_TYPE: None,
+                constants.KEY_OFFICIALS_MEETING_TIME: None, constants.KEY_ESTIMATED_MINUTES: 180}
+
+    def test_new_meet_with_stacked_sessions(self) -> None:
+        status, reply = self.save({
+            constants.KEY_ID: None, constants.KEY_NAME: "Winter Champs", constants.KEY_START_DATE: "2026-12-04",
+            constants.KEY_SESSIONS: [self.session_row("Friday PM", "2026-12-04", "16:00"),
+                                     self.session_row("Saturday Prelims", "2026-12-05", "08:00"),
+                                     self.session_row("Saturday Finals", "2026-12-05", "17:00")],
+        })
+        self.assertEqual(status, 200, reply)
+        state = self.database.get_state()
+        self.assertEqual(state[constants.KEY_MEET][constants.KEY_NAME], "Winter Champs")
+        self.assertEqual([session[constants.KEY_NAME] for session in state[constants.KEY_SESSIONS]],
+                         ["Friday PM", "Saturday Prelims", "Saturday Finals"])
+        self.assertEqual(state[constants.KEY_ACTIVE_SESSION_ID], state[constants.KEY_SESSIONS][0][constants.KEY_ID])
+
+    def test_edit_meet_rows_and_add_one(self) -> None:
+        meet_id = self.database.get_state()[constants.KEY_MEET][constants.KEY_ID]
+        first = self.database.add_session("Friday PM", "2026-10-16", "13:00", "PM", "12:00")
+        status, reply = self.save({
+            constants.KEY_ID: meet_id, constants.KEY_NAME: "Real Meet (renamed)", constants.KEY_START_DATE: "2026-10-16",
+            constants.KEY_SESSIONS: [self.session_row("Friday Evening", "2026-10-16", "17:00", first),
+                                     self.session_row("Saturday AM", "2026-10-17", "08:00")],
+        })
+        self.assertEqual(status, 200, reply)
+        state = self.database.get_state()
+        self.assertEqual(state[constants.KEY_MEET][constants.KEY_NAME], "Real Meet (renamed)")
+        self.assertEqual([(s[constants.KEY_ID] == first, s[constants.KEY_NAME]) for s in state[constants.KEY_SESSIONS]],
+                         [(True, "Friday Evening"), (False, "Saturday AM")])
+
+    def test_bad_row_saves_nothing(self) -> None:
+        status, reply = self.save({
+            constants.KEY_ID: None, constants.KEY_NAME: "Broken", constants.KEY_START_DATE: "2026-12-04",
+            constants.KEY_SESSIONS: [self.session_row("Friday PM", "2026-12-04", "16:00"),
+                                     self.session_row("Bad", "not a date", None)],
+        })
+        self.assertEqual(status, 400)
+        self.assertIn("Session 2", reply[constants.KEY_ERROR])
+        self.assertEqual([meet[constants.KEY_NAME] for meet in self.database.list_meets()], ["Real Meet"])
+
+    def test_session_of_another_meet_refused(self) -> None:
+        other_meet = self.database.list_meets()[0][constants.KEY_ID]
+        foreign = self.database.add_session("Friday PM", "2026-10-16", "13:00")
+        status, _ = self.save({
+            constants.KEY_ID: None, constants.KEY_NAME: "New", constants.KEY_START_DATE: "2026-12-04",
+            constants.KEY_SESSIONS: [self.session_row("Hijack", "2026-12-04", "16:00", foreign)],
+        })
+        self.assertEqual(status, 400)
+        self.assertEqual(len(self.database.list_meets()), 1)
+        self.assertEqual(self.database.get_session(foreign)["meet_id"], other_meet)
+
+    def test_coaches_paths_404_until_the_module_exists(self) -> None:
+        status, _, _ = self.request("GET", constants.ROUTE_COACHES)
+        self.assertEqual(status, 404)
+
+    def test_coaches_module_gets_its_paths_with_the_right_database(self) -> None:
+        calls = []
+
+        def handle_get(handler: Any, path: str, query: str) -> bool:
+            calls.append((path, handler.in_demo, handler.database.get_state()[constants.KEY_MEET][constants.KEY_NAME]))
+            handler._send_json(200, {"ok": True})
+            return True
+
+        def handle_post(handler: Any, path: str, payload: dict[str, Any]) -> bool:
+            return False  # unknown path: the server answers 404
+
+        module = types.ModuleType(constants.COACHES_MODULE_NAME)
+        module.handle_get = handle_get
+        module.handle_post = handle_post
+        sys.modules[constants.COACHES_MODULE_NAME] = module
+        try:
+            cookie = self.start_demo()
+            self.assertEqual(self.request("GET", constants.ROUTE_COACHES)[0], 200)
+            self.assertEqual(self.request("GET", constants.ROUTE_COACHES_API_PREFIX + "list", cookie=cookie)[0], 200)
+            self.assertEqual(self.request("POST", constants.ROUTE_COACHES_API_PREFIX + "nope", {})[0], 404)
+        finally:
+            del sys.modules[constants.COACHES_MODULE_NAME]
+        self.assertEqual(calls, [(constants.ROUTE_COACHES, False, "Real Meet"),
+                                 (constants.ROUTE_COACHES_API_PREFIX + "list", True, constants.DEMO_MEET_NAME)])
 
     def test_exit_clears_the_cookie(self) -> None:
         cookie = self.start_demo()

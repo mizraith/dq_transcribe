@@ -6,17 +6,17 @@ text of every pass here. Each pass is parsed on its own, then the passes are
 merged by vote, because each OCR pass tends to get different parts right:
 one reads the member ID, another the dates.
 
-The card looks like this (labels fixed, values vary)::
+The card looks like this (labels fixed, values vary; this example is made up)::
 
     In good standing
     Official
-    MARK "RED" BYER
-    Member Id: [member ID removed]
-    LSC & Club: PC - PASA
-    In Good Standing Until: 09/21/2027
+    PAT "SKIP" SAMPLE
+    Member Id: [14 letters and digits]
+    LSC & Club: XX - DEMO
+    In Good Standing Until: 09/30/2027
     Expiration Date: 12/31/9999
     Background Check: 09/30/2027
-    Athlete Protection Training: 09/21/2027
+    Athlete Protection Training: 09/30/2027
 
 Nothing in this module logs the member ID or the name.
 """
@@ -73,7 +73,7 @@ class CardReading:
     not read.
 
     Attributes:
-        name: Name as printed, tidied to title case (``Mark "Red" Byer``).
+        name: Name as printed, tidied to title case (``Pat "Skip" Sample``).
         member_id: USA Swimming member ID, upper case. Personal data: never log it.
         lsc: Two-letter LSC code, for example ``PC``.
         club: Club code, for example ``PASA``.
@@ -147,7 +147,7 @@ def tidy_name(raw_name: str) -> str:
     """Tidy a name read from the card: drop stray symbols and use title case.
 
     Words inside quotes (a nickname) keep their quotes, so
-    ``MARK "RED" BYER`` becomes ``Mark "Red" Byer`` and ``MARY-JO O'NEIL``
+    ``PAT "SKIP" SAMPLE`` becomes ``Pat "Skip" Sample`` and ``MARY-JO O'NEIL``
     becomes ``Mary-Jo O'Neil`` (names like McDonald lose their inner capital).
 
     Args:
@@ -163,7 +163,7 @@ def tidy_name(raw_name: str) -> str:
     # Capitalise each run of letters, so hyphenated names and O' names come out right.
     tidied_words = [_LETTER_RUN.sub(lambda match: match.group(0).capitalize(), word) for word in words]
     tidied = " ".join(tidied_words)
-    # A nickname has two quotes; an odd one at either end is OCR noise ('"Mark "Red" Byer').
+    # A nickname has two quotes; an odd one at either end is OCR noise ('"Pat "Skip" Sample').
     if tidied.count(_QUOTE) % 2 == 1:
         if tidied.startswith(_QUOTE):
             tidied = tidied[1:]
@@ -324,7 +324,7 @@ def _vote(values: Iterable[Any]) -> tuple[Any, int]:
 
 def _best_name(names: list[str | None]) -> str | None:
     """Pick the name most passes agree on; a name found inside other readings
-    (``Mark Byer`` within ``Dil Mark Byer P``) gets extra credit, so stray letters lose."""
+    (``Pat Sample`` within ``Dil Pat Sample P``) gets extra credit, so stray letters lose."""
     present = [name for name in names if name]
     if not present:
         return None

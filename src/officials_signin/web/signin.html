@@ -89,6 +89,10 @@
     .field-chip { padding: 0.2rem 0.6rem; border-radius: 0.8rem; background: #e5e7eb; color: var(--muted); font-size: 0.85rem; }
     .field-chip.read { background: var(--go-soft); color: var(--go); font-weight: 700; }
     .sheet-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: flex-end; margin-top: 1rem; }
+    /* ✕ in the top right corner of every pop-up; it stays in view while the sheet scrolls. */
+    .sheet-close { position: sticky; top: 0; float: right; z-index: 2; width: 2.8rem; height: 2.8rem; min-height: 0; padding: 0; margin: -0.4rem -0.4rem 0 0.6rem; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1.3rem; line-height: 1; }
+    /* Save / Cancel stay at the bottom of long sheets, so nobody has to scroll to leave. */
+    #setup-overlay .sheet > .sheet-actions, #meets-overlay .sheet > .sheet-actions { position: sticky; bottom: -1.2rem; background: var(--card); padding: 0.6rem 0 1.2rem; margin-bottom: -1.2rem; border-top: 1px solid var(--line); }
     .sheet-actions .grow { margin-right: auto; }
     .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
     .chip { border-radius: 1.5rem; border: 2px solid #93c5fd; background: var(--accent-soft); }
@@ -99,17 +103,33 @@
     .check-line.ok { color: var(--go); }
     .check-line.warn { color: var(--warn); }
     .setup-grid { display: grid; gap: 0.5rem; align-items: end; }
-    .setup-grid.session-detail-grid { grid-template-columns: 1.4fr 1.3fr 1fr 1.1fr; }
-    .setup-grid.session-name-grid { grid-template-columns: 1fr 10rem auto; margin-top: 0.5rem; }
     .setup-grid.meet-grid { grid-template-columns: 2fr 1.3fr; }
-    @media (max-width: 640px) { .setup-grid.session-detail-grid, .setup-grid.session-name-grid, .setup-grid.meet-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) { .setup-grid.meet-grid { grid-template-columns: 1fr; } }
+    .sheet.wide { width: min(76rem, 100%); }
+    .session-table-wrap { overflow-x: auto; }
+    .session-table { width: 100%; border-collapse: collapse; }
+    .session-table th { text-align: left; font-size: 0.8rem; font-weight: 600; color: var(--muted); padding: 0 0.25rem 0.3rem; white-space: nowrap; }
+    .session-table td { padding: 0.25rem; vertical-align: top; border-top: 1px solid var(--line); }
+    .session-table input, .session-table select { font: inherit; width: 100%; min-width: 6.5rem; padding: 0.5rem; border: 1px solid var(--line); border-radius: 0.5rem; background: #fff; color: var(--ink); }
+    .session-table input.session-name-input { min-width: 11rem; }
+    .session-table input.hours-input { min-width: 4.5rem; width: 5rem; }
+    .session-table .type-other { margin-top: 0.3rem; }
+    .session-table .count-cell { text-align: center; padding-top: 0.75rem; color: var(--muted); }
+    .session-table tr.changed td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
+    .session-table tr.deleting td { background: #fef2f2; }
+    @media (max-width: 900px) {
+      .session-table input, .session-table select { min-width: 0; padding: 0.4rem 0.3rem; font-size: 0.95rem; }
+      .session-table input.session-name-input { min-width: 7rem; }
+      .session-table input.hours-input { min-width: 3.2rem; width: 3.6rem; }
+      .session-table th { font-size: 0.72rem; white-space: normal; }
+      .session-table td { padding: 0.2rem 0.12rem; }
+      .session-table td:last-child button { min-height: 2.4rem; padding: 0.2rem 0.5rem; font-size: 0.9rem; }
+      .session-table input[type=date] { width: 8.6rem; }
+      .session-table input[type=time] { width: 7rem; }
+    }
+    #session-add-row { margin-top: 0.5rem; }
     .setup-grid select { font: inherit; padding: 0.6rem; border: 1px solid var(--line); border-radius: 0.5rem; background: #fff; color: var(--ink); }
-    .setup-grid .type-other { margin-top: 0.3rem; }
-    .setup-sessions button { width: 100%; text-align: left; border: 0; border-radius: 0.4rem; background: transparent; min-height: 2.8rem; padding: 0.3rem 0.4rem; }
-    .setup-sessions button.editing { background: var(--accent-soft); }
-    .setup-sessions .edit-hint { float: right; color: var(--accent); font-size: 0.85rem; }
     button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 700; }
-    .edit-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; }
     .delete-warning { margin-top: 0.8rem; padding: 0.9rem 1rem; border: 2px solid var(--bad); border-radius: 0.7rem; background: #fef2f2; color: #7f1d1d; }
     .delete-warning strong { font-size: 1.15rem; }
     .delete-warning p { margin: 0.4rem 0; }
@@ -144,17 +164,16 @@
     .teams-print-actions { margin: 0.2rem 0 0.4rem; }
     #demo-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; padding: 0.5rem 1rem; background: #7c3aed; color: #fff; font-size: 1rem; }
     #demo-banner a { color: #fff; font-weight: 700; }
-    #demo-banner button { min-height: 2.4rem; padding: 0.2rem 0.9rem; margin-left: auto; }
-    .demo-link { color: #9ca3af; font-size: 0.9rem; }
+    #demo-banner button { min-height: 2.4rem; padding: 0.2rem 0.9rem; }
+    #demo-reset { margin-left: auto; }
+    .meet-list { list-style: none; margin: 0.4rem 0 0.8rem; padding: 0; display: grid; gap: 0.5rem; }
+    .meet-row { display: flex; align-items: center; gap: 0.8rem; padding: 0.6rem 0.8rem; border: 1px solid var(--line); border-radius: 0.6rem; }
+    .meet-row.current { border: 2px solid var(--go); }
+    .meet-row.demo { border-color: #7c3aed; background: #f5f3ff; }
+    .meet-row .meet-text { flex: 1; display: flex; flex-direction: column; }
+    .meet-row .meet-title { font-weight: 700; }
     #meeting-time { color: #fcd34d; font-weight: 700; white-space: nowrap; }
     .setup-grid label { display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); gap: 0.2rem; }
-    .meet-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem; margin-bottom: 0.4rem; }
-    #current-meet-name { font-size: 1.25rem; font-weight: 700; }
-    .setup-sessions { list-style: none; margin: 0 0 0.4rem; padding: 0; }
-    .setup-sessions li { padding: 0.15rem 0; border-top: 1px solid var(--line); }
-    .setup-sessions li:first-child { border-top: 0; }
-    .setup-sessions .empty { color: var(--muted); }
-    #new-meet-block.separated { border-top: 1px solid var(--line); margin-top: 0.8rem; padding-top: 0.2rem; }
     .link-button { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 0; min-height: 2.6rem; margin-top: 0.6rem; }
 
     #toast { position: fixed; left: 50%; bottom: 1.5rem; transform: translate(-50%, 2rem); opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; padding: 0.9rem 1.5rem; border-radius: 0.7rem; font-size: 1.15rem; font-weight: 700; color: #fff; background: var(--go); z-index: 10; }
@@ -165,7 +184,8 @@
 <body>
   <div id="demo-banner" hidden>
     <strong>DEMO MEET</strong> · made-up officials, nothing here is real
-    <a id="demo-new" href="#">New demo</a>
+    <a id="demo-new" href="#">Change demo size</a>
+    <button id="demo-reset" class="danger" type="button">Reset demo</button>
     <button id="demo-exit" type="button">Exit demo</button>
   </div>
   <header>
@@ -174,6 +194,8 @@
     <div id="session-chips"></div>
     <span id="meeting-time" hidden></span>
     <button id="teams-button" class="header-button" type="button" hidden>Teams</button>
+    <a id="coaches-link" class="header-button" href="#" hidden>Coaches</a>
+    <button id="meets-button" class="header-button" type="button">Meets</button>
     <button id="setup-button" class="header-button" type="button">Meet setup</button>
   </header>
 
@@ -204,7 +226,6 @@
         <h2 class="roster-heading">Roster for dq_transcribe</h2>
         <a id="roster-link" href="#" target="_blank">View roster.json</a>
         <a id="roster-download-link" href="#">Download</a>
-        <a id="demo-link" class="demo-link" href="#">Try the demo meet</a>
       </div>
     </section>
   </div>
@@ -212,6 +233,7 @@
   <!-- Camera overlay -->
   <div class="overlay" id="camera-overlay" hidden>
     <div class="sheet">
+      <button class="sheet-close" type="button" data-closes="camera-cancel" aria-label="Close">✕</button>
       <h2>Show your Membership card</h2>
       <div class="camera-bar">
         <span id="camera-name">Camera</span>
@@ -238,7 +260,8 @@
   <!-- Sign-in sheet -->
   <div class="overlay" id="sheet-overlay" hidden>
     <div class="sheet">
-      <div class="sheet-grid">
+      <button class="sheet-close" type="button" data-closes="sheet-cancel" aria-label="Close">✕</button>
+            <div class="sheet-grid">
         <label>
           <span class="sheet-label">Name</span>
           <input id="sheet-name" type="text" autocomplete="off">
@@ -267,84 +290,81 @@
     </div>
   </div>
 
-  <!-- Meet setup. With no meet yet: one form for the meet and its first session.
-       With a meet: its name and sessions, an "Add session" form, and (tucked away)
-       "Start a different meet". -->
-  <div class="overlay" id="setup-overlay" hidden>
+  <!-- Meet overview: every meet (tap to open one), a new meet, and the demo meet with
+       Reset demo (behind a warning, as in dq_transcribe). -->
+  <div class="overlay" id="meets-overlay" hidden>
     <div class="sheet">
-      <h2>Meet setup</h2>
-
-      <div id="current-meet-block">
-        <div class="meet-summary">
-          <span id="current-meet-name"></span>
-          <span id="current-meet-date" class="signin-detail"></span>
-        </div>
-        <ul id="setup-session-list" class="setup-sessions"></ul>
-        <span class="sheet-label" id="session-form-title">Add a session</span>
-        <div class="setup-grid session-detail-grid">
-          <label>Session type
-            <select id="session-type"></select>
-            <input id="session-type-other" type="text" class="type-other" autocomplete="off" placeholder="Type of session" hidden>
-          </label>
-          <label>Date<input id="session-date" type="date"></label>
-          <label>Start time<input id="session-time" type="time"></label>
-          <label>Officials meeting<input id="session-meeting" type="time"></label>
-        </div>
-        <div class="setup-grid session-name-grid">
-          <label>Session name<input id="session-name" type="text" autocomplete="off"></label>
-          <label>Estimated length (hours)<input id="session-length" type="number" inputmode="decimal" min="0.5" max="12" step="0.5"></label>
-          <button id="session-save" class="go" type="button">Add session</button>
-        </div>
-        <div id="session-edit-actions" class="edit-actions" hidden>
-          <button id="session-edit-cancel" class="link-button" type="button">Cancel editing</button>
-          <button id="session-delete" class="danger" type="button">Delete this session</button>
-        </div>
-        <div id="session-delete-warning" class="delete-warning" hidden>
-          <strong>⚠ Delete <span id="session-delete-name"></span>?</strong>
-          <p id="session-delete-detail"></p>
-          <p>This cannot be undone.</p>
-          <div class="sheet-actions">
-            <button id="session-delete-keep" type="button">Keep it</button>
-            <button id="session-delete-confirm" class="danger" type="button">Yes, delete it</button>
-          </div>
-        </div>
-        <button id="new-meet-toggle" class="link-button" type="button">Start a different meet…</button>
-      </div>
-
-      <div id="new-meet-block">
-        <span class="sheet-label">New meet</span>
-        <div class="setup-grid meet-grid">
-          <label>Meet name<input id="new-meet-name" type="text" autocomplete="off"></label>
-          <label>Start date<input id="new-meet-date" type="date"></label>
-        </div>
-        <span class="sheet-label">First session</span>
-        <div class="setup-grid session-detail-grid">
-          <label>Session type
-            <select id="first-session-type"></select>
-            <input id="first-session-type-other" type="text" class="type-other" autocomplete="off" placeholder="Type of session" hidden>
-          </label>
-          <label>Date<input id="first-session-date" type="date"></label>
-          <label>Start time<input id="first-session-time" type="time"></label>
-          <label>Officials meeting<input id="first-session-meeting" type="time"></label>
-        </div>
-        <div class="setup-grid session-name-grid">
-          <label>Session name<input id="first-session-name" type="text" autocomplete="off"></label>
-          <label>Estimated length (hours)<input id="first-session-length" type="number" inputmode="decimal" min="0.5" max="12" step="0.5"></label>
-        </div>
+      <button class="sheet-close" type="button" data-closes="meets-close" aria-label="Close">✕</button>
+      <h2>Meet overview</h2>
+      <ul id="meet-list" class="meet-list"></ul>
+      <button id="meets-new" type="button">+ New meet</button>
+      <span class="sheet-label">Practice</span>
+      <ul class="meet-list">
+        <li id="demo-row" class="meet-row demo">
+          <span class="meet-text">
+            <span class="meet-title">Demo meet</span>
+            <span class="signin-detail">Made-up officials for trying sign-in, Teams and the printouts. The real meets are not touched.</span>
+          </span>
+          <button id="demo-open" class="go" type="button">Open</button>
+          <button id="demo-reset-overview" class="danger" type="button">Reset demo</button>
+        </li>
+      </ul>
+      <a id="demo-size-link" class="link-button" href="#">Choose how many officials and sessions…</a>
+      <div id="demo-reset-warning" class="delete-warning" hidden>
+        <strong>⚠ Reset the demo meet?</strong>
+        <p>This erases everything done in the demo (sign-ins, edits, teams) and rebuilds it with fresh made-up
+          officials, the same size as now. No real meet is changed.</p>
         <div class="sheet-actions">
-          <button id="new-meet-cancel" type="button">Keep the current meet</button>
-          <button id="new-meet-create" class="go" type="button">Create meet</button>
+          <button id="demo-reset-cancel" type="button">Cancel</button>
+          <button id="demo-reset-confirm" class="danger" type="button">Yes, reset demo</button>
         </div>
       </div>
+      <div class="sheet-actions"><button id="meets-close" class="primary" type="button">Done</button></div>
+    </div>
+  </div>
 
-      <div class="sheet-actions"><button id="setup-close" class="primary" type="button">Done</button></div>
+  <!-- Meet setup: the meet's name and start date, then its sessions as rows of a table
+       ("+ Add session" adds a row, each row can be deleted behind a warning). Save sends
+       the meet and every session at once. A new meet starts with one empty row. -->
+  <div class="overlay" id="setup-overlay" hidden>
+    <div class="sheet wide">
+      <button class="sheet-close" type="button" data-closes="setup-cancel" aria-label="Close">✕</button>
+      <h2 id="setup-title">Meet setup</h2>
+      <div class="setup-grid meet-grid">
+        <label>Meet name<input id="meet-name-input" type="text" autocomplete="off"></label>
+        <label>Start date<input id="meet-date-input" type="date"></label>
+      </div>
+      <span class="sheet-label">Sessions</span>
+      <div class="session-table-wrap">
+        <table class="session-table">
+          <thead>
+            <tr><th>Type</th><th>Date</th><th>Start</th><th>Officials meeting</th><th>Session name</th><th>Hours</th><th>Signed in</th><th></th></tr>
+          </thead>
+          <tbody id="session-rows"></tbody>
+        </table>
+      </div>
+      <div id="row-delete-warning" class="delete-warning" hidden>
+        <strong id="row-delete-title"></strong>
+        <p id="row-delete-detail"></p>
+        <div class="sheet-actions">
+          <button id="row-delete-keep" type="button">Keep it</button>
+          <button id="row-delete-confirm" class="danger" type="button">Yes, delete it</button>
+        </div>
+      </div>
+      <button id="session-add-row" type="button">+ Add session</button>
+      <div class="sheet-actions">
+        <button id="setup-meets" class="link-button" type="button">Meets…</button>
+        <button id="setup-cancel" type="button">Cancel</button>
+        <button id="setup-save" class="go" type="button">Save</button>
+      </div>
     </div>
   </div>
 
   <!-- Teams: stroke & turn judges in equal seniority teams, extras, trainees with mentors. -->
   <div class="overlay" id="teams-overlay" hidden>
     <div class="sheet wide-sheet">
-      <div class="teams-head">
+      <button class="sheet-close" type="button" data-closes="teams-close" aria-label="Close">✕</button>
+            <div class="teams-head">
         <h2>Teams</h2>
         <span id="teams-summary" class="signin-detail"></span>
       </div>
@@ -370,6 +390,7 @@
   <!-- Tap an official in Teams: move them, make them lead, or change a trainee's mentor. -->
   <div class="overlay" id="place-overlay" hidden>
     <div class="sheet">
+      <button class="sheet-close" type="button" data-closes="place-close" aria-label="Close">✕</button>
       <h2 id="place-name"></h2>
       <div id="place-detail" class="signin-detail"></div>
       <div id="place-move-block">

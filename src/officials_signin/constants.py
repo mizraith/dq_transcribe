@@ -46,7 +46,13 @@ ROUTE_SCRIPT = "/signin.js"
 ROUTE_CARD_SCANNER_SCRIPT = "/card_scanner.js"
 ROUTE_VENDOR_PREFIX = "/vendor/"
 ROUTE_STATE = "/api/state"  # GET: active meet, sessions, sign-ins
-ROUTE_MEETS = "/api/meets"  # POST: create a meet (and make it active)
+ROUTE_MEETS = "/api/meets"  # GET: every meet (Meet overview); POST: create a meet (and make it active)
+ROUTE_MEET_PREFIX = "/api/meets/"  # POST /api/meets/<id>/open: make that meet the active one
+MEET_OPEN_SUFFIX = "/open"
+# POST {id or null, name, start_date, sessions: [{id or null, name, date, ...}]}: create or
+# change a meet and all its sessions at once (Meet setup's Save).
+ROUTE_MEET_SAVE = "/api/meets/save"
+MAX_SESSIONS_PER_MEET = 30
 ROUTE_SESSIONS = "/api/sessions"  # POST: add a session to the active meet
 ROUTE_SESSION_PREFIX = "/api/sessions/"  # POST /api/sessions/<id>: edit a session
 SESSION_DELETE_SUFFIX = "/delete"  # POST /api/sessions/<id>/delete: delete it and its sign-ins
@@ -153,7 +159,7 @@ CARD_FIELD_NAME_VOTES = "name_votes"
 # scanner stops; until then it keeps reading.
 CARD_EXPIRED_DATE_CONFIRMATIONS = 2
 # A new official's name must also be read the same way this many times (one blurry
-# pass read "MARK" as "WIARN" and "MARY"). A card that matches a known official by
+# pass read "PAT" as "PAI" and "MARY"). A card that matches a known official by
 # member ID needs no name confirmation: the stored name is used.
 CARD_NAME_CONFIRMATIONS = 2
 
@@ -219,7 +225,7 @@ ISO_DATE_FORMAT = "%Y-%m-%d"
 CARD_NAME_MIN_WORDS = 2
 CARD_NAME_MIN_LETTER_SHARE = 0.75
 # When voting on the name, each other reading that contains a candidate adds this
-# much, so "Mark Byer" beats a one-off "Dil Mark Byer P" with stray letters.
+# much, so "Pat Sample" beats a one-off "Dil Pat Sample P" with stray letters.
 CARD_NAME_CONTAINED_BONUS = 0.5
 # Label lines are never names, even when OCR mangles their punctuation.
 CARD_NON_NAME_WORDS = (
@@ -507,9 +513,22 @@ ROUTE_TEAMS_BUILD = "/api/teams/build"  # POST: build (or rebuild) teams automat
 ROUTE_TEAMS_SETTINGS = "/api/teams/settings"  # POST: lanes, rotation mode, 15 m on every team (no rebuild)
 SIGNIN_TEAM_SUFFIX = "/team"  # POST /api/signins/<id>/team: move, lead, mentor
 
+# --- Coaches sign-in (a separate page on this server, built in its own files) ----
+# officials_signin/coaches.py, when present, handles these routes through
+# coaches.handle_get / coaches.handle_post (see server._coaches_module).
+COACHES_MODULE_NAME = "officials_signin.coaches"
+ROUTE_COACHES = "/coaches"  # GET: the coaches sign-in page
+ROUTE_COACHES_PREFIX = "/coaches/"  # GET: the coaches page's own files
+ROUTE_COACHES_API_PREFIX = "/api/coaches/"  # GET/POST: the coaches page's API
+
 # --- Settings table keys -------------------------------------------------------
 SETTING_ACTIVE_MEET_ID = "active_meet_id"
 SETTING_ACTIVE_SESSION_ID = "active_session_id"
+# Kept in the demo database so "Reset demo" rebuilds the same size of demo.
+SETTING_DEMO_JUDGES = "demo_judges"
+SETTING_DEMO_TRAINEES = "demo_trainees"
+SETTING_DEMO_SESSIONS = "demo_sessions"
+SETTING_DEMO_HEAD_OFFICIALS = "demo_head_officials"
 
 # --- Limits ---------------------------------------------------------------------
 NAME_MAX_LENGTH = 80
@@ -533,8 +552,15 @@ DEMO_COOKIE_ON = "1"
 ROUTE_DEMO = "/demo"  # GET: the demo setup page
 ROUTE_DEMO_START = "/api/demo/start"  # POST {judges, trainees, sessions, head officials}: fresh demo meet
 ROUTE_DEMO_EXIT = "/api/demo/exit"  # POST: back to the real meet
+ROUTE_DEMO_OPEN = "/api/demo/open"  # POST: switch to the demo meet (built with the defaults if there is none)
+ROUTE_DEMO_RESET = "/api/demo/reset"  # POST: rebuild the demo meet (same size), erasing every change
+DEMO_RESET_WARNING_SECONDS = 10  # the "Reset demo?" warning closes by itself after this
 DEMO_PAGE_FILENAME = "demo.html"
 KEY_DEMO = "demo"
+KEY_DEMO_READY = "demo_ready"
+KEY_MEETS = "meets"
+KEY_ACTIVE_MEET_ID = "active_meet_id"
+KEY_OFFICIAL_COUNT = "official_count"
 KEY_TRAINEES_COUNT = "trainees"
 KEY_SESSIONS_COUNT = "session_count"
 KEY_JUDGES_COUNT = "judge_count"
@@ -573,6 +599,6 @@ DEMO_LAST_NAMES = (
     "Kowalski", "Lindqvist", "Moreno", "Nakamura", "Okafor", "Petrov", "Quintero", "Ramsey", "Sorensen", "Tanaka",
     "Ulrich", "Vasquez", "Whitaker", "Yamada", "Zimmerman", "Ashford", "Brennan", "Calloway", "Draper", "Everly",
 )
-# Some officials go by a nickname, printed in quotes on the card: Mark "Red" Byer.
+# Some officials go by a nickname, printed in quotes on the card: Pat "Skip" Sample.
 DEMO_NICKNAMES = ("Red", "Skip", "Doc", "Ace", "Scout", "Sunny")
 DEMO_NICKNAME_SHARE = 0.15

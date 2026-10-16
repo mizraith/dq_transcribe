@@ -136,7 +136,7 @@ class SigninServerTests(unittest.TestCase):
         self.set_up_meet()
         once = self.read_card(CLEAN_CARD_TEXT)
         self.assertFalse(once[constants.KEY_CARD][constants.CARD_FIELD_COMPLETE])
-        garbled = CLEAN_CARD_TEXT.replace('PAT "SKIP" EXAMPLE', 'WIARN SKIP EXAMPLE')
+        garbled = CLEAN_CARD_TEXT.replace('PAT "SKIP" EXAMPLE', 'PAI SKIP EXAMPLE')
         _, mixed, _ = self.request("POST", constants.ROUTE_CARD_READING, {constants.KEY_TEXTS: [garbled, CLEAN_CARD_TEXT]})
         self.assertFalse(mixed[constants.KEY_CARD][constants.CARD_FIELD_COMPLETE])
         twice = self.read_card(CLEAN_CARD_TEXT, passes=2)
@@ -149,7 +149,7 @@ class SigninServerTests(unittest.TestCase):
             constants.KEY_NAME: 'Pat "Skip" Example', constants.KEY_ROLES: ["Starter"],
             constants.KEY_CARD: reading[constants.KEY_CARD],
         })
-        garbled = CLEAN_CARD_TEXT.replace('PAT "SKIP" EXAMPLE', 'WIARN SKIP EXAMPLE')
+        garbled = CLEAN_CARD_TEXT.replace('PAT "SKIP" EXAMPLE', 'PAI SKIP EXAMPLE')
         again = self.read_card(garbled)  # one blurry pass, matched by member ID
         self.assertTrue(again[constants.KEY_CARD][constants.CARD_FIELD_COMPLETE])
         self.assertEqual(again[constants.KEY_MATCH][constants.KEY_NAME], 'Pat "Skip" Example')
@@ -169,10 +169,10 @@ class SigninServerTests(unittest.TestCase):
         state = self.database.get_state()
         evening = state[constants.KEY_SESSIONS][1][constants.KEY_ID]
         self.request("POST", constants.ROUTE_ACTIVE_SESSION, {constants.KEY_SESSION_ID: evening})
-        garbled = CLEAN_CARD_TEXT.replace('PAT "SKIP" EXAMPLE', 'WIARN SKIP EXAMPLE')
+        garbled = CLEAN_CARD_TEXT.replace('PAT "SKIP" EXAMPLE', 'PAI SKIP EXAMPLE')
         reading = self.read_card(garbled, passes=2)
         _, misread, _ = self.request("POST", constants.ROUTE_SIGNINS, {
-            constants.KEY_NAME: "Wiarn Skip Example", constants.KEY_ROLES: ["Starter"], constants.KEY_CARD: reading[constants.KEY_CARD],
+            constants.KEY_NAME: "Pai Skip Example", constants.KEY_ROLES: ["Starter"], constants.KEY_CARD: reading[constants.KEY_CARD],
         })
         _, officials, _ = self.request("GET", constants.ROUTE_OFFICIALS)
         self.assertEqual(len(officials[constants.KEY_OFFICIALS]), 2)
@@ -326,7 +326,7 @@ class HelperTests(unittest.TestCase):
     """Small pure functions."""
 
     def test_name_key_ignores_quotes_and_case(self) -> None:
-        self.assertEqual(name_key('Mark "Red" Byer'), name_key("MARK RED BYER"))
+        self.assertEqual(name_key('Pat "Skip" Sample'), name_key("PAT SKIP SAMPLE"))
 
     def test_years_certified_ages_by_itself(self) -> None:
         since = years_to_since_year(6, date(2026, 10, 16))

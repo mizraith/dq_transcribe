@@ -47,7 +47,7 @@ officials_signin side; any change bumps `version` and is recorded below.
 | `session.type` | Optional (added within v1). "Timed Finals", "Prelims", "Finals", "AM", "PM", "A", "B", "C", or the admin's own text; `null` if not set. |
 | `session.officials_meeting_time` | Optional (added within v1). `HH:MM` or `null`. |
 | `officials` | Sorted by name. An official working two roles appears **twice**, once per role. |
-| `name` | As read from the USA Swimming card (title case, nickname in quotes, e.g. `Mark "Red" Byer`) or as typed. |
+| `name` | As read from the USA Swimming card (title case, nickname in quotes, e.g. `Pat "Skip" Sample`) or as typed. |
 | `role` | Exactly one of dq_transcribe's `MEET_ROSTER_ROLES`: "Stroke & Turn Judge", "Chief Judge", "Deck Referee", "Meet Referee", "Starter", "Relay Take-off Judge", "Admin Official". (officials_signin keeps an identical `ROSTER_ROLES`; a test fails if they drift.) |
 | `club` | Club code from the card (e.g. `PASA`), or `null`. |
 | `zone` | `Eastern`, `Southern`, `Central` or `Western`, worked out from the card's LSC code, or `null`. |

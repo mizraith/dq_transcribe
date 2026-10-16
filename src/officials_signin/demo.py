@@ -19,7 +19,12 @@ from officials_signin import constants
 from officials_signin.database import Database, Validation, not_checked_validation
 
 _SQLITE_SIDE_FILE_SUFFIXES = ("-wal", "-shm")
-_TYPE_LETTER_PREFIX = "Session"
+_SIZE_SETTINGS = (
+    constants.SETTING_DEMO_JUDGES,
+    constants.SETTING_DEMO_TRAINEES,
+    constants.SETTING_DEMO_SESSIONS,
+    constants.SETTING_DEMO_HEAD_OFFICIALS,
+)
 
 
 def fake_names(count: int, generator: random.Random) -> list[str]:
@@ -127,7 +132,25 @@ def build_demo(
         if any(not validation.validated for validation in validations.values()):
             needs_admin_left -= 1
         database.sign_in(official_id, attending, [role], trainee, validations)
+    for key, value in zip(_SIZE_SETTINGS, (judge_count, trainee_count, session_count, int(head_officials))):
+        database.set_setting(key, value)
     return database
+
+
+def stored_demo_size(database: Database) -> tuple[int, int, int, bool]:
+    """The size the demo was last built with, for "Reset demo" (the defaults if unknown).
+
+    Returns:
+        ``(judge_count, trainee_count, session_count, head_officials)``.
+    """
+    defaults = (
+        constants.DEMO_DEFAULT_JUDGES, constants.DEMO_DEFAULT_TRAINEES, constants.DEMO_DEFAULT_SESSIONS, 1,
+    )
+    judges, trainees, sessions, head = (
+        default if (value := database.get_setting(key)) is None else value
+        for key, default in zip(_SIZE_SETTINGS, defaults)
+    )
+    return judges, trainees, sessions, bool(head)
 
 
 def _set_club(database: Database, official_id: int, lsc: str, club: str, meet_id: int) -> None:

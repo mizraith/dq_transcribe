@@ -5,6 +5,33 @@ within each section.
 
 ## Decisions
 
+- **2026-10-16 (night): Meets view, new Meet setup, demo reset, mirror memory, coaches hook.**
+  - **Meets** (header button, Meet overview): every meet with Open, "+ New meet", and the
+    demo meet (Open, Reset demo behind a 10-second warning, as in dq_transcribe). Opening a
+    real meet leaves demo mode; it picks today's session, else the next one, else the last.
+    The purple demo banner also has Reset demo.
+  - **Meet setup** rebuilt (owner: "Start a different meet" was confusing): the meet's
+    name and start date, then its sessions as **table rows** (type, date, start, officials
+    meeting, name, hours, signed in, Delete). "+ Add session" adds a row that follows the
+    last one (after a morning session: same day; otherwise the next day at the same time
+    and type). Save sends the meet and every row in one request (`/api/meets/save`, one
+    transaction: a bad row saves nothing). Deleting a saved session asks first (warning
+    under the table). Every pop-up has an ✕ in the top right; Meet setup's Save/Cancel stay
+    pinned at the bottom.
+  - **Rotation #1 confirmed** by the owner: fixed ends means 1 and 2 at S, 3 and 4 at T
+    (which pair is arbitrary). Implemented as (1, 3), (2, 4).
+  - **Mirrored card reads** (28.7 s -> 14 s first time, ~5.5 s after): the half turn and the
+    mirror are tried in parallel on the first still, the way that worked is applied to the
+    second still, and a mirror is remembered per camera and picture source in
+    localStorage (`officials_signin.mirrored.<camera>.<photo|video>`).
+  - **Coaches page** plugs in at `/coaches` through `officials_signin/coaches.py`
+    (`server._coaches_module`; handoff in `ai_docs/coaches_signin_handoff.md`, built by
+    another chat). `CardScanner.scan` takes `readingRoute` so it can post to its own API.
+  - **Privacy (owner, standing rule): never push his card to a repo.** The card example
+    in `card_reader.py` held his real member ID (since the first commit) and his name was
+    used in examples; both replaced with made-up ones. `test_signin_no_personal_data.py`
+    fails on any tracked picture or unredacted member ID. The old commits still contain
+    the ID: removing it from history needs a force push (asked the owner).
 - **2026-10-16: printouts, rotation schedule, demo meet, guide hints.**
   - Printouts (`reports.py`, `web/print.css`, plain HTML so the browser's Print works):
     `/print/session` (one session, one page: name, roles, team/job, club, zone, years,
@@ -23,10 +50,7 @@ within each section.
     - 3 teams rotating: (1, 2), (3, 1), (2, 3) (the rested team takes S, the S team walks
       down and bumps T, the T team rests). 3 teams fixed: (1, 2), (3, 2), (1, 3) (Team 3
       relieves Team 1, then Team 2, then rests).
-    - **Open question:** the owner wrote "#1: 1/3 remain at start end entire time, 2/4 at
-      turn end", but his earlier example was "8:00 1 3 / 8:30 2 4" (S, T) and #2 says
-      "1/3 begin". Implemented as the example (1 and 2 at S, 3 and 4 at T). If he means 1 and
-      3 both at S, change the 4-team fixed pattern in `teams.rotation_pairs` to (1, 2), (3, 4).
+    - 4 teams fixed: 1 and 2 at S, 3 and 4 at T (confirmed by the owner).
   - Demo meet (`demo.py`, `/demo`): a separate SQLite file (`~/.officials_signin/demo.db`),
     picked per browser by the cookie `officials_signin_demo=1`; the real meet and the
     roster that dq_transcribe fetches (no cookie) are never touched. The user picks judges,
@@ -40,7 +64,7 @@ within each section.
   to credit officials after the meet, so they must be right, and a mistaken "Sign in" must
   be fixable. Every signed-in row has **Edit** (name, years, roles, trainee); renaming
   fixes the official everywhere and merges a duplicate record with the same name (the
-  tablet had "Mark \"Red\" Byer" typed and "Mark Red Byer" from the card). A name read by
+  tablet had "Pat \"Skip\" Sample" typed and "Pat Skip Sample" from the card). A name read by
   the camera for someone new is highlighted "check the spelling". Root cause of the
   tablet misreads: video frames are 1920x1080, so a phone at arm's length leaves the name
   ~9 px tall. The still is now a real photo (ImageCapture.takePhoto, full sensor
@@ -162,11 +186,10 @@ within each section.
 
 ## Open items
 
-- Rotation #1 orientation (see the 2026-10-16 decision): confirm with the owner.
-- Mirrored card reads are slow (about 29 s at 4x CPU throttle against 5-7 s otherwise):
-  look at the mirror path in `card_scanner.js readCapture`.
-- The tablet's diagnostics folder holds frames with the owner's card and member ID:
-  asked whether to delete it, no answer yet.
+- The tablet's diagnostics folder holds frames with the owner's card: keep it as test
+  data (owner, 2026-10-16), never copy it into the repo.
+- Member ID in old commits (see the 2026-10-16 night decision): history rewrite pending
+  the owner's answer.
 
 - **Test on the tablet:** camera permission, front vs back camera, scan speed and
   accuracy in pool lighting. Ask the owner before starting the server there.

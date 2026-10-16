@@ -205,8 +205,10 @@ card reads, live guide with sideways hint, printouts (session, meet, team page),
 estimated session length with a rotation schedule, fixed / rotating ends, demo meet
 (`/demo`).
 
+Also done (2026-10-16 night): Meets view, table-style Meet setup, demo reset, faster
+mirrored reads, the coaches page hook (`ai_docs/coaches_signin_handoff.md`).
+
 Next:
-1. Owner feedback on the printouts, the rotation modes and the demo (see the open
-   items in `ai_docs/officials_signin_memory.md`).
-2. Faster mirrored card reads. Ask before starting anything on the tablet.
+1. Owner feedback on Meets / Meet setup and the printouts.
+2. The coaches chat may ask for changes on this side (relayed by the owner).
 3. Keep `ai_docs/officials_signin_memory.md` and this file current before each pause.

@@ -166,9 +166,9 @@ function drawHeader() {
   meetingTime.textContent = meetingTime.hidden ? "" : "Officials Meeting: " + formatTime12(session[KEYS.meetingTime]);
   signinsTitle.textContent = session ? "Signed in: " + session[KEYS.name] : "Signed in";
   element("demo-banner").hidden = !pageState.demo;
-  element("demo-link").hidden = pageState.demo;
-  element("demo-link").href = ROUTES.demo;
   element("demo-new").href = ROUTES.demo;
+  element("coaches-link").hidden = !CONFIG.coachesPage;
+  element("coaches-link").href = ROUTES.coaches;
   const sessionQuery = "?" + KEYS.sessionId + "=" + pageState.activeSessionId;
   element("print-session-link").href = ROUTES.printSession + sessionQuery;
   element("print-meet-link").href = ROUTES.printMeet;
@@ -311,22 +311,8 @@ const ISO_DATE_LENGTH = 10;
 const TYPE_AM = "AM";
 const TYPE_PM = "PM";
 const OTHER_TYPE_VALUE = "other";
-// The two session forms in Meet setup share one set of field names, with these id prefixes.
-const ADD_FORM = "session-";
-const FIRST_FORM = "first-session-";
-const SESSION_FIELD_TYPE = "type";
-const SESSION_FIELD_TYPE_OTHER = "type-other";
-const SESSION_FIELD_DATE = "date";
-const SESSION_FIELD_TIME = "time";
-const SESSION_FIELD_MEETING = "meeting";
-const SESSION_FIELD_NAME = "name";
-const SESSION_FIELD_LENGTH = "length";
-let editingSessionId = null;
-
-/** One field of a session form. */
-function sessionField(form, fieldName) {
-  return element(form + fieldName);
-}
+let setupMeetId = null; // meet being edited in Meet setup (null: a new meet)
+let setupRows = []; // one entry per session row (see addSessionRow)
 
 /** Today's date as YYYY-MM-DD in local time. */
 function isoToday() {
@@ -356,11 +342,11 @@ function formatTime12(hoursMinutes) {
   return displayHours + ":" + String(minutes % MINUTES_PER_HOUR).padStart(2, "0") + (hours < NOON_HOUR ? " AM" : " PM");
 }
 
-/** The session type chosen in a form ("" if none). */
-function sessionTypeOf(form) {
-  const select = sessionField(form, SESSION_FIELD_TYPE);
-  if (select.value === OTHER_TYPE_VALUE) { return sessionField(form, SESSION_FIELD_TYPE_OTHER).value.trim(); }
-  return select.value;
+/** YYYY-MM-DD plus some days. */
+function addDays(isoDate, days) {
+  const parts = isoDate.split("-").map(Number);
+  const day = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + days));
+  return day.toISOString().slice(0, ISO_DATE_LENGTH);
 }
 
 /**
@@ -378,45 +364,18 @@ function suggestSessionName(isoDate, sessionType) {
   return weekday + " " + (isLetter ? CONFIG.sessionLetterPrefix + " " + sessionType : sessionType);
 }
 
-/**
- * Fill in whatever the admin has not set by hand: the type follows the start
- * time (AM/PM), the officials meeting is an hour before the start, and the name
- * is suggested from the date and type.
- */
-function autoFillSession(form) {
-  const time = sessionField(form, SESSION_FIELD_TIME).value;
-  const select = sessionField(form, SESSION_FIELD_TYPE);
-  if (!select.dataset.chosen && time) {
-    select.value = minutesOfDay(time) < NOON_HOUR * MINUTES_PER_HOUR ? TYPE_AM : TYPE_PM;
-  }
-  const meeting = sessionField(form, SESSION_FIELD_MEETING);
-  if (!meeting.dataset.typed) {
-    meeting.value = time ? hoursMinutesOf(minutesOfDay(time) - CONFIG.meetingMinutesBeforeStart) : "";
-  }
-  const name = sessionField(form, SESSION_FIELD_NAME);
-  if (!name.dataset.typed) {
-    name.value = suggestSessionName(sessionField(form, SESSION_FIELD_DATE).value, sessionTypeOf(form));
-  }
+/** A small input element for the session table. */
+function makeInput(type, className) {
+  const input = document.createElement("input");
+  input.type = type;
+  input.autocomplete = "off";
+  if (className) { input.className = className; }
+  return input;
 }
 
-/** Clear a session form so everything follows the suggestions again. */
-function resetSessionForm(form) {
-  [SESSION_FIELD_TIME, SESSION_FIELD_MEETING, SESSION_FIELD_NAME, SESSION_FIELD_TYPE_OTHER].forEach(function (fieldName) {
-    const input = sessionField(form, fieldName);
-    input.value = "";
-    delete input.dataset.typed;
-  });
-  const select = sessionField(form, SESSION_FIELD_TYPE);
-  select.value = "";
-  delete select.dataset.chosen;
-  sessionField(form, SESSION_FIELD_TYPE_OTHER).hidden = true;
-  sessionField(form, SESSION_FIELD_LENGTH).value = String(CONFIG.defaultSessionMinutes / MINUTES_PER_HOUR);
-}
-
-/** Build the type drop-down: a blank choice, the usual types, then "Other…". */
-function fillTypeOptions(form) {
-  const select = sessionField(form, SESSION_FIELD_TYPE);
-  select.replaceChildren();
+/** The type drop-down: a blank choice, the usual types, then "Other…". */
+function makeTypeSelect() {
+  const select = document.createElement("select");
   // "|| []": a page served by an older server process still loads (without the list).
   [["", "—"]].concat((CONFIG.sessionTypes || []).map(function (type) { return [type, type]; }))
     .concat([[OTHER_TYPE_VALUE, CONFIG.sessionTypeOtherLabel]])
@@ -426,236 +385,266 @@ function fillTypeOptions(form) {
       option.textContent = pair[1];
       select.appendChild(option);
     });
+  return select;
 }
 
-/** Wire one session form's auto-fill behaviour. */
-function wireSessionForm(form) {
-  fillTypeOptions(form);
-  const select = sessionField(form, SESSION_FIELD_TYPE);
-  const other = sessionField(form, SESSION_FIELD_TYPE_OTHER);
-  select.addEventListener("change", function () {
-    select.dataset.chosen = "1";
-    other.hidden = select.value !== OTHER_TYPE_VALUE;
-    if (!other.hidden) { other.focus(); }
-    autoFillSession(form);
+/** The session type chosen in a row ("" if none). */
+function rowSessionType(row) {
+  if (row.type.value === OTHER_TYPE_VALUE) { return row.typeOther.value.trim(); }
+  return row.type.value;
+}
+
+/**
+ * Fill in whatever the admin has not set by hand in a row: the type follows the
+ * start time (AM/PM), the officials meeting is an hour before the start, and the
+ * name is suggested from the date and type.
+ */
+function autoFillRow(row) {
+  const time = row.time.value;
+  if (!row.type.dataset.chosen && time) {
+    row.type.value = minutesOfDay(time) < NOON_HOUR * MINUTES_PER_HOUR ? TYPE_AM : TYPE_PM;
+  }
+  if (!row.meeting.dataset.typed) {
+    row.meeting.value = time ? hoursMinutesOf(minutesOfDay(time) - CONFIG.meetingMinutesBeforeStart) : "";
+  }
+  if (!row.name.dataset.typed) {
+    row.name.value = suggestSessionName(row.date.value, rowSessionType(row));
+  }
+}
+
+/** Mark a row as changed (a stripe on its left) until Save. */
+function markRowChanged(row) {
+  row.tr.classList.add("changed");
+}
+
+/**
+ * Add a row to the session table.
+ * @param {object|null} session  A saved session to show, or null for a new row.
+ * @param {object} [defaults]  For a new row: {date, time, type} to start from.
+ */
+function addSessionRow(session, defaults) {
+  const tbody = element("session-rows");
+  const row = {
+    id: session ? session[KEYS.id] : null,
+    signinCount: session ? session[KEYS.signinCount] : 0,
+    tr: document.createElement("tr"),
+    type: makeTypeSelect(),
+    typeOther: makeInput("text", "type-other"),
+    date: makeInput("date"),
+    time: makeInput("time"),
+    meeting: makeInput("time"),
+    name: makeInput("text", "session-name-input"),
+    hours: makeInput("number", "hours-input"),
+  };
+  row.typeOther.placeholder = "Type of session";
+  row.typeOther.hidden = true;
+  row.hours.inputMode = "decimal";
+  row.hours.min = String(CONFIG.sessionLengthStepMinutes / MINUTES_PER_HOUR);
+  row.hours.max = String(CONFIG.maxSessionMinutes / MINUTES_PER_HOUR);
+  row.hours.step = String(CONFIG.sessionLengthStepMinutes / MINUTES_PER_HOUR);
+  if (session) {
+    const sessionType = session[KEYS.sessionType] || "";
+    if (sessionType && CONFIG.sessionTypes.indexOf(sessionType) < 0) {
+      row.type.value = OTHER_TYPE_VALUE;
+      row.typeOther.value = sessionType;
+      row.typeOther.hidden = false;
+    } else {
+      row.type.value = sessionType;
+    }
+    row.type.dataset.chosen = "1";
+    row.date.value = session[KEYS.date];
+    row.time.value = session[KEYS.startTime] || "";
+    row.meeting.value = session[KEYS.meetingTime] || "";
+    row.meeting.dataset.typed = "1";
+    row.name.value = session[KEYS.name];
+    row.name.dataset.typed = "1";
+    row.hours.value = String((session[KEYS.estimatedMinutes] || CONFIG.defaultSessionMinutes) / MINUTES_PER_HOUR);
+  } else {
+    const start = defaults || {};
+    row.date.value = start.date || element("meet-date-input").value || isoToday();
+    row.time.value = start.time || "";
+    if (start.type) { row.type.value = start.type; row.type.dataset.chosen = "1"; }
+    row.hours.value = String((start.minutes || CONFIG.defaultSessionMinutes) / MINUTES_PER_HOUR);
+    autoFillRow(row);
+    markRowChanged(row);
+  }
+  // Wiring: suggestions follow the date, time and type until a box is typed in.
+  row.type.addEventListener("change", function () {
+    row.type.dataset.chosen = "1";
+    row.typeOther.hidden = row.type.value !== OTHER_TYPE_VALUE;
+    if (!row.typeOther.hidden) { row.typeOther.focus(); }
+    autoFillRow(row);
   });
-  other.addEventListener("input", function () { autoFillSession(form); });
-  [SESSION_FIELD_DATE, SESSION_FIELD_TIME].forEach(function (fieldName) {
-    sessionField(form, fieldName).addEventListener("change", function () { autoFillSession(form); });
-  });
-  // Typing in the name or meeting time stops the suggestions for that box.
-  [SESSION_FIELD_NAME, SESSION_FIELD_MEETING].forEach(function (fieldName) {
-    const input = sessionField(form, fieldName);
+  row.typeOther.addEventListener("input", function () { autoFillRow(row); });
+  [row.date, row.time].forEach(function (input) { input.addEventListener("change", function () { autoFillRow(row); }); });
+  [row.name, row.meeting].forEach(function (input) {
     input.addEventListener("input", function () { input.dataset.typed = "1"; });
   });
+  [row.type, row.typeOther, row.date, row.time, row.meeting, row.name, row.hours].forEach(function (input) {
+    input.addEventListener("input", function () { markRowChanged(row); });
+    input.addEventListener("change", function () { markRowChanged(row); });
+  });
+  const cell = function (children, className) {
+    const td = document.createElement("td");
+    if (className) { td.className = className; }
+    td.append.apply(td, children);
+    row.tr.appendChild(td);
+    return td;
+  };
+  cell([row.type, row.typeOther]);
+  cell([row.date]);
+  cell([row.time]);
+  cell([row.meeting]);
+  cell([row.name]);
+  cell([row.hours]);
+  cell([String(row.signinCount)], "count-cell");
+  cell([makeButton("Delete", "", function () { askDeleteRow(row); })]);
+  tbody.appendChild(row.tr);
+  setupRows.push(row);
+  return row;
 }
 
-/** The request body for a session form. */
-function sessionBody(form) {
+/** "+ Add session": a new row that follows on from the last one. */
+function addFollowingRow() {
+  const last = setupRows[setupRows.length - 1];
+  if (!last) { addSessionRow(null, null); return; }
+  const defaults = { minutes: Number(last.hours.value) * MINUTES_PER_HOUR || CONFIG.defaultSessionMinutes };
+  // A morning session is usually followed by an afternoon one the same day; after
+  // that, the next day at the same time.
+  if (last.time.value && minutesOfDay(last.time.value) < NOON_HOUR * MINUTES_PER_HOUR) {
+    defaults.date = last.date.value;
+  } else {
+    defaults.date = last.date.value ? addDays(last.date.value, 1) : "";
+    defaults.time = last.time.value;
+    defaults.type = last.type.value === OTHER_TYPE_VALUE ? "" : last.type.value;
+  }
+  const row = addSessionRow(null, defaults);
+  (row.time.value ? row.name : row.time).focus();
+}
+
+/** The request body for one row. */
+function rowBody(row) {
   const body = {};
-  const sessionType = sessionTypeOf(form);
-  body[KEYS.name] = sessionField(form, SESSION_FIELD_NAME).value.trim()
-    || suggestSessionName(sessionField(form, SESSION_FIELD_DATE).value, sessionType);
-  body[KEYS.date] = sessionField(form, SESSION_FIELD_DATE).value;
-  body[KEYS.startTime] = sessionField(form, SESSION_FIELD_TIME).value || null;
+  const sessionType = rowSessionType(row);
+  body[KEYS.id] = row.id;
+  body[KEYS.name] = row.name.value.trim() || suggestSessionName(row.date.value, sessionType);
+  body[KEYS.date] = row.date.value;
+  body[KEYS.startTime] = row.time.value || null;
   body[KEYS.sessionType] = sessionType || null;
-  body[KEYS.meetingTime] = sessionField(form, SESSION_FIELD_MEETING).value || null;
-  const hours = Number(sessionField(form, SESSION_FIELD_LENGTH).value);
+  body[KEYS.meetingTime] = row.meeting.value || null;
+  const hours = Number(row.hours.value);
   body[KEYS.estimatedMinutes] = hours > 0
     ? Math.round(hours * MINUTES_PER_HOUR / CONFIG.sessionLengthStepMinutes) * CONFIG.sessionLengthStepMinutes
     : null;
   return body;
 }
 
-/** Sessions after the last one start on its date (multi-day meets add days in order). */
-function nextSessionDate() {
-  const sessions = pageState.sessions;
-  if (sessions.length > 0) { return sessions[sessions.length - 1][KEYS.date]; }
-  return pageState.meet ? pageState.meet[KEYS.startDate] : isoToday();
+let rowBeingDeleted = null; // the saved session row whose delete warning is open
+
+/** Close the delete warning (if open). */
+function closeRowWarning() {
+  if (rowBeingDeleted) { rowBeingDeleted.tr.classList.remove("deleting"); }
+  rowBeingDeleted = null;
+  element("row-delete-warning").hidden = true;
 }
 
-function describeSession(session) {
-  const parts = [session[KEYS.date]];
-  if (session[KEYS.startTime]) { parts.push("starts " + formatTime12(session[KEYS.startTime])); }
-  if (session[KEYS.meetingTime]) { parts.push("officials meeting " + formatTime12(session[KEYS.meetingTime])); }
-  parts.push("~" + ((session[KEYS.estimatedMinutes] || CONFIG.defaultSessionMinutes) / MINUTES_PER_HOUR) + " h");
-  parts.push(session[KEYS.signinCount] + " signed in");
-  return parts.join(" · ");
-}
-
-function drawSetupSessions() {
-  const list = element("setup-session-list");
-  list.replaceChildren();
-  if (pageState.sessions.length === 0) {
-    const empty = document.createElement("li");
-    empty.className = "empty";
-    empty.textContent = "No sessions yet. Add the first one below.";
-    list.appendChild(empty);
+/** Delete a row: a new row just goes; a saved session asks first (big warning under the table). */
+function askDeleteRow(row) {
+  if (row.id === null) {
+    row.tr.remove();
+    setupRows = setupRows.filter(function (item) { return item !== row; });
     return;
   }
-  pageState.sessions.forEach(function (session) {
-    const item = document.createElement("li");
-    const button = makeButton("", "", function () { editSession(session); });
-    button.classList.toggle("editing", session[KEYS.id] === editingSessionId);
-    const hint = document.createElement("span");
-    hint.className = "edit-hint";
-    hint.textContent = "Edit";
-    const name = document.createElement("strong");
-    name.textContent = session[KEYS.name];
-    const detail = document.createElement("span");
-    detail.className = "signin-detail";
-    detail.textContent = "  " + describeSession(session);
-    button.append(hint, name, detail);
-    item.appendChild(button);
-    list.appendChild(item);
-  });
+  closeRowWarning();
+  rowBeingDeleted = row;
+  row.tr.classList.add("deleting");
+  element("row-delete-title").textContent = "⚠ Delete " + (row.name.value || "this session") + "?";
+  element("row-delete-detail").textContent = row.signinCount === 0
+    ? "Nobody has signed in to it yet. This cannot be undone."
+    : "Its " + row.signinCount + " sign-in" + (row.signinCount === 1 ? "" : "s") + " and team placements will be "
+      + "deleted too (the officials stay in the app for next time). This cannot be undone.";
+  const warning = element("row-delete-warning");
+  warning.hidden = false;
+  warning.scrollIntoView({ block: "nearest" });
 }
 
-/** Load a session into the "Add a session" form to change it. */
-function editSession(session) {
-  editingSessionId = session[KEYS.id];
-  resetSessionForm(ADD_FORM);
-  const select = sessionField(ADD_FORM, SESSION_FIELD_TYPE);
-  const sessionType = session[KEYS.sessionType] || "";
-  if (sessionType && CONFIG.sessionTypes.indexOf(sessionType) < 0) {
-    select.value = OTHER_TYPE_VALUE;
-    sessionField(ADD_FORM, SESSION_FIELD_TYPE_OTHER).value = sessionType;
-    sessionField(ADD_FORM, SESSION_FIELD_TYPE_OTHER).hidden = false;
-  } else {
-    select.value = sessionType;
-  }
-  select.dataset.chosen = "1";
-  sessionField(ADD_FORM, SESSION_FIELD_DATE).value = session[KEYS.date];
-  sessionField(ADD_FORM, SESSION_FIELD_TIME).value = session[KEYS.startTime] || "";
-  // Keep the saved values; changing the start time still moves an unchanged meeting time.
-  sessionField(ADD_FORM, SESSION_FIELD_MEETING).value = session[KEYS.meetingTime] || "";
-  sessionField(ADD_FORM, SESSION_FIELD_MEETING).dataset.typed = "1";
-  sessionField(ADD_FORM, SESSION_FIELD_NAME).value = session[KEYS.name];
-  sessionField(ADD_FORM, SESSION_FIELD_LENGTH).value = String(
-    (session[KEYS.estimatedMinutes] || CONFIG.defaultSessionMinutes) / MINUTES_PER_HOUR);
-  sessionField(ADD_FORM, SESSION_FIELD_NAME).dataset.typed = "1";
-  showSessionFormMode();
-  drawSetupSessions();
-}
-
-function stopEditingSession() {
-  editingSessionId = null;
-  resetSessionForm(ADD_FORM);
-  sessionField(ADD_FORM, SESSION_FIELD_DATE).value = nextSessionDate();
-  autoFillSession(ADD_FORM);
-  showSessionFormMode();
-  drawSetupSessions();
-}
-
-function showSessionFormMode() {
-  const editing = editingSessionId !== null;
-  element("session-form-title").textContent = editing ? "Edit session" : "Add a session";
-  sessionField(ADD_FORM, "save").textContent = editing ? "Save changes" : "Add session";
-  element("session-edit-actions").hidden = !editing;
-  element("session-delete-warning").hidden = true;
-}
-
-/** Show the big warning before deleting the session being edited. */
-function askDeleteSession() {
-  const session = pageState.sessions.find(function (item) { return item[KEYS.id] === editingSessionId; });
-  if (!session) { return; }
-  const count = session[KEYS.signinCount];
-  element("session-delete-name").textContent = session[KEYS.name];
-  element("session-delete-detail").textContent = count === 0
-    ? "Nobody has signed in to it yet."
-    : "Its " + count + " sign-in" + (count === 1 ? "" : "s") + " and team placements will be deleted too. "
-      + "The officials themselves stay in the app for next time.";
-  element("session-delete-warning").hidden = false;
-}
-
-async function deleteSession() {
-  const session = pageState.sessions.find(function (item) { return item[KEYS.id] === editingSessionId; });
-  if (!session) { return; }
+async function deleteSavedRow() {
+  const row = rowBeingDeleted;
+  if (!row) { return; }
   try {
-    await postJson(ROUTES.sessionPrefix + session[KEYS.id] + ROUTES.sessionDeleteSuffix, {});
+    await postJson(ROUTES.sessionPrefix + row.id + ROUTES.sessionDeleteSuffix, {});
+    closeRowWarning();
+    row.tr.remove();
+    setupRows = setupRows.filter(function (item) { return item !== row; });
     await refresh();
-    stopEditingSession();
-    showToast(session[KEYS.name] + " deleted");
+    showToast((row.name.value || "Session") + " deleted");
   } catch (error) {
     showToast(error.message, true);
   }
 }
 
 /**
- * Show Meet setup. With no meet, only the "new meet + first session" form;
- * with a meet, its sessions and the "Add session" form.
- * @param {boolean} showNewMeet  Also open the "Start a different meet" form.
+ * Show Meet setup for the active meet, or for a new meet.
+ * @param {boolean} newMeet  Start a new meet (one empty session row).
  */
-function openSetup(showNewMeet) {
-  const hasMeet = pageState.meet !== null;
-  element("current-meet-block").hidden = !hasMeet;
-  element("new-meet-block").hidden = hasMeet && !showNewMeet;
-  element("new-meet-toggle").hidden = !hasMeet || Boolean(showNewMeet);
-  element("new-meet-cancel").hidden = !hasMeet;
-  element("new-meet-block").classList.toggle("separated", hasMeet);
-  // With no meet there is nothing to go back to, so the only way out is "Create meet".
-  element("setup-close").hidden = !hasMeet;
-  if (hasMeet) {
-    element("current-meet-name").textContent = pageState.meet[KEYS.name];
-    element("current-meet-date").textContent = "starts " + pageState.meet[KEYS.startDate];
-    if (editingSessionId === null) {
-      sessionField(ADD_FORM, SESSION_FIELD_DATE).value = nextSessionDate();
-      autoFillSession(ADD_FORM);
-    }
-    showSessionFormMode();
-    drawSetupSessions();
+function openSetup(newMeet) {
+  const editing = !newMeet && pageState.meet !== null;
+  setupMeetId = editing ? pageState.meet[KEYS.id] : null;
+  closeRowWarning();
+  setupRows = [];
+  element("session-rows").replaceChildren();
+  element("setup-title").textContent = editing ? "Meet setup" : "New meet";
+  element("meet-name-input").value = editing ? pageState.meet[KEYS.name] : "";
+  element("meet-date-input").value = editing ? pageState.meet[KEYS.startDate] : isoToday();
+  element("setup-save").textContent = editing ? "Save" : "Create meet";
+  if (editing) {
+    pageState.sessions.forEach(function (session) { addSessionRow(session, null); });
   }
-  if (!hasMeet || showNewMeet) {
-    element("new-meet-date").value = element("new-meet-date").value || isoToday();
-    sessionField(FIRST_FORM, SESSION_FIELD_DATE).value = element("new-meet-date").value;
-    autoFillSession(FIRST_FORM);
-  }
+  if (setupRows.length === 0) { addSessionRow(null, null); }
   setupOverlay.hidden = false;
+  if (!editing) { element("meet-name-input").focus(); }
 }
 
-/** Create a meet and its first session in one tap. */
-async function createMeetWithSession() {
-  const meetBody = {};
-  meetBody[KEYS.name] = element("new-meet-name").value.trim();
-  meetBody[KEYS.startDate] = element("new-meet-date").value;
-  const firstSession = sessionBody(FIRST_FORM);
-  if (!meetBody[KEYS.name] || !meetBody[KEYS.startDate]) {
+function closeSetup() {
+  closeRowWarning();
+  setupOverlay.hidden = true;
+}
+
+/** Save the meet and every session row in one request. */
+async function saveSetup() {
+  const body = {};
+  body[KEYS.id] = setupMeetId;
+  body[KEYS.name] = element("meet-name-input").value.trim();
+  body[KEYS.startDate] = element("meet-date-input").value;
+  if (!body[KEYS.name] || !body[KEYS.startDate]) {
     showToast("Enter the meet name and start date", true);
     return;
   }
-  if (!firstSession[KEYS.date]) {
-    showToast("Enter the first session's date", true);
+  const missingDate = setupRows.findIndex(function (row) { return !row.date.value; });
+  if (missingDate >= 0) {
+    showToast("Session " + (missingDate + 1) + " needs a date", true);
     return;
   }
+  body[KEYS.sessions] = setupRows.map(rowBody);
+  const isNew = setupMeetId === null;
   try {
-    await postJson(ROUTES.meets, meetBody);
-    await postJson(ROUTES.sessions, firstSession);
-    element("new-meet-name").value = "";
-    resetSessionForm(FIRST_FORM);
-    editingSessionId = null;
+    if (isNew && pageState.demo) { await postJson(ROUTES.demoExit, {}); } // a new meet is always real
+    await postJson(ROUTES.meetSave, body);
+    closeSetup();
     await refresh();
-    openSetup(false);
-    showToast(meetBody[KEYS.name] + " created with " + firstSession[KEYS.name]);
+    showToast("✓ " + body[KEYS.name] + (isNew ? " created" : " saved"));
   } catch (error) {
-    await refresh();
-    openSetup(false);
     showToast(error.message, true);
   }
 }
 
-/** Add a session, or save the one being edited. */
-async function saveSession() {
-  const body = sessionBody(ADD_FORM);
-  const editing = editingSessionId !== null;
-  try {
-    await postJson(editing ? ROUTES.sessionPrefix + editingSessionId : ROUTES.sessions, body);
-    await refresh();
-    stopEditingSession();
-    showToast(body[KEYS.name] + (editing ? " saved" : " added"));
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
+// When a new meet's start date changes, rows not yet touched follow it.
+element("meet-date-input").addEventListener("change", function () {
+  if (setupMeetId !== null || setupRows.length !== 1) { return; }
+  const row = setupRows[0];
+  row.date.value = element("meet-date-input").value;
+  autoFillRow(row);
+});
 
 // --- Teams --------------------------------------------------------------------------
 
@@ -948,6 +937,113 @@ function closeTeams() {
   refresh();
 }
 
+// --- Meet overview and the demo meet ---------------------------------------------
+
+const meetsOverlay = element("meets-overlay");
+let demoResetTimer = null;
+
+/** One meet in the overview: name, date, sessions and officials, and Open. */
+function meetRow(meet, isCurrent) {
+  const row = document.createElement("li");
+  row.className = "meet-row" + (isCurrent ? " current" : "");
+  const text = document.createElement("span");
+  text.className = "meet-text";
+  const title = document.createElement("span");
+  title.className = "meet-title";
+  title.textContent = meet[KEYS.name];
+  const detail = document.createElement("span");
+  detail.className = "signin-detail";
+  const sessions = meet[KEYS.sessionCount];
+  const people = meet[KEYS.officialCount];
+  detail.textContent = "starts " + meet[KEYS.startDate] + " · " + sessions + " session" + (sessions === 1 ? "" : "s")
+    + " · " + people + " official" + (people === 1 ? "" : "s");
+  text.append(title, detail);
+  row.appendChild(text);
+  if (isCurrent) {
+    const here = document.createElement("strong");
+    here.textContent = "Open now";
+    row.appendChild(here);
+  } else {
+    row.appendChild(makeButton("Open", "go", function () { openMeet(meet[KEYS.id]); }));
+  }
+  return row;
+}
+
+async function openMeetOverview(showResetWarning) {
+  const overview = await getJson(ROUTES.meets);
+  const list = element("meet-list");
+  list.replaceChildren();
+  overview[KEYS.meets].forEach(function (meet) {
+    list.appendChild(meetRow(meet, !overview[KEYS.demo] && meet[KEYS.id] === overview[KEYS.activeMeetId]));
+  });
+  if (!overview[KEYS.meets].length) {
+    const empty = document.createElement("li");
+    empty.className = "signin-detail";
+    empty.textContent = "No meets yet.";
+    list.appendChild(empty);
+  }
+  element("demo-row").classList.toggle("current", overview[KEYS.demo]);
+  element("demo-open").textContent = overview[KEYS.demo] ? "Open now" : "Open";
+  element("demo-open").disabled = overview[KEYS.demo];
+  element("demo-reset-overview").hidden = !overview[KEYS.demoReady];
+  element("demo-size-link").href = ROUTES.demo;
+  showDemoResetWarning(Boolean(showResetWarning));
+  meetsOverlay.hidden = false;
+}
+
+async function openMeet(meetId) {
+  try {
+    await postJson(ROUTES.meetPrefix + meetId + ROUTES.meetOpenSuffix, {});
+    meetsOverlay.hidden = true;
+    await refresh();
+    showToast("✓ " + (pageState.meet ? pageState.meet[KEYS.name] : "Meet") + " open");
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function openDemo() {
+  try {
+    await postJson(ROUTES.demoOpen, {});
+    meetsOverlay.hidden = true;
+    await refresh();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+/** The "Reset the demo meet?" warning; it closes by itself after a few seconds. */
+function showDemoResetWarning(show) {
+  clearTimeout(demoResetTimer);
+  element("demo-reset-warning").hidden = !show;
+  if (show) {
+    demoResetTimer = setTimeout(function () { element("demo-reset-warning").hidden = true; },
+      CONFIG.demoResetWarningSeconds * 1000);
+  }
+}
+
+async function resetDemo() {
+  showDemoResetWarning(false);
+  try {
+    await postJson(ROUTES.demoReset, {});
+    meetsOverlay.hidden = true;
+    await refresh();
+    showToast("✓ Demo meet reset");
+  } catch (error) {
+    showToast("Could not reset the demo meet: " + error.message, true);
+  }
+}
+
+/** "+ New meet": always a real meet, so leave demo mode first. */
+async function newMeetFromOverview() {
+  if (pageState.demo) {
+    await postJson(ROUTES.demoExit, {});
+    await refresh();
+  }
+  meetsOverlay.hidden = true;
+  openSetup(true);
+}
+
 // --- Camera -------------------------------------------------------------------
 
 function drawCameraFields(card) {
@@ -1213,6 +1309,18 @@ sheetName.addEventListener("input", function () { markNameForChecking(false); })
 element("sheet-cancel").addEventListener("click", function () { sheetOverlay.hidden = true; });
 element("sheet-submit").addEventListener("click", submitSheet);
 element("setup-button").addEventListener("click", function () { openSetup(false); });
+element("meets-button").addEventListener("click", function () { openMeetOverview(false); });
+element("setup-meets").addEventListener("click", function () {
+  closeSetup();
+  openMeetOverview(false);
+});
+element("meets-close").addEventListener("click", function () { showDemoResetWarning(false); meetsOverlay.hidden = true; });
+element("meets-new").addEventListener("click", newMeetFromOverview);
+element("demo-open").addEventListener("click", openDemo);
+element("demo-reset-overview").addEventListener("click", function () { showDemoResetWarning(true); });
+element("demo-reset-cancel").addEventListener("click", function () { showDemoResetWarning(false); });
+element("demo-reset-confirm").addEventListener("click", resetDemo);
+element("demo-reset").addEventListener("click", function () { openMeetOverview(true); });
 element("demo-exit").addEventListener("click", async function () {
   await postJson(ROUTES.demoExit, {});
   window.location.reload();
@@ -1239,26 +1347,14 @@ element("place-fifteen").addEventListener("click", function () {
   body[KEYS.assignment] = member && member[KEYS.assignment] === CONFIG.assignmentFifteenMeter ? null : CONFIG.assignmentFifteenMeter;
   postTeamChange(body);
 });
-element("setup-close").addEventListener("click", function () {
-  setupOverlay.hidden = true;
-  if (editingSessionId !== null) { stopEditingSession(); }
-});
-element("new-meet-toggle").addEventListener("click", function () { openSetup(true); });
-element("new-meet-cancel").addEventListener("click", function () { openSetup(false); });
-element("new-meet-create").addEventListener("click", createMeetWithSession);
-sessionField(ADD_FORM, "save").addEventListener("click", saveSession);
-element("session-edit-cancel").addEventListener("click", stopEditingSession);
-element("session-delete").addEventListener("click", askDeleteSession);
-element("session-delete-keep").addEventListener("click", function () { element("session-delete-warning").hidden = true; });
-element("session-delete-confirm").addEventListener("click", deleteSession);
-wireSessionForm(ADD_FORM);
-wireSessionForm(FIRST_FORM);
-resetSessionForm(ADD_FORM);
-resetSessionForm(FIRST_FORM);
-// The first session follows the meet's start date until it is changed.
-element("new-meet-date").addEventListener("change", function () {
-  sessionField(FIRST_FORM, SESSION_FIELD_DATE).value = element("new-meet-date").value;
-  autoFillSession(FIRST_FORM);
+element("setup-cancel").addEventListener("click", closeSetup);
+element("setup-save").addEventListener("click", saveSetup);
+element("session-add-row").addEventListener("click", addFollowingRow);
+element("row-delete-keep").addEventListener("click", closeRowWarning);
+element("row-delete-confirm").addEventListener("click", deleteSavedRow);
+// The ✕ in a sheet's corner does what that sheet's own close button does.
+document.querySelectorAll(".sheet-close").forEach(function (closeButton) {
+  closeButton.addEventListener("click", function () { element(closeButton.dataset.closes).click(); });
 });
 
 refresh().then(function () {

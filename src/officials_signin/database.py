@@ -108,6 +108,18 @@ class SigninError(ValueError):
     """A request the database refuses, with a message fit to show the admin."""
 
 
+@dataclass(frozen=True)
+class SessionFields:
+    """What the admin enters for a session (see ``Database.add_session`` for each field)."""
+
+    name: str
+    date: str
+    start_time: str | None
+    session_type: str | None
+    officials_meeting_time: str | None
+    estimated_minutes: int | None
+
+
 @dataclass
 class Validation:
     """The outcome of checking an official for one session.
@@ -131,7 +143,7 @@ def utc_now_iso() -> str:
 def name_key(name: str) -> str:
     """Matching key for a name: lower-case letters only, nickname quotes ignored.
 
-    ``Mark "Red" Byer`` and ``MARK RED BYER`` give the same key.
+    ``Pat "Skip" Sample`` and ``PAT SKIP SAMPLE`` give the same key.
     """
     return _NON_LETTERS.sub("", name.lower())
 
@@ -220,6 +232,115 @@ class Database:
             self._set_setting(connection, constants.SETTING_ACTIVE_MEET_ID, meet_id)
             self._set_setting(connection, constants.SETTING_ACTIVE_SESSION_ID, None)
         return meet_id
+
+    def list_meets(self) -> list[dict[str, Any]]:
+        """Every meet for the Meet overview, newest first.
+
+        Returns:
+            ``{"id", "name", "start_date", "session_count", "official_count"}`` per meet
+            (``official_count`` counts each person once across the meet's sessions).
+        """
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT m.id, m.name, m.start_date, "
+                "(SELECT COUNT(*) FROM sessions s WHERE s.meet_id = m.id) AS session_count, "
+                "(SELECT COUNT(DISTINCT g.official_id) FROM signins g JOIN sessions s ON s.id = g.session_id "
+                " WHERE s.meet_id = m.id) AS official_count "
+                "FROM meets m ORDER BY m.start_date DESC, m.id DESC"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def open_meet(self, meet_id: int, today: date) -> None:
+        """Make a meet the active one and pick its session to sign in to.
+
+        The session chosen is the first one today, else the first one after today,
+        else the meet's last session (a meet that is over).
+
+        Args:
+            meet_id: The meet.
+            today: Today's date.
+
+        Raises:
+            SigninError: When there is no such meet.
+        """
+        with self._connect() as connection:
+            if connection.execute("SELECT 1 FROM meets WHERE id = ?", (meet_id,)).fetchone() is None:
+                raise SigninError("No such meet")
+            sessions = connection.execute(
+                "SELECT id, date FROM sessions WHERE meet_id = ? ORDER BY date, start_time, id", (meet_id,)
+            ).fetchall()
+            upcoming = [row["id"] for row in sessions if row["date"] >= today.isoformat()]
+            session_id = upcoming[0] if upcoming else (sessions[-1]["id"] if sessions else None)
+            self._set_setting(connection, constants.SETTING_ACTIVE_MEET_ID, meet_id)
+            self._set_setting(connection, constants.SETTING_ACTIVE_SESSION_ID, session_id)
+
+    def save_meet(
+        self,
+        meet_id: int | None,
+        name: str,
+        start_date: str,
+        sessions: list[tuple[int | None, SessionFields]],
+        today: date,
+    ) -> int:
+        """Create or change a meet and its sessions in one go, and make it the active meet.
+
+        Everything is saved in one transaction, so a mistake in any session leaves the
+        meet exactly as it was. Sessions not listed are left alone (deleting is separate,
+        behind its own warning).
+
+        Args:
+            meet_id: The meet to change, or None for a new meet.
+            name: Meet name.
+            start_date: ISO date of the first day.
+            sessions: ``(session ID or None for a new session, fields)`` per session.
+            today: Today's date (picks the session to sign in to when none is chosen).
+
+        Returns:
+            The meet's ID.
+
+        Raises:
+            SigninError: When the meet or one of its sessions does not exist.
+        """
+        with self._connect() as connection:
+            if meet_id is None:
+                cursor = connection.execute(
+                    "INSERT INTO meets (name, start_date, created_at) VALUES (?, ?, ?)", (name, start_date, utc_now_iso())
+                )
+                meet_id = int(cursor.lastrowid)
+            elif connection.execute(
+                "UPDATE meets SET name = ?, start_date = ? WHERE id = ?", (name, start_date, meet_id)
+            ).rowcount == 0:
+                raise SigninError("No such meet")
+            for session_id, fields in sessions:
+                values = (fields.name, fields.date, fields.start_time, fields.session_type,
+                          fields.officials_meeting_time, fields.estimated_minutes)
+                if session_id is None:
+                    connection.execute(
+                        "INSERT INTO sessions (meet_id, name, date, start_time, session_type, officials_meeting_time, "
+                        "estimated_minutes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (meet_id, *values),
+                    )
+                elif connection.execute(
+                    "UPDATE sessions SET name = ?, date = ?, start_time = ?, session_type = ?, "
+                    "officials_meeting_time = ?, estimated_minutes = ? WHERE id = ? AND meet_id = ?",
+                    (*values, session_id, meet_id),
+                ).rowcount == 0:
+                    raise SigninError("That session is not part of this meet")
+            was_active = self._get_setting_id(connection, constants.SETTING_ACTIVE_MEET_ID) == meet_id
+            active_session_id = self._get_setting_id(connection, constants.SETTING_ACTIVE_SESSION_ID)
+        if not was_active or active_session_id is None:
+            self.open_meet(meet_id, today)
+        return meet_id
+
+    def get_setting(self, key: str) -> int | None:
+        """Read one integer setting (None when not set)."""
+        with self._connect() as connection:
+            return self._get_setting_id(connection, key)
+
+    def set_setting(self, key: str, value: int | None) -> None:
+        """Write (or clear) one integer setting."""
+        with self._connect() as connection:
+            self._set_setting(connection, key, value)
 
     def add_session(
         self,

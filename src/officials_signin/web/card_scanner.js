@@ -28,6 +28,9 @@ window.CardScanner = (function () {
   const OCR = CONFIG.ocr;
   const KEYS = CONFIG.keys;
   const CAMERA_STORAGE_KEY = "officials_signin.camera_device";
+  // Remembers, per camera and picture source ("photo" or "video"), that its pictures come
+  // out mirrored, so later scans read them the right way round first time.
+  const MIRROR_STORAGE_KEY_PREFIX = "officials_signin.mirrored.";
   const FACING_FRONT = "user";
   const FACING_BACK = "environment";
   const MAX_CHANNEL_VALUE = 255;
@@ -91,6 +94,18 @@ window.CardScanner = (function () {
 
   function rememberCameraId(deviceId) {
     try { localStorage.setItem(CAMERA_STORAGE_KEY, deviceId); } catch (error) { /* private mode: fine */ }
+  }
+
+  /** True when this camera's pictures from this source were found to be mirrored. */
+  function rememberedMirror(cameraId, source) {
+    try { return localStorage.getItem(MIRROR_STORAGE_KEY_PREFIX + cameraId + "." + source) === "1"; } catch (error) { return false; }
+  }
+
+  function rememberMirror(cameraId, source, mirrored) {
+    try {
+      const key = MIRROR_STORAGE_KEY_PREFIX + cameraId + "." + source;
+      if (mirrored) { localStorage.setItem(key, "1"); } else { localStorage.removeItem(key); }
+    } catch (error) { /* private mode: fine */ }
   }
 
   /** Every camera on this device (labels are known once camera permission is granted). */
@@ -455,10 +470,10 @@ window.CardScanner = (function () {
   }
 
   /** Post all OCR texts so far; the server parses and merges them. */
-  async function parseTexts(texts) {
+  async function parseTexts(texts, route) {
     const body = {};
     body[KEYS.texts] = texts.slice(-OCR.textsLimit);
-    const response = await fetch(CONFIG.routes.cardReading, {
+    const response = await fetch(route || CONFIG.routes.cardReading, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -476,6 +491,8 @@ window.CardScanner = (function () {
    * @param {HTMLVideoElement} options.video  Preview element (the stream is attached to it).
    * @param {function(object):void} options.onProgress  Called with the server's reading after each pass.
    * @param {function(string):void} options.onStatus  Short status text for the admin.
+   * @param {string} [options.readingRoute]  Where to post the OCR text (default: the officials
+   *   card-reading route; the coaches page passes its own).
    * @param {HTMLElement} [options.stage]  Element holding the video and overlay (mirrored together).
    * @param {HTMLCanvasElement} [options.overlay]  Canvas over the video for the guide frame.
    * @param {function(string, string, string):void} [options.onGuide]  Called with the guide
@@ -785,7 +802,7 @@ window.CardScanner = (function () {
     async function mergeNew(newTexts) {
       newTexts.filter(function (text) { return CARD_HINT.test(text); }).forEach(function (text) { texts.push(text); });
       if (texts.length === 0) { return null; }
-      const reading = await parseTexts(texts.slice());
+      const reading = await parseTexts(texts.slice(), options.readingRoute);
       lastReading = reading;
       if (!cancelled) { options.onProgress(reading); }
       diagnose({ kind: "merged", passes: texts.length, complete: reading[KEYS.card][KEYS.complete], missing: reading[KEYS.card][KEYS.missing] }, null);
@@ -795,44 +812,91 @@ window.CardScanner = (function () {
 
     /**
      * Read the captured stills with both workers in parallel, stopping as soon as the
-     * card is complete. Sideways screens are tried turned both ways first.
+     * card is complete.
+     *
+     * Each still starts the way its own measurements say is up, flipped if this camera's
+     * pictures are known to be mirrored. When neither still shows card words, the other
+     * ways round are tried on the first still: half turn and mirror in parallel, then
+     * both together. The way that worked is applied to the second still as well, and a
+     * mirror is remembered for this camera so the next capture (and the next scan) reads
+     * it the right way round first time.
      */
     async function readCapture(workers, capture) {
       const stills = capture.stills;
       const first = stills[0];
       const second = stills[1] || first;
       const worker = function (index) { return workers[index % workers.length]; };
+      stills.forEach(function (still) {
+        still.mirror = Boolean(cameraId) && rememberedMirror(cameraId, still.source);
+      });
 
-      /** Read each still once (in parallel) with its current orientation; keep orientations that worked. */
+      /** Turn and/or flip a still relative to how it is now. */
+      function adjusted(still, change) {
+        return {
+          still: still,
+          rotation: (still.rotation + change.turn) % FULL_TURN,
+          mirror: still.mirror !== change.flip,
+        };
+      }
+
+      /** Read each (still, orientation, layout) once, in parallel; true where card words were found. */
       async function readRound(items) {
         const results = await Promise.all(items.map(function (item, index) {
-          return readStill(worker(index), item.still, item.still.rotation, item.still.mirror, item.layout);
+          return readStill(worker(index), item.still, item.rotation, item.mirror, item.layout);
         }));
         await mergeNew(results);
         return results.map(function (text) { return CARD_HINT.test(text); });
       }
 
-      // Round 1: each still the way its own measurements say is up.
-      let found = await readRound([{ still: first, layout: LAYOUT_SPARSE }, { still: second, layout: LAYOUT_COLUMN }]);
-      if (done || cancelled) { return; }
-      // No card words: turn those stills half round (wrong guess of which end is up).
-      const retry = [first, second].filter(function (still, index) { return !found[index]; });
-      if (retry.length === 2 || (retry.length === 1 && texts.length === 0)) {
-        retry.forEach(function (still) { still.rotation = (still.rotation + HALF_TURN) % FULL_TURN; });
-        found = await readRound(retry.map(function (still, index) {
-          return { still: still, layout: index === 0 ? LAYOUT_SPARSE : LAYOUT_COLUMN };
-        }));
-        if (done || cancelled) { return; }
+      /**
+       * Use this orientation for the still from now on. When it was seen to work
+       * (``verified``), also remember whether this camera's pictures are mirrored.
+       */
+      function keep(item, verified) {
+        if (verified && cameraId) { rememberMirror(cameraId, item.still.source, item.mirror); }
+        item.still.rotation = item.rotation;
+        item.still.mirror = item.mirror;
       }
-      if (texts.length === 0) {
-        // Still nothing: maybe a mirrored image.
-        first.rotation = (first.rotation + HALF_TURN) % FULL_TURN;
-        first.mirror = true;
-        await readRound([{ still: first, layout: LAYOUT_SPARSE }]);
-        if (done || cancelled || texts.length === 0) { return; }
+
+      const asIs = { turn: 0, flip: false };
+      // Round 1: each still the way its own measurements say is up.
+      const firstRound = [
+        Object.assign(adjusted(first, asIs), { layout: LAYOUT_SPARSE }),
+        Object.assign(adjusted(second, asIs), { layout: LAYOUT_COLUMN }),
+      ];
+      const found = await readRound(firstRound);
+      if (done || cancelled) { return; }
+      if (found[0]) { keep(firstRound[0], true); }
+      if (found[1]) { keep(firstRound[1], true); }
+      if (!found[0] && !found[1]) {
+        // Rounds 2 and 3: the other ways round, on the first still.
+        const changes = [[{ turn: HALF_TURN, flip: false }, { turn: 0, flip: true }], [{ turn: HALF_TURN, flip: true }]];
+        let winner = null;
+        for (const round of changes) {
+          const items = round.map(function (change) {
+            return Object.assign(adjusted(first, change), { layout: LAYOUT_SPARSE, change: change });
+          });
+          const results = await readRound(items);
+          if (done || cancelled) { return; }
+          const index = results.indexOf(true);
+          if (index >= 0) { winner = items[index]; break; }
+        }
+        if (winner === null) { return; } // no card in view: back to the guide
+        keep(winner, true);
+        if (second !== first) { keep(adjusted(second, winner.change), second.source === first.source); }
+      } else if (found[0] !== found[1] && second !== first) {
+        // One still read, the other did not: try the other one the way that worked.
+        const good = found[0] ? first : second;
+        const other = found[0] ? second : first;
+        keep({ still: other, rotation: good.rotation, mirror: good.mirror }, false);
       }
       // Follow-ups: the other layout on each still.
-      await readRound([{ still: first, layout: LAYOUT_COLUMN }, { still: second, layout: LAYOUT_SPARSE }]);
+      const followUps = [
+        Object.assign(adjusted(first, asIs), { layout: LAYOUT_COLUMN }),
+        Object.assign(adjusted(second, asIs), { layout: LAYOUT_SPARSE }),
+      ];
+      const followUpFound = await readRound(followUps);
+      followUps.forEach(function (item, index) { if (followUpFound[index]) { keep(item, true); } });
     }
 
     async function run() {

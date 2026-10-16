@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import importlib
 import json
 import logging
 import re
@@ -28,8 +29,8 @@ from urllib.parse import parse_qs, urlsplit
 
 from officials_signin import constants
 from officials_signin.card_reader import CardReading, check_card, read_card
-from officials_signin.database import Database, SigninError, Validation, not_checked_validation
-from officials_signin.demo import build_demo
+from officials_signin.database import Database, SessionFields, SigninError, Validation, not_checked_validation
+from officials_signin.demo import build_demo, stored_demo_size
 from officials_signin.reports import render_meet_summary, render_session_summary, render_team_display
 from officials_signin.roster import build_roster, roster_download_filename
 from officials_signin.teams import (
@@ -49,6 +50,9 @@ _VENDOR_DIRECTORY = _WEB_DIRECTORY / constants.VENDOR_DIRECTORY_NAME
 _SIGNIN_ACTION_PATTERN = re.compile(
     rf"^{re.escape(constants.ROUTE_SIGNIN_PREFIX)}(\d+)"
     rf"({re.escape(constants.SIGNIN_VALIDATE_SUFFIX)}|{re.escape(constants.SIGNIN_REMOVE_SUFFIX)})$"
+)
+_MEET_OPEN_PATTERN = re.compile(
+    rf"^{re.escape(constants.ROUTE_MEET_PREFIX)}(\d+){re.escape(constants.MEET_OPEN_SUFFIX)}$"
 )
 _SESSION_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_SESSION_PREFIX)}(\d+)$")
 _SESSION_DELETE_PATTERN = re.compile(
@@ -94,6 +98,12 @@ def build_web_config() -> dict[str, Any]:
             "teamDisplay": constants.ROUTE_TEAM_DISPLAY,
             "demo": constants.ROUTE_DEMO,
             "demoExit": constants.ROUTE_DEMO_EXIT,
+            "demoOpen": constants.ROUTE_DEMO_OPEN,
+            "demoReset": constants.ROUTE_DEMO_RESET,
+            "meetPrefix": constants.ROUTE_MEET_PREFIX,
+            "meetSave": constants.ROUTE_MEET_SAVE,
+            "coaches": constants.ROUTE_COACHES,
+            "meetOpenSuffix": constants.MEET_OPEN_SUFFIX,
             "diagnostics": constants.ROUTE_DIAGNOSTICS,
             "teams": constants.ROUTE_TEAMS,
             "teamsBuild": constants.ROUTE_TEAMS_BUILD,
@@ -119,6 +129,11 @@ def build_web_config() -> dict[str, Any]:
             "signinCount": constants.KEY_SIGNIN_COUNT,
             "merged": constants.KEY_MERGED,
             "demo": constants.KEY_DEMO,
+            "demoReady": constants.KEY_DEMO_READY,
+            "meets": constants.KEY_MEETS,
+            "activeMeetId": constants.KEY_ACTIVE_MEET_ID,
+            "officialCount": constants.KEY_OFFICIAL_COUNT,
+            "sessionCount": constants.KEY_SESSIONS_COUNT,
             "meet": constants.KEY_MEET,
             "sessions": constants.KEY_SESSIONS,
             "activeSessionId": constants.KEY_ACTIVE_SESSION_ID,
@@ -177,6 +192,8 @@ def build_web_config() -> dict[str, Any]:
         "cardFields": [[name, constants.CARD_FIELD_LABELS[name]] for name in constants.CARD_REQUIRED_FIELDS],
         "roles": list(constants.ROSTER_ROLES),
         "teamPoolRole": constants.TEAM_POOL_ROLE,
+        "demoResetWarningSeconds": constants.DEMO_RESET_WARNING_SECONDS,
+        "coachesPage": _coaches_module() is not None,
         "rotationModes": [[mode, constants.ROTATION_MODE_LABELS[mode]] for mode in constants.ROTATION_MODES],
         "assignmentFifteenMeter": constants.ASSIGNMENT_FIFTEEN_METER,
         "assignmentAcj": constants.ASSIGNMENT_ACJ,
@@ -274,6 +291,37 @@ def _render(filename: str, values: dict[str, str]) -> bytes:
     """
     template = string.Template((_WEB_DIRECTORY / filename).read_text("utf-8"))
     return template.substitute(values).encode("utf-8")
+
+
+def _coaches_module() -> Any | None:
+    """The coaches sign-in module (``officials_signin/coaches.py``), or None until it exists.
+
+    Contract for that module (built in its own files by the coaches chat):
+
+    - ``handle_get(handler, path, query) -> bool`` and ``handle_post(handler, path, payload)
+      -> bool``: called for ``/coaches``, ``/coaches/...`` and ``/api/coaches/...``; return
+      False for a path they do not know (the server then answers 404). They may raise
+      ``database.SigninError`` for a 400 with a message for the admin.
+    - Through ``handler`` they may use: ``handler.database`` (the real or demo database,
+      already chosen for this browser), ``handler.in_demo``, ``handler._send_json``,
+      ``handler._send_bytes`` and ``handler._send_json_error``.
+
+    Returns:
+        The imported module, or None when it is not there.
+    """
+    try:
+        return importlib.import_module(constants.COACHES_MODULE_NAME)
+    except ModuleNotFoundError as error:
+        if error.name != constants.COACHES_MODULE_NAME:
+            raise
+        return None
+
+
+def _is_coaches_path(path: str) -> bool:
+    """True for the coaches page and its files and API."""
+    return path == constants.ROUTE_COACHES or path.startswith(
+        (constants.ROUTE_COACHES_PREFIX, constants.ROUTE_COACHES_API_PREFIX)
+    )
 
 
 def render_page() -> bytes:
@@ -426,6 +474,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.OK, state)
         elif path == constants.ROUTE_DEMO:
             self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_demo_page())
+        elif path == constants.ROUTE_MEETS:
+            self._send_meet_overview()
         elif path == constants.ROUTE_TEAMS:
             self._send_team_view()
         elif path in (constants.ROUTE_PRINT_SESSION, constants.ROUTE_TEAM_DISPLAY):
@@ -439,6 +489,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.OK, {constants.KEY_OFFICIALS: database.list_officials(date.today())})
         elif path in (constants.ROUTE_ROSTER, constants.ROUTE_ROSTER_DOWNLOAD):
             self._send_roster(url.query, download=path == constants.ROUTE_ROSTER_DOWNLOAD)
+        elif _is_coaches_path(path) and (coaches := _coaches_module()) is not None:
+            try:
+                if not coaches.handle_get(self, path, url.query):
+                    self._send_json_error(HTTPStatus.NOT_FOUND, "Not found")
+            except SigninError as error:
+                self._send_json_error(HTTPStatus.BAD_REQUEST, str(error))
         else:
             self._send_json_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -479,6 +535,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         try:
             if path == constants.ROUTE_MEETS:
                 self._handle_create_meet(payload)
+            elif path == constants.ROUTE_MEET_SAVE:
+                self._handle_save_meet(payload)
             elif path == constants.ROUTE_SESSIONS:
                 self._handle_add_session(payload)
             elif (match := _SESSION_DELETE_PATTERN.match(path)) is not None:
@@ -497,6 +555,14 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_demo_start(payload)
             elif path == constants.ROUTE_DEMO_EXIT:
                 self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=False))
+            elif path == constants.ROUTE_DEMO_OPEN:
+                self._handle_demo_open()
+            elif path == constants.ROUTE_DEMO_RESET:
+                self._handle_demo_reset()
+            elif (match := _MEET_OPEN_PATTERN.match(path)) is not None:
+                # Opening a real meet always leaves demo mode.
+                self.server.database.open_meet(int(match.group(1)), date.today())
+                self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=False))
             elif path == constants.ROUTE_DIAGNOSTICS:
                 self._handle_diagnostics(payload)
             elif path == constants.ROUTE_TEAMS_BUILD:
@@ -509,6 +575,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_signin_edit(int(match.group(1)), payload)
             elif (match := _SIGNIN_ACTION_PATTERN.match(path)) is not None:
                 self._handle_signin_action(int(match.group(1)), match.group(2))
+            elif _is_coaches_path(path) and (coaches := _coaches_module()) is not None:
+                if not coaches.handle_post(self, path, payload):
+                    self._send_json_error(HTTPStatus.NOT_FOUND, "Not found")
             else:
                 self._send_json_error(HTTPStatus.NOT_FOUND, "Not found")
         except SigninError as error:
@@ -522,6 +591,35 @@ class RequestHandler(BaseHTTPRequestHandler):
             raise SigninError("A meet needs a name and a start date")
         meet_id = self.database.create_meet(name, start_date)
         self._send_json(HTTPStatus.OK, {constants.KEY_ID: meet_id})
+
+    def _handle_save_meet(self, payload: dict[str, Any]) -> None:
+        """Create or change a meet and all its sessions at once (Meet setup's Save)."""
+        meet_id = payload.get(constants.KEY_ID)
+        if meet_id is not None and not isinstance(meet_id, int):
+            raise SigninError("Unknown meet")
+        name = str(payload.get(constants.KEY_NAME, "")).strip()[: constants.NAME_MAX_LENGTH]
+        start_date = str(payload.get(constants.KEY_START_DATE, ""))
+        if not name or not _DATE_PATTERN.match(start_date):
+            raise SigninError("A meet needs a name and a start date")
+        rows = payload.get(constants.KEY_SESSIONS)
+        if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+            raise SigninError("Expected a list of sessions")
+        if meet_id is None and not rows:
+            raise SigninError("Add at least one session")
+        if len(rows) > constants.MAX_SESSIONS_PER_MEET:
+            raise SigninError(f"At most {constants.MAX_SESSIONS_PER_MEET} sessions")
+        sessions = []
+        for number, row in enumerate(rows, start=1):
+            session_id = row.get(constants.KEY_ID)
+            if session_id is not None and not isinstance(session_id, int):
+                raise SigninError("Unknown session")
+            try:
+                fields = SessionFields(*self._session_fields(row))
+            except SigninError as error:
+                raise SigninError(f"Session {number}: {error}") from error
+            sessions.append((session_id, fields))
+        saved_id = self.database.save_meet(meet_id, name, start_date, sessions, date.today())
+        self._send_json(HTTPStatus.OK, {constants.KEY_ID: saved_id})
 
     @staticmethod
     def _session_fields(payload: dict[str, Any]) -> tuple[str, str, str | None, str | None, str | None, int | None]:
@@ -587,7 +685,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         # report "not complete" so the camera keeps reading to confirm it.
         if result.unconfirmed:
             card[constants.CARD_FIELD_COMPLETE] = False
-        # A new official's name read only once may be garbled ("WIARN" for "MARK"):
+        # A new official's name read only once may be garbled ("PAI" for "PAT"):
         # keep reading until two passes agree. A known official keeps their stored name.
         if match is None and reading.name is not None and reading.name_votes < constants.CARD_NAME_CONFIRMATIONS:
             card[constants.CARD_FIELD_COMPLETE] = False
@@ -696,6 +794,42 @@ class RequestHandler(BaseHTTPRequestHandler):
             return f"{constants.DEMO_COOKIE_NAME}={constants.DEMO_COOKIE_ON}; Path=/; SameSite=Strict"
         return f"{constants.DEMO_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Strict"
 
+    def _send_meet_overview(self) -> None:
+        """Every real meet plus the demo meet's status, for the Meet overview.
+
+        Real meets always come from the real database, even for a browser in demo mode.
+        """
+        real = self.server.database
+        demo_ready = self.server.get_demo_database().get_state()[constants.KEY_MEET] is not None
+        self._send_json(HTTPStatus.OK, {
+            constants.KEY_MEETS: real.list_meets(),
+            constants.KEY_ACTIVE_MEET_ID: real.get_setting(constants.SETTING_ACTIVE_MEET_ID),
+            constants.KEY_DEMO: self.in_demo,
+            constants.KEY_DEMO_READY: demo_ready,
+        })
+
+    def _rebuild_demo(self, judges: int, trainees: int, sessions: int, head_officials: bool) -> None:
+        """Build a fresh demo database (replacing the old one)."""
+        with self.server.demo_lock:
+            self.server.demo_database = build_demo(
+                self.server.demo_database_path, judges, trainees, sessions, head_officials, date.today()
+            )
+
+    def _handle_demo_open(self) -> None:
+        """Switch this browser to the demo meet, building one with the defaults if there is none."""
+        if self.server.get_demo_database().get_state()[constants.KEY_MEET] is None:
+            self._rebuild_demo(
+                constants.DEMO_DEFAULT_JUDGES, constants.DEMO_DEFAULT_TRAINEES, constants.DEMO_DEFAULT_SESSIONS, True
+            )
+            LOGGER.info("Built the demo meet")
+        self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=True))
+
+    def _handle_demo_reset(self) -> None:
+        """Rebuild the demo meet at the same size, erasing every change made in it."""
+        self._rebuild_demo(*stored_demo_size(self.server.get_demo_database()))
+        LOGGER.info("Reset the demo meet")
+        self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=True))
+
     def _handle_demo_start(self, payload: dict[str, Any]) -> None:
         """Build a fresh demo meet and switch this browser to it."""
         limits = {
@@ -709,15 +843,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             if not isinstance(value, int) or not low <= value <= high:
                 raise SigninError(f"{key.replace('_', ' ')} must be {low} to {high}")
             values[key] = value
-        with self.server.demo_lock:
-            self.server.demo_database = build_demo(
-                self.server.demo_database_path,
-                values[constants.KEY_JUDGES_COUNT],
-                values[constants.KEY_TRAINEES_COUNT],
-                values[constants.KEY_SESSIONS_COUNT],
-                bool(payload.get(constants.KEY_HEAD_OFFICIALS, True)),
-                date.today(),
-            )
+        self._rebuild_demo(
+            values[constants.KEY_JUDGES_COUNT],
+            values[constants.KEY_TRAINEES_COUNT],
+            values[constants.KEY_SESSIONS_COUNT],
+            bool(payload.get(constants.KEY_HEAD_OFFICIALS, True)),
+        )
         LOGGER.info("Started a demo meet")
         self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=True))
 
