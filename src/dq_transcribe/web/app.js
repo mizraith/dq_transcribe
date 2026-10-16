@@ -1290,6 +1290,44 @@ function buildClipRow(clip) {
   return row;
 }
 
+// --- Help pop-up ("?" buttons) --------------------------------------------------------
+// Touch screens have no hover, so tooltips never show: each filter bar has a "?" button
+// that opens a short, formatted explanation in a pop-up (a <dialog>, not a browser alert).
+
+let helpDialog = null;
+
+/** A round "?" button that opens the explanation pop-up. */
+function buildHelpButton(title, rows, intro) {
+  const button = makeButton("help-button", "?", () => showHelp(title, rows, intro));
+  button.setAttribute("aria-label", "What do these mean?");
+  return button;
+}
+
+/** Show an explanation: a title, an optional intro line, and [term, meaning] rows. */
+function showHelp(title, rows, intro) {
+  if (helpDialog === null) {
+    helpDialog = document.createElement("dialog");
+    helpDialog.className = "help-dialog";
+    helpDialog.addEventListener("click", (event) => {
+      if (event.target === helpDialog) {
+        helpDialog.close(); // a tap outside the box closes it
+      }
+    });
+    document.body.append(helpDialog);
+  }
+  const content = [makeElement("h3", "", title)];
+  if (intro) {
+    content.push(makeElement("p", "help-intro", intro));
+  }
+  const list = makeElement("dl", "help-list");
+  for (const [term, meaning] of rows) {
+    list.append(makeElement("dt", "", term), makeElement("dd", "", meaning));
+  }
+  content.push(list, makeButton("primary help-close", "Got it", () => helpDialog.close()));
+  helpDialog.replaceChildren(...content);
+  helpDialog.showModal();
+}
+
 // --- Workflow status of a conversation (transcript filter) ---------------------------
 //
 // Each conversation card gets one status, so the transcript can be filtered to what
@@ -1338,19 +1376,6 @@ function setTranscriptFilter(filter) {
   redrawLastClips();
 }
 
-/** One line under the filter bar saying what the selected filter shows (all of them for All). */
-function buildTranscriptFilterHint() {
-  const hint = makeElement("p", "note transcript-filter-hint");
-  if (transcriptFilter === TRANSCRIPT_FILTER_ALL) {
-    hint.textContent = Object.keys(TRANSCRIPT_STATUSES)
-      .map((status) => TRANSCRIPT_STATUSES[status].replace(/^\W+/, "") + ": " + TRANSCRIPT_STATUS_HINTS[status].charAt(0).toLowerCase() + TRANSCRIPT_STATUS_HINTS[status].slice(1))
-      .join(" \u00b7 ");
-  } else {
-    hint.textContent = TRANSCRIPT_STATUS_HINTS[transcriptFilter] + ".";
-  }
-  return hint;
-}
-
 /** A conversation's workflow status (a key of TRANSCRIPT_STATUSES). */
 function conversationStatus(groupClips) {
   if (groupClips.some((clip) => clip.status === "failed")) {
@@ -1379,15 +1404,14 @@ function buildTranscriptFilterBar(statuses) {
     const button = makeButton("dq-filter-button transcript-" + filter + (on ? " on" : "") + (count ? "" : " empty"), "", () => setTranscriptFilter(filter));
     button.append(document.createTextNode(label + " "), makeElement("span", "dq-filter-count", String(count)));
     button.setAttribute("aria-pressed", on ? "true" : "false");
-    if (TRANSCRIPT_STATUS_HINTS[filter]) {
-      button.title = TRANSCRIPT_STATUS_HINTS[filter];
-    }
     bar.append(button);
   };
   addButton(TRANSCRIPT_FILTER_ALL, "All", statuses.length);
   for (const [status, label] of Object.entries(TRANSCRIPT_STATUSES)) {
     addButton(status, label, statuses.filter((item) => item === status).length);
   }
+  bar.append(buildHelpButton("Transcript filters", Object.keys(TRANSCRIPT_STATUSES).map((status) => [TRANSCRIPT_STATUSES[status], TRANSCRIPT_STATUS_HINTS[status]]),
+    "Each conversation (a call and its replies) has one status. The counts show how many conversations are in each."));
   return bar;
 }
 
@@ -1399,9 +1423,7 @@ function buildGroupCard(groupClips, status) {
   const header = makeElement("div", "group-header", formatTime(clipStartDate(first)) + " – " + formatTime(clipEndDate(last)));
   header.append(makeElement("span", "", " · " + groupClips.length + " clip" + (groupClips.length === 1 ? "" : "s")));
   if (status) {
-    const badge = makeElement("span", "badge workflow-" + status, TRANSCRIPT_STATUSES[status]);
-    badge.title = TRANSCRIPT_STATUS_HINTS[status];
-    header.append(badge);
+    header.append(makeElement("span", "badge workflow-" + status, TRANSCRIPT_STATUSES[status]));
   }
   card.append(header);
   groupClips.forEach((clip) => card.append(buildClipRow(clip)));
@@ -1449,8 +1471,7 @@ function renderClips(clips) {
     cards.push(makeElement("p", "note", emptyText));
   }
   if (!showingTrash && newestFirst.length) {
-    // Touch screens have no hover, so the selected filter's meaning is spelled out under the bar.
-    cards.unshift(buildTranscriptFilterBar(statuses), buildTranscriptFilterHint());
+    cards.unshift(buildTranscriptFilterBar(statuses));
   }
   if (showingTrash && trashedDqs.length) {
     const section = makeElement("section", "trashed-dqs");

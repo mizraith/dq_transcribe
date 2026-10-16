@@ -26,6 +26,21 @@ const ROSTER_SUGGESTIONS = {
 const MAX_CODE_CHIPS = 4;
 const DQ_FILTER_ALL = "all";
 const DQ_FILTER_STORAGE_KEY = "dq_transcribe.dqFilter";
+// What each DQ filter means (shown by the "?" button next to the filters).
+const DQ_FILTER_HELP = [
+  ["Called", "Heard on the radio; the referee has not accepted it yet."],
+  ["Incomplete", "Accepted, but something is missing (swimmer, official, referee or infraction). Open it to see what."],
+  ["Pending notification", "Accepted and complete: ready to tell the coach (Notify event)."],
+  ["Notified", "The coach has been told. The 30-minute protest window runs from the call."],
+  ["Protested", "A coach protested; the referee is deciding."],
+  ["Upheld", "The DQ stands after a protest."],
+  ["Overturned", "The DQ was overturned. Kept for the record; not entered in Meet Manager."],
+  ["Declined", "The referee did not accept the call. Kept for the record."],
+  ["\ud83d\udda8 Print requested", "A coach asked for a paper slip from the coach page. Shown only when there are requests."],
+  ["Group by event", "Shows one block per event, with Notify event and the DQ summary for the Meet Manager operator."],
+  ["Event #", "Type an event number to show only that event; \u00d7 clears it."],
+  ["Gray code box", "The slip code, e.g. [5B]. Amber with a ? (e.g. [1J/3J?]) means the code depends on the stroke: pick one."],
+];
 const PRINT_REQUESTED_LABEL = "\ud83d\udda8 Print requested";
 const DQ_GROUP_STORAGE_KEY = "dq_transcribe.dqGroupByEvent";
 const NOTIFIED_BY_STORAGE_KEY = "dq_transcribe.notifiedBy";
@@ -346,6 +361,7 @@ function buildDqFilterBar(dqs) {
   });
   group.setAttribute("aria-pressed", dqGroupByEvent ? "true" : "false");
   bar.append(group);
+  bar.append(buildHelpButton("DQ filters", DQ_FILTER_HELP, "A DQ moves left to right through these as it is worked on. The counts are for the whole meet."));
   const eventBox = makeElement("label", "dq-event-filter");
   eventBox.append(makeElement("span", "", "Event #"), dqEventFilterInput);
   if (dqEventFilter) {
