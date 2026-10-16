@@ -242,6 +242,9 @@ DQ_STATUS_LABELS = {  # in workflow order (the filter buttons use this order)
     DQ_STATUS_OVERTURNED: "Overturned",
     DQ_STATUS_DECLINED: "Declined",
 }
+# The DQ list shows this many events' worth of DQs at a time (events 1-10, 11-20, ...),
+# with jump buttons at the bottom, so a 100-event meet is not one long scroll.
+DQ_EVENTS_PER_PAGE = 10
 DQ_SOURCE_AUTO = "auto"  # created from a detected call
 DQ_SOURCE_MANUAL = "manual"
 EVIDENCE_ROLE_CALL = "call"

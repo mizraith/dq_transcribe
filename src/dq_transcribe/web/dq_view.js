@@ -44,6 +44,9 @@ let dqsSignature = "";
 let dqCount = 0;
 let dqFilter = loadDqFilter(); // a status from CONFIG.dqStatusLabels, or DQ_FILTER_ALL
 let dqGroupByEvent = loadSetting(DQ_GROUP_STORAGE_KEY, "false") === "true";
+let dqEventPageKey = null; // which block of events the list shows (0 = events 1-10, ...), see eventPageKey
+let dqEventFilter = ""; // "Event #" box: show only this event (paging is off while it is set)
+const dqEventFilterInput = buildEventFilterInput(); // kept across redraws so typing is not interrupted
 let scrollToDqId = null; // a DQ to scroll to on the next draw (opened from the transcript)
 let flashDqId = null; // the DQ just changed, highlighted once when the list is redrawn
 // State buttons in the editor, in order (labels say what tapping does when not current).
@@ -346,6 +349,12 @@ function buildDqFilterBar(dqs) {
   });
   group.setAttribute("aria-pressed", dqGroupByEvent ? "true" : "false");
   bar.append(group);
+  const eventBox = makeElement("label", "dq-event-filter");
+  eventBox.append(makeElement("span", "", "Event #"), dqEventFilterInput);
+  if (dqEventFilter) {
+    eventBox.append(makeButton("dq-event-clear", "\u00d7", () => setEventFilter("")));
+  }
+  bar.append(eventBox);
   return bar;
 }
 
@@ -452,11 +461,108 @@ async function notifyEvent(event, notifiedBy, includeNotReady) {
   forceRefresh();
 }
 
+// --- Event paging and the "Event #" box --------------------------------------------
+
+const NO_EVENT_PAGE = "none"; // DQs without an event number get their own block, last
+
+/** The "Event #" box (one element for the page's life, so redraws keep focus and caret). */
+function buildEventFilterInput() {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.inputMode = "numeric";
+  input.maxLength = 6;
+  input.placeholder = "all";
+  input.className = "dq-event-input";
+  input.setAttribute("aria-label", "Show only this event number");
+  input.addEventListener("input", () => setEventFilter(input.value));
+  return input;
+}
+
+/** Show only one event ("" = every event, paged), and redraw. */
+function setEventFilter(value) {
+  dqEventFilter = normalizeEventNumber(value);
+  if (dqEventFilterInput.value.trim() !== value.trim() || value === "") {
+    dqEventFilterInput.value = value;
+  }
+  expandedDqId = null;
+  forceRefresh();
+}
+
+/** "012" -> "12", " 2B " -> "2b" (as the server compares event numbers). */
+function normalizeEventNumber(value) {
+  const text = String(value || "").trim().toLowerCase();
+  const match = text.match(/^0*(\d+)([a-z]?)/);
+  return match ? String(Number(match[1])) + match[2] : text;
+}
+
+/** The block of events a DQ belongs to: 0 for events 1-10, 1 for 11-20, ... (NO_EVENT_PAGE without a number). */
+function eventPageKey(dq) {
+  const number = parseInt(dq.event || "", 10);
+  return Number.isNaN(number) || number < 1 ? NO_EVENT_PAGE : Math.floor((number - 1) / CONFIG.dqEventsPerPage);
+}
+
+/** "11–20" for block 1; "No event" for DQs without an event number. */
+function eventPageLabel(key) {
+  if (key === NO_EVENT_PAGE) {
+    return "No event";
+  }
+  return (key * CONFIG.dqEventsPerPage + 1) + "\u2013" + ((key + 1) * CONFIG.dqEventsPerPage);
+}
+
+/**
+ * Keep only one block of events (or the one event typed in the box).
+ * Returns {visible, pages, current}: the DQs to draw, the blocks that have DQs, and the shown block.
+ */
+function pageDqs(shown) {
+  if (dqEventFilter) {
+    return { visible: shown.filter((dq) => normalizeEventNumber(dq.event) === dqEventFilter), pages: [], current: null };
+  }
+  const pages = [...new Set(shown.map(eventPageKey))].sort((a, b) => (a === NO_EVENT_PAGE) - (b === NO_EVENT_PAGE) || a - b);
+  if (scrollToDqId !== null) {
+    // Opened from the transcript: show the block that holds that DQ.
+    const target = shown.find((dq) => dq.id === scrollToDqId);
+    if (target) {
+      dqEventPageKey = eventPageKey(target);
+    }
+  }
+  if (!pages.includes(dqEventPageKey)) {
+    dqEventPageKey = pages.length ? pages[0] : null;
+  }
+  return { visible: shown.filter((dq) => eventPageKey(dq) === dqEventPageKey), pages, current: dqEventPageKey };
+}
+
+/** "Jump to events: 1–10  11–20  21–30 ..." under the list (only blocks that have DQs). */
+function buildEventJumpBar(pages, current, shown) {
+  const bar = makeElement("nav", "dq-event-jumps");
+  bar.append(makeElement("span", "muted", "Jump to events:"));
+  for (const key of pages) {
+    const count = shown.filter((dq) => eventPageKey(dq) === key).length;
+    const button = makeButton("dq-jump" + (key === current ? " on" : ""), "", () => {
+      dqEventPageKey = key;
+      expandedDqId = null;
+      forceRefresh();
+      const scroller = clipsContainer.closest("main"); // the main area scrolls, not the window
+      if (scroller) {
+        scroller.scrollTo({ top: 0 });
+      }
+    });
+    button.append(document.createTextNode(eventPageLabel(key) + " "), makeElement("span", "dq-filter-count", String(count)));
+    button.setAttribute("aria-pressed", key === current ? "true" : "false");
+    bar.append(button);
+  }
+  return bar;
+}
+
 /** Draw the filter bar and the DQ list, sorted by event, heat and lane (the server sorts). */
 function renderDqList(dqs) {
-  const shown = dqFilter === DQ_FILTER_ALL
+  // Building the new filter bar moves the "Event #" box out of the page, which drops focus: note it first.
+  const typing = document.activeElement === dqEventFilterInput;
+  const caret = dqEventFilterInput.selectionStart;
+  const filtered = dqFilter === DQ_FILTER_ALL
     ? dqs
     : dqs.filter((dq) => (dqFilter === CONFIG.printRequestedFilter ? Boolean(dq.print_requested_at) : dq.status === dqFilter));
+  const paging = pageDqs(filtered);
+  const shown = paging.visible;
   const cards = [];
   if (dqGroupByEvent) {
     // One block per event (in event order); readiness counts all of the event's DQs, not just the filtered ones.
@@ -472,15 +578,22 @@ function renderDqList(dqs) {
   }
   if (dqs.length === 0) {
     cards.push(makeElement("p", "note", "No DQs yet for this meet. Create them from the detected calls in the transcript."));
+  } else if (cards.length === 0 && dqEventFilter) {
+    cards.push(makeElement("p", "note", "No " + (dqFilter === DQ_FILTER_ALL ? "" : "such ") + "DQs in event " + dqEventFilter + ". Clear the Event # box to see every event."));
   } else if (cards.length === 0) {
     const filterLabel = dqFilter === CONFIG.printRequestedFilter ? "waiting for a printout" : CONFIG.dqStatusLabels[dqFilter].toLowerCase();
     cards.push(makeElement("p", "note", "No DQs are " + filterLabel + ". Tap All to see every DQ."));
   }
   const top = [buildDqFilterBar(dqs)];
-  if (dqFilter === CONFIG.printRequestedFilter && shown.length) {
-    top.push(buildPrintRequestsBar(shown.length));
+  if (dqFilter === CONFIG.printRequestedFilter && filtered.length) {
+    top.push(buildPrintRequestsBar(filtered.length));
   }
-  clipsContainer.replaceChildren(...top, ...cards);
+  const bottom = paging.pages.length > 1 ? [buildEventJumpBar(paging.pages, paging.current, filtered)] : [];
+  clipsContainer.replaceChildren(...top, ...cards, ...bottom);
+  if (typing) {
+    dqEventFilterInput.focus(); // the redraw moved the box: keep typing where it was
+    dqEventFilterInput.setSelectionRange(caret, caret);
+  }
   if (scrollToDqId !== null) {
     // Opened from a transcript line: bring that DQ into view (once).
     const target = clipsContainer.querySelector('[data-dq-id="' + scrollToDqId + '"]');

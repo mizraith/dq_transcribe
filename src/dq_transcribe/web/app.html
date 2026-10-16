@@ -99,6 +99,13 @@
     .dq-filter { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.8rem; position: sticky; top: var(--tabs-bottom); z-index: 2; background: var(--paper); padding: 0.3rem 0; }
     .dq-filter-button { font-size: 0.95rem; padding: 0.5rem 0.8rem; min-height: 2.5rem; border: 1px solid var(--line); border-radius: 1.3rem; background: #fff; color: var(--ink); }
     .dq-filter-button.empty { color: #9ca3af; }
+    .dq-event-filter { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.95rem; }
+    .dq-event-input { width: 4.2rem; min-height: 2.5rem; font-size: 1.05rem; padding: 0 0.5rem; border: 1px solid var(--line); border-radius: 0.5rem; text-align: center; }
+    .dq-event-clear { min-height: 2.5rem; min-width: 2.5rem; font-size: 1.2rem; border: 1px solid var(--line); border-radius: 50%; background: #fff; }
+    .dq-event-jumps { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin: 1rem 0 2rem; padding-top: 0.8rem; border-top: 1px solid var(--line); }
+    .dq-jump { font-size: 1rem; padding: 0.5rem 0.9rem; min-height: 2.6rem; border: 1px solid var(--line); border-radius: 1.3rem; background: #fff; color: var(--ink); }
+    .dq-jump.on { background: #111827; border-color: #111827; color: #fff; font-weight: 700; }
+    .dq-jump.on .dq-filter-count { background: #fff; }
     .dq-group-toggle { font-size: 0.95rem; padding: 0.5rem 0.9rem; min-height: 2.5rem; border: 2px dashed #6b7280; border-radius: 1.3rem; background: #fff; margin-left: auto; }
     .dq-group-toggle.on { border-style: solid; border-color: #111827; background: #f3f4f6; font-weight: 700; }
     .event-group { margin-bottom: 1rem; padding: 0.4rem; border-radius: 0.7rem; background: #e9ecf1; }

@@ -179,6 +179,7 @@ def build_web_config() -> dict[str, Any]:
             "overturned": constants.DQ_STATE_OVERTURNED,
         },
         "dqStatusLabels": constants.DQ_STATUS_LABELS,
+        "dqEventsPerPage": constants.DQ_EVENTS_PER_PAGE,
         "statesAfterNotification": list(constants.DQ_STATES_AFTER_NOTIFICATION),
         "notifiedByOptions": list(constants.NOTIFIED_BY_OPTIONS),
         "protestRuledByOptions": list(constants.PROTEST_RULED_BY_OPTIONS),
