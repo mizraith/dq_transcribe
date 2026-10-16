@@ -342,7 +342,11 @@ hard way, the dated decisions log (newest first), facts and open items. Companio
   data (owner, 2026-10-16), never copy it into the repo.
 - Coach card: which coach-only items must be current (Safety Training for Swim Coaches,
   CPR, ...)? Needs a coach card screenshot (member ID covered).
-- Should demo / the Candy Meet session length be confirmed (3 h guessed from 78 heats)?
+- **Session length from the HY-TEK meet timeline** (owner, 2026-10-16): HY-TEK Meet Manager
+  usually produces a meet timeline; the owner will provide one to ingest so each session's
+  "Estimated length" (and maybe start times) is filled in automatically. Until then it is
+  typed in Meet setup (the Candy Meet's 3 h was a guess from 78 heats). Ask for a sample
+  file and work out its format before building the import.
 - Ask whether "top of the team = Team Lead" is wanted (today the star is separate).
 - GitHub may keep the old (rewritten) commits reachable by their IDs for a while; GitHub
   Support can purge them if the owner wants.
