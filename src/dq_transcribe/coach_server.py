@@ -38,7 +38,14 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from dq_transcribe import constants
-from dq_transcribe.coach_page import BACK_TO_LIST_LABEL, coach_visible_dqs, list_url, render_dq_list, render_login_page
+from dq_transcribe.coach_page import (
+    BACK_TO_LIST_LABEL,
+    coach_visible_dqs,
+    list_url,
+    normalize_sort,
+    render_dq_list,
+    render_login_page,
+)
 from dq_transcribe.database import Database
 from dq_transcribe.dq_store import DqStore
 from dq_transcribe.slip_page import render_slips
@@ -106,12 +113,13 @@ class CoachRequestHandler(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         query = parse_qs(url.query)
         club = (query.get(constants.COACH_QUERY_KEY_CLUB) or [""])[0].strip() or None
+        sort = normalize_sort((query.get(constants.COACH_QUERY_KEY_SORT) or [""])[0].strip())
         offered_password = (query.get(constants.COACH_QUERY_KEY_PASSWORD) or [""])[0].strip()
         if url.path.startswith(constants.ROUTE_FONTS):
             self._send_font(url.path[len(constants.ROUTE_FONTS):])
             return
         if offered_password:
-            self._sign_in(offered_password, list_url(club))
+            self._sign_in(offered_password, list_url(club, sort))
             return
         if not self._signed_in():
             self._send_html(HTTPStatus.OK, render_login_page(self._meet_name()))
@@ -120,9 +128,9 @@ class CoachRequestHandler(BaseHTTPRequestHandler):
             meet_id = self.server.database.get_active_meet_id()
             meet = self.server.database.get_meet(meet_id) if meet_id is not None else None
             dqs = self.server.dq_store.list_dqs(meet_id) if meet is not None else []
-            self._send_html(HTTPStatus.OK, render_dq_list(meet, dqs, club, datetime.now().astimezone()))
+            self._send_html(HTTPStatus.OK, render_dq_list(meet, dqs, club, datetime.now().astimezone(), sort))
         elif url.path.startswith(constants.COACH_ROUTE_DQ) and url.path[len(constants.COACH_ROUTE_DQ):].isdigit():
-            self._send_slip(int(url.path[len(constants.COACH_ROUTE_DQ):]), club)
+            self._send_slip(int(url.path[len(constants.COACH_ROUTE_DQ):]), club, sort)
         else:
             self._redirect(constants.COACH_ROUTE_LIST)
 
@@ -169,16 +177,16 @@ class CoachRequestHandler(BaseHTTPRequestHandler):
         )
         self._redirect(next_url, cookie)
 
-    def _send_slip(self, dq_id: int, club: str | None) -> None:
+    def _send_slip(self, dq_id: int, club: str | None, sort: str) -> None:
         """One posted DQ's slip (only DQs of the active meet the coach may see)."""
         meet_id = self.server.database.get_active_meet_id()
         dqs = coach_visible_dqs(self.server.dq_store.list_dqs(meet_id)) if meet_id is not None else []
         dq = next((item for item in dqs if item["id"] == dq_id), None)
         if dq is None:
-            self._redirect(list_url(club))
+            self._redirect(list_url(club, sort))
             return
         title = SLIP_TITLE_FORMAT.format(event=dq.get("event") or "?", heat=dq.get("heat") or "?", lane=dq.get("lane") or "?")
-        self._send_html(HTTPStatus.OK, render_slips([dq], title, back_link=(list_url(club), BACK_TO_LIST_LABEL)))
+        self._send_html(HTTPStatus.OK, render_slips([dq], title, back_link=(list_url(club, sort), BACK_TO_LIST_LABEL)))
 
     def _send_font(self, filename: str) -> None:
         """The slip's script font (only plain file names inside web/fonts/)."""

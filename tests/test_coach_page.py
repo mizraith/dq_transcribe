@@ -54,6 +54,24 @@ class CoachPageRenderingTests(unittest.TestCase):
         self.assertIn("Ann Other", filtered)
         self.assertNotIn("Jane Example", filtered)
 
+    def test_one_club_sorted_by_swimmer(self) -> None:
+        dqs = [
+            _dq(constants.DQ_STATE_NOTIFIED, id=1, event="3", swimmer="Zed Adams"),
+            _dq(constants.DQ_STATE_NOTIFIED, id=2, event="7", swimmer="Amy Young"),
+            _dq(constants.DQ_STATE_NOTIFIED, id=3, event="9", swimmer="Zed Adams"),
+            _dq(constants.DQ_STATE_NOTIFIED, id=4, event="9", swimmer="Other Club", club="SCSC"),
+            _dq(constants.DQ_STATE_NOTIFIED, id=5, event="11", swimmer="PASA-A"),
+        ]
+        page = render_dq_list({"name": MEET_NAME}, dqs, "PASA", datetime.now().astimezone(), constants.COACH_SORT_BY_NAME).decode()
+        self.assertLess(page.index("Zed Adams"), page.index("Amy Young"))  # by last name: Adams before Young
+        self.assertIn("2 DQs", page)
+        self.assertLess(page.index("Amy Young"), page.index("PASA-A"))  # relays after the swimmers
+        self.assertLess(page.index("Event 3"), page.index("Event 9"))  # a swimmer's DQs in event order
+        self.assertNotIn("Other Club", page)
+        self.assertIn("sort=name", page)  # the slip links keep the sort for the way back
+        by_event = render_dq_list({"name": MEET_NAME}, dqs, None, datetime.now().astimezone(), constants.COACH_SORT_BY_NAME).decode()
+        self.assertNotIn("By swimmer", by_event)  # the sort choice appears once a club is chosen
+
     def test_open_protest_window_is_shown_until_it_closes(self) -> None:
         now = datetime.now(timezone.utc)
         open_dq = _dq(constants.DQ_STATE_NOTIFIED, protest_deadline=(now + timedelta(minutes=10)).isoformat())
