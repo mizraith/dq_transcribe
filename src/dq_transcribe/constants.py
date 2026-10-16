@@ -209,6 +209,13 @@ RESPONSE_KEY_DQ_IDS = "dq_ids"
 DQ_TRASH_SUFFIX = "/trash"  # POST /api/dqs/<id>/trash: move a DQ to the trash (a mistake; restorable)
 DQ_RESTORE_SUFFIX = "/restore"  # POST /api/dqs/<id>/restore
 MANUAL_DQ_NOTE_FORMAT = "Made by hand from: \u201c{text}\u201d"
+# Officials roster from the Officials Sign-In app (format: ai_docs/officials_roster_format.md).
+ROUTE_IMPORT_OFFICIALS = "/api/officials/import"  # POST the roster file (raw body) or {"url": ...}; returns what was read
+OFFICIALS_SIGNIN_ROSTER_URL = "http://localhost:8010/roster.json"  # the sign-in app's active session
+MAX_ROSTER_FILE_BYTES = 2 * 1024 * 1024
+RESPONSE_KEY_OFFICIALS = "officials"
+RESPONSE_KEY_SESSION = "session"
+RESPONSE_KEY_WARNINGS = "warnings"
 ROUTE_NOTIFY_EVENT = "/api/events/notify"  # POST {"event", "by", "include_not_ready"}
 RESPONSE_KEY_NOTIFIED = "notified"
 # Fields a DQ needs before the coach can be notified ("infraction" = at least one).

@@ -244,6 +244,7 @@ function renderMeetView() {
   const roster = makeElement("section", "meet-card");
   roster.append(makeElement("h3", "", "Officials (" + meetDraft.officials.length + ")"));
   roster.append(makeElement("p", "note", rosterCounts()));
+  roster.append(buildImportOfficials());
   roster.append(buildQuickAdd());
   roster.append(buildRosterTable());
   page.append(roster);
@@ -270,6 +271,56 @@ function markMeetDirty() {
       actions.append(makeElement("span", "unsaved", "Unsaved changes"));
     }
   }
+}
+
+/** "Import officials" buttons: from the Sign-In app on this tablet, or from a roster file. */
+function buildImportOfficials() {
+  const row = makeElement("div", "import-officials");
+  row.append(makeButton("primary", "\u2b07 Import officials from Sign-In", () => importOfficials(null)));
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.hidden = true;
+  picker.addEventListener("change", () => {
+    if (picker.files.length) {
+      importOfficials(picker.files[0]);
+    }
+  });
+  row.append(picker, makeButton("", "Import roster file\u2026", () => picker.click()));
+  return row;
+}
+
+/**
+ * Read a roster (from the Sign-In app, or a file), add officials not already on
+ * this meet's roster, and save. Officials already listed (same name and role) are kept as they are.
+ */
+async function importOfficials(file) {
+  try {
+    let response;
+    if (file) {
+      response = await fetch(CONFIG.importOfficialsRoute, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });
+    } else {
+      const body = {};
+      body[CONFIG.urlKey] = CONFIG.signinRosterUrl;
+      response = await fetch(CONFIG.importOfficialsRoute, { method: "POST", headers: { "Content-Type": CONFIG.jsonMediaType }, body: JSON.stringify(body) });
+    }
+    const reply = await response.json();
+    if (!response.ok) {
+      throw new Error(reply.error || "server answered " + response.status);
+    }
+    const known = new Set(meetDraft.officials.map((official) => official.name.toLowerCase() + "|" + official.role));
+    const added = reply[CONFIG.officialsResponseKey].filter((official) => !known.has(official.name.toLowerCase() + "|" + official.role));
+    added.forEach((official) => meetDraft.officials.push({ name: official.name, role: official.role }));
+    const warnings = reply[CONFIG.warningsKey];
+    if (added.length) {
+      await saveMeetDraft();
+    }
+    notify("\u2713 Imported " + added.length + " official(s)" + (reply[CONFIG.sessionKey] ? " from " + reply[CONFIG.sessionKey] : "") +
+      (reply[CONFIG.officialsResponseKey].length > added.length ? " (" + (reply[CONFIG.officialsResponseKey].length - added.length) + " already listed)" : "") +
+      (warnings.length ? ". " + warnings.join(" ") : ""), warnings.length ? "error" : "ok");
+  } catch (error) {
+    notify("Could not import officials: " + error.message, "error");
+  }
+  renderMeetView();
 }
 
 /** "Stroke & Turn Judge: 20 · Starter: 2 · ..." */

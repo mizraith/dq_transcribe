@@ -31,6 +31,7 @@ from dq_transcribe.database import Database
 from dq_transcribe.dq_store import DqError, DqStore, load_dq_codes
 from dq_transcribe.grouping import normalize_timestamp
 from dq_transcribe.meet_archive import archive_filename, build_meet_archive
+from dq_transcribe.officials_roster import RosterError, read_roster
 from dq_transcribe.slip_page import render_slips
 from dq_transcribe.meet_files import MeetFileError, read_meet_file
 from dq_transcribe.meet_files.store import MeetProgramStore
@@ -177,6 +178,11 @@ def build_web_config() -> dict[str, Any]:
         "protestWindowMinutes": constants.PROTEST_WINDOW_MINUTES,
         "notifyEventRoute": constants.ROUTE_NOTIFY_EVENT,
         "dqTrashSuffix": constants.DQ_TRASH_SUFFIX,
+        "importOfficialsRoute": constants.ROUTE_IMPORT_OFFICIALS,
+        "signinRosterUrl": constants.OFFICIALS_SIGNIN_ROSTER_URL,
+        "officialsResponseKey": constants.RESPONSE_KEY_OFFICIALS,
+        "sessionKey": constants.RESPONSE_KEY_SESSION,
+        "warningsKey": constants.RESPONSE_KEY_WARNINGS,
         "dqRestoreSuffix": constants.DQ_RESTORE_SUFFIX,
         "dqFromUtteranceRoute": constants.ROUTE_DQ_FROM_UTTERANCE,
         "utteranceIdKey": constants.REQUEST_KEY_UTTERANCE_ID,
@@ -438,6 +444,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_dismiss_candidate()
         elif path == constants.ROUTE_NOTIFY_EVENT:
             self._handle_notify_event()
+        elif path == constants.ROUTE_IMPORT_OFFICIALS:
+            self._handle_import_officials()
         elif path == constants.ROUTE_DQ_FROM_UTTERANCE:
             self._handle_dq_from_utterance()
         elif (match := _DQ_STATE_PATTERN.match(path)) is not None:
@@ -840,6 +848,46 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json_error(HTTPStatus.NOT_FOUND, "No such DQ, or it is already there")
             return
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _handle_import_officials(self) -> None:
+        """Read an officials roster from the Sign-In app: the file as the body, or {"url": ...}.
+
+        Nothing is saved here: the page merges the officials into the meet's roster
+        and saves it, so unsaved edits on the page are kept.
+        """
+        media_type = self.headers.get(constants.CONTENT_TYPE_HEADER, "").split(";")[0].strip().lower()
+        if media_type == constants.JSON_CONTENT_TYPE:
+            payload = self._read_json_object()
+            if payload is None:
+                return
+            url = str(payload.get(constants.REQUEST_KEY_URL) or constants.OFFICIALS_SIGNIN_ROSTER_URL)
+            if not url.lower().startswith(_WEB_ADDRESS_SCHEMES):
+                self._send_json_error(HTTPStatus.BAD_REQUEST, "The address must start with http:// or https://")
+                return
+            try:
+                with urllib.request.urlopen(url, timeout=constants.MEET_FILE_DOWNLOAD_TIMEOUT_SECONDS) as response:
+                    raw = response.read(constants.MAX_ROSTER_FILE_BYTES + 1)
+            except (urllib.error.URLError, OSError, ValueError) as error:
+                self._send_json_error(HTTPStatus.BAD_GATEWAY, f"Could not reach the Officials Sign-In app ({error}). Is it running?")
+                return
+        else:
+            raw = self._read_request_body()
+            if raw is None:
+                return
+        if len(raw) > constants.MAX_ROSTER_FILE_BYTES:
+            self._send_json_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "The roster file is too large")
+            return
+        try:
+            roster = read_roster(raw)
+        except RosterError as error:
+            self._send_json_error(HTTPStatus.UNPROCESSABLE_ENTITY, str(error))
+            return
+        LOGGER.info("Read an officials roster: %d officials (%s)", len(roster.officials), roster.session)
+        self._send_json(HTTPStatus.OK, {
+            constants.RESPONSE_KEY_OFFICIALS: roster.officials,
+            constants.RESPONSE_KEY_SESSION: roster.session,
+            constants.RESPONSE_KEY_WARNINGS: roster.warnings,
+        })
 
     def _handle_notify_event(self) -> None:
         """Notify an event's DQs that are pending notification: {"event", "by", "include_not_ready"}."""
