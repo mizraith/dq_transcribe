@@ -51,6 +51,24 @@ hard way, the dated decisions log (newest first), facts and open items. Companio
 
 ## Decisions
 
+- **2026-10-16 (08:40): Admin Assistant suite, main page at `/`.**
+  - The owner made **Admin Assistant** the suite: a main page (launcher + meets) with
+    sub-apps **DQ Transcribe**, **Officials Sign-In**, **Coaches Sign-In** (room for more).
+  - The officials server owns meets and sessions. The main page is `/`
+    (`home.html/js` + `meets.js`); Officials Sign-In moved to `/officials`. **All meet
+    setup is on the main page**: the officials page lost Meets, Meet setup and demo reset.
+  - Every app shows the **same meet and session**. Changing either anywhere changes it
+    everywhere (BroadcastChannel + 20 s poll; DQ polls `/api/suite/current` `version`).
+    **Exception**: DQ Transcribe keeps recording to the meet and session it started on.
+  - Standard top bar: ☰, bold app name, meet, session drop-down, then workflows (Teams).
+    The ☰ menu gets "Meets & Main Page" first and "Admin Assistant ›" (apps) last, from
+    `Desk.initTopBar`. Apps open in named tabs and are never reloaded (DQ may be recording).
+  - The owner chose: split the work (DQ chat changes DQ, using
+    `DQ_SUITE_HANDOFF.md`); link the Candy Meet by name and date; import DQ's
+    "10/14 Test" into the suite's meets; DQ's DEMO MEET stays its own; push when tested.
+  - `admin_assistant` opens only the main page (`SIGNIN_OPEN_TABS=0`,
+    `DQ_OPEN_BROWSER=0` for DQ once it supports it); `officials_signup` opens
+    `/officials` and `/coaches`. The coaches' DQ view tab is no longer opened at start.
 - **2026-10-16 (01:00): LSC instead of zone, linked desk tabs, today's Candy Meet.**
   - **LSC, not zone** (owner: only Pacific Swimming splits into zones; other LSCs don't).
     `constants.LSC_NAMES` holds all 59 LSCs (USA Swimming's LSC & Zones map PDF; ME and NE

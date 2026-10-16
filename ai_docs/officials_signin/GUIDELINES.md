@@ -44,7 +44,11 @@ newest first). Keep all three current before every pause.
   pinned at the bottom. Destructive actions sit behind a clear red warning.
 - Printouts fit one page where they can (session, team page); the meet summary flows
   sessions together to save paper.
-- The meet and sessions are shared by the officials and coaches pages (and their tabs).
+- **One meet and session for the whole suite** (owner, 2026-10-16): set up and chosen on
+  the Admin Assistant main page (`/`); every app shows the same, and changing the session
+  in any app changes it everywhere. Only DQ Transcribe's capture keeps its own target.
+- Every app has the standard top bar (☰, bold app name, meet, session drop-down, then its
+  workflows) via `Desk.initTopBar`; app links live in the ☰ "Admin Assistant ›" sub-menu.
 
 ## Privacy (owner's standing rules)
 
