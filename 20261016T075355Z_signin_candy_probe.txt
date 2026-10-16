@@ -1,0 +1,77 @@
+task: 20261016T075355Z_signin_candy_probe
+started: 2026-10-16T00:54:07-07:00
+finished: 2026-10-16T00:54:08-07:00
+work_repo_commit: 2d35519
+exit_code: 0
+--- output ---
+== dq_transcribe meets
+{'id': 1, 'name': '10/14 Test', 'start_date': '2026-10-14'}
+{'id': 2, 'name': 'DEMO MEET', 'start_date': '1999-10-31'}
+{'id': 3, 'name': 'All Treats No Tricks Candy Meet Block Party', 'start_date': '2026-10-16'}
+== meet files
+{'id': 3, 'meet_id': 3, 'loaded_at': '2026-10-16T01:37:15+00:00', 'file_format': 'meet_manager_database', 'meet_name': 'All Treats No Tricks Candy Meet Block Party', 'summary': '{"meet_name": "All Treats No Tricks Candy Meet Block Party", "events": 26, "entries": 538, "heats": 78, "sessions": 1, "warnings": []}'}
+{'id': 6, 'meet_id': 2, 'loaded_at': '2026-10-16T07:53:01+00:00', 'file_format': 'text_report', 'meet_name': 'DEMO MEET', 'summary': '{"meet_name": "DEMO MEET", "events": 25, "entries": 952, "heats": 119, "sessions": 0, "warnings": []}'}
+== program sessions
+{'file_id': 3, 'number': '1', 'name': 'Candy Meet', 'day': '2026-10-16', 'start_time': '16:45', 'event_numbers': '26 events'}
+== events per session (from events table)
+{'file_id': 3, 'session': '1', 'n': 26, 'first': 1, 'last': 26}
+{'file_id': 6, 'session': None, 'n': 25, 'first': 1, 'last': 25}
+== signin state
+{
+ "meet": {
+  "id": 2,
+  "name": "Test 2",
+  "start_date": "2026-10-15"
+ },
+ "sessions": [
+  {
+   "id": 2,
+   "name": "Thursday",
+   "date": "2026-10-15",
+   "start_time": "18:57",
+   "session_type": null,
+   "officials_meeting_time": null,
+   "estimated_minutes": null,
+   "signin_count": 2
+  },
+  {
+   "id": 3,
+   "name": "Thursday PM",
+   "date": "2026-10-15",
+   "start_time": "19:00",
+   "session_type": "PM",
+   "officials_meeting_time": "18:00",
+   "estimated_minutes": null,
+   "signin_count": 1
+  }
+ ],
+ "active_session_id": 3,
+ "signins": "1 sign-ins",
+ "demo": false
+}
+== signin meets
+{
+ "meets": [
+  {
+   "id": 2,
+   "name": "Test 2",
+   "start_date": "2026-10-15",
+   "archived": false,
+   "signin_count": 3,
+   "session_count": 2,
+   "official_count": 3
+  },
+  {
+   "id": 1,
+   "name": "Test Party",
+   "start_date": "2026-10-15",
+   "archived": false,
+   "signin_count": 1,
+   "session_count": 1,
+   "official_count": 1
+  }
+ ],
+ "active_meet_id": 2,
+ "demo": false,
+ "demo_ready": true
+}
