@@ -122,8 +122,9 @@ function buildCandidateSection(groupId) {
     const row = makeElement("div", "candidate");
     const summary = makeElement("div", "candidate-summary");
     summary.append(makeElement("strong", "", eventHeatLane(candidate)));
-    summary.append(makeElement("span", "", " " + (candidate.infractions.map((description, index) =>
-      description + codeHint(candidate.codes[index], candidate.code_options[index])).join("; ") || "infraction?")));
+    summary.append(buildInfractionSummary(candidate.infractions.map((description, index) => ({
+      description: description, code: candidate.codes[index], code_options: candidate.code_options[index] || [],
+    }))));
     if (candidate.event_label) {
       summary.append(makeElement("span", "muted", " · " + candidate.event_label));
     } else if (candidate.stroke) {
@@ -151,13 +152,6 @@ function buildCandidateSection(groupId) {
   return section;
 }
 
-/** " (3C)" when the code is known, " (1J or 3J?)" when it depends on the stroke. */
-function codeHint(code, options) {
-  if (code) {
-    return " (" + code + ")";
-  }
-  return options && options.length ? " (" + options.join(" or ") + "?)" : "";
-}
 
 /** Turn a detected call into a DQ (one tap). */
 async function createDqFromCandidate(candidate) {

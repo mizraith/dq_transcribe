@@ -29,8 +29,9 @@ from dq_transcribe import constants
 SUMMARY_TEMPLATE_PATH = Path(__file__).parent / constants.WEB_DIRECTORY_NAME / constants.EVENT_SUMMARY_FILENAME
 TITLE_FORMAT = "DQ summary, event {event}"
 PRINTED_FORMAT = "%m/%d/%Y %I:%M %p"
-CODE_SEPARATOR = ", "
-DESCRIPTION_SEPARATOR = "; "
+CODE_OPTION_SEPARATOR = " / "
+UNSURE_MARK = " ?"
+UNKNOWN_CODE = "?"
 RELAY_LEG_FORMAT = "{swimmer} (swimmer {leg})"
 PENDING_FORMAT = "{count} more DQ(s) in this event not notified yet: this summary may change."
 NONE_TEXT = "No notified DQs in this event."
@@ -45,19 +46,35 @@ def _escape(value: Any) -> str:
     return html.escape("" if value is None else str(value))
 
 
+def infraction_code_text(infraction: dict[str, Any]) -> str:
+    """The code to enter: "3J", or the codes it could be when not settled yet ("1J / 3J ?")."""
+    if infraction.get("code"):
+        return infraction["code"]
+    options = infraction.get("code_options") or []
+    return CODE_OPTION_SEPARATOR.join(options) + UNSURE_MARK if options else UNKNOWN_CODE
+
+
 def _row(dq: dict[str, Any], css_class: str = "") -> str:
-    """One table row: heat, lane, swimmer, club, codes, description, official, entered box."""
+    """One table row: heat, lane, swimmer, club, then each infraction on its own line
+    (code and description side by side), official and the entered box.
+
+    A DQ can carry several infractions, and an infraction whose code is not settled
+    lists every code it could be: the operator picks the one to enter.
+    """
     swimmer = dq.get("swimmer") or ""
     if dq.get("relay_leg"):
         swimmer = RELAY_LEG_FORMAT.format(swimmer=swimmer, leg=dq["relay_leg"])
-    codes = CODE_SEPARATOR.join(infraction["code"] for infraction in dq["infractions"] if infraction.get("code")) or "?"
-    description = DESCRIPTION_SEPARATOR.join(infraction["description"] for infraction in dq["infractions"])
+    infractions = dq["infractions"] or [{"description": "", "code": None}]
+    codes = "".join(
+        f'<div class="{"unsure" if not item.get("code") else ""}">{_escape(infraction_code_text(item))}</div>' for item in infractions
+    )
+    descriptions = "".join(f"<div>{_escape(item['description'])}</div>" for item in infractions)
     if dq["state"] == constants.DQ_STATE_PROTESTED:
-        description += f" ({PROTESTED_NOTE})"
+        descriptions += f'<div class="note">({_escape(PROTESTED_NOTE)})</div>'
     return (
         f'<tr class="{css_class}"><td class="num">{_escape(dq.get("heat"))}</td><td class="num">{_escape(dq.get("lane"))}</td>'
-        f"<td>{_escape(swimmer)}</td><td>{_escape(dq.get('club'))}</td><td class=\"code\">{_escape(codes)}</td>"
-        f"<td>{_escape(description)}</td><td>{_escape(dq.get('official'))}</td><td class=\"box\">☐</td></tr>"
+        f"<td>{_escape(swimmer)}</td><td>{_escape(dq.get('club'))}</td><td class=\"code\">{codes}</td>"
+        f"<td class=\"what\">{descriptions}</td><td>{_escape(dq.get('official'))}</td><td class=\"box\">\u2610</td></tr>"
     )
 
 

@@ -1290,13 +1290,96 @@ function buildClipRow(clip) {
   return row;
 }
 
+// --- Workflow status of a conversation (transcript filter) ---------------------------
+//
+// Each conversation card gets one status, so the transcript can be filtered to what
+// needs a person. In workflow order:
+//   Needs you    - a detected call was left for a person (no lane heard, not understood,
+//                  automatic DQs off), or a clip failed to transcribe;
+//   Transcribing - a clip is waiting for, or in, the first pass;
+//   Rough text   - first-pass text, the accurate pass is still to come (calls wait for it);
+//   DQ made      - every call in it is a DQ;
+//   No call      - final text with no call in it (chatter, acknowledgments).
+const TRANSCRIPT_STATUSES = {
+  needs_you: "\u26a0 Needs you",
+  transcribing: "Transcribing",
+  rough: "Rough text",
+  dq_made: "\u2713 DQ made",
+  no_call: "No call",
+};
+const TRANSCRIPT_FILTER_ALL = "all";
+const TRANSCRIPT_FILTER_STORAGE_KEY = "dq_transcribe.transcriptFilter";
+const PENDING_CLIP_STATUSES = ["queued", "processing"];
+let transcriptFilter = loadTranscriptFilter();
+
+/** The transcript filter remembered on this tablet (falls back to showing all). */
+function loadTranscriptFilter() {
+  try {
+    const saved = localStorage.getItem(TRANSCRIPT_FILTER_STORAGE_KEY);
+    return saved && (saved === TRANSCRIPT_FILTER_ALL || saved in TRANSCRIPT_STATUSES) ? saved : TRANSCRIPT_FILTER_ALL;
+  } catch (error) {
+    return TRANSCRIPT_FILTER_ALL;
+  }
+}
+
+/** Show only conversations with one workflow status (or all), and remember the choice. */
+function setTranscriptFilter(filter) {
+  transcriptFilter = filter;
+  try {
+    localStorage.setItem(TRANSCRIPT_FILTER_STORAGE_KEY, filter);
+  } catch (error) {
+    // Not remembered; it still applies now.
+  }
+  redrawLastClips();
+}
+
+/** A conversation's workflow status (a key of TRANSCRIPT_STATUSES). */
+function conversationStatus(groupClips) {
+  if (groupClips.some((clip) => clip.status === "failed")) {
+    return "needs_you";
+  }
+  if (groupClips.some((clip) => PENDING_CLIP_STATUSES.includes(clip.status))) {
+    return "transcribing";
+  }
+  const final = groupClips.every((clip) => !PENDING_CLIP_STATUSES.includes(clip.refine_status));
+  const openCalls = (candidatesByGroup.get(groupClips[0].group_id) || []).length;
+  if (openCalls) {
+    return final ? "needs_you" : "rough"; // automatic DQs wait for the accurate pass
+  }
+  const inDq = groupClips.some((clip) => clip.utterances.some((utterance) => (dqsByUtterance.get(utterance.id) || []).length));
+  if (inDq) {
+    return "dq_made";
+  }
+  return final ? "no_call" : "rough";
+}
+
+/** The filter buttons above the transcript: All, then each status with its count. */
+function buildTranscriptFilterBar(statuses) {
+  const bar = makeElement("div", "dq-filter transcript-filter");
+  const addButton = (filter, label, count) => {
+    const on = transcriptFilter === filter;
+    const button = makeButton("dq-filter-button transcript-" + filter + (on ? " on" : "") + (count ? "" : " empty"), "", () => setTranscriptFilter(filter));
+    button.append(document.createTextNode(label + " "), makeElement("span", "dq-filter-count", String(count)));
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+    bar.append(button);
+  };
+  addButton(TRANSCRIPT_FILTER_ALL, "All", statuses.length);
+  for (const [status, label] of Object.entries(TRANSCRIPT_STATUSES)) {
+    addButton(status, label, statuses.filter((item) => item === status).length);
+  }
+  return bar;
+}
+
 /** Build the card for one call/response group of clips. */
-function buildGroupCard(groupClips) {
-  const card = makeElement("section", "group");
+function buildGroupCard(groupClips, status) {
+  const card = makeElement("section", "group" + (status === "needs_you" ? " needs-you" : ""));
   const first = groupClips[0];
   const last = groupClips[groupClips.length - 1];
   const header = makeElement("div", "group-header", formatTime(clipStartDate(first)) + " – " + formatTime(clipEndDate(last)));
   header.append(makeElement("span", "", " · " + groupClips.length + " clip" + (groupClips.length === 1 ? "" : "s")));
+  if (status) {
+    header.append(makeElement("span", "badge workflow-" + status, TRANSCRIPT_STATUSES[status]));
+  }
   card.append(header);
   groupClips.forEach((clip) => card.append(buildClipRow(clip)));
   if (!showingTrash) {
@@ -1327,13 +1410,23 @@ function renderClips(clips) {
     groups.get(clip.group_id).push(clip);
   }
   const newestFirst = Array.from(groups.values()).sort((a, b) => b[0].group_id - a[0].group_id);
-  const cards = newestFirst.map((groupClips) => {
-    groupClips.sort((a, b) => clipStartDate(a) - clipStartDate(b) || a.id - b.id);
-    return buildGroupCard(groupClips);
+  newestFirst.forEach((groupClips) => groupClips.sort((a, b) => clipStartDate(a) - clipStartDate(b) || a.id - b.id));
+  const statuses = showingTrash ? newestFirst.map(() => null) : newestFirst.map(conversationStatus);
+  const cards = [];
+  newestFirst.forEach((groupClips, index) => {
+    if (showingTrash || transcriptFilter === TRANSCRIPT_FILTER_ALL || statuses[index] === transcriptFilter) {
+      cards.push(buildGroupCard(groupClips, statuses[index]));
+    }
   });
   if (cards.length === 0) {
-    const emptyText = showingTrash ? "The trash is empty." : "Nothing captured yet. Tap Start capturing.";
+    let emptyText = showingTrash ? "The trash is empty." : "Nothing captured yet. Tap Start capturing.";
+    if (!showingTrash && newestFirst.length) {
+      emptyText = "No conversations are \u201c" + TRANSCRIPT_STATUSES[transcriptFilter].replace(/^\W+/, "") + "\u201d. Tap All to see everything.";
+    }
     cards.push(makeElement("p", "note", emptyText));
+  }
+  if (!showingTrash && newestFirst.length) {
+    cards.unshift(buildTranscriptFilterBar(statuses));
   }
   if (showingTrash && trashedDqs.length) {
     const section = makeElement("section", "trashed-dqs");
@@ -1380,7 +1473,7 @@ async function refreshClips() {
     await refreshDqView(false);
     return;
   }
-  refreshDqCount();
+  await refreshDqCount(); // first: which lines are in a DQ decides each conversation's status
   await refreshTranscript();
 }
 

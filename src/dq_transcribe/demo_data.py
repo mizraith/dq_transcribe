@@ -13,7 +13,8 @@ change which meet is active) has:
 
 * a meet program of 25 events (all strokes, two relays) with made-up swimmers
   and clubs, so swimmer and club fill in and each event has a stroke;
-* 4 to 10 DQs per event, each with a short silent clip already "transcribed"
+* 6 to 12 DQs per event (in breaststroke and butterfly often two or three
+  infractions in one call, as on deck), each with a short silent clip already "transcribed"
   as the radio call (and usually an "Accepted."), so every DQ has "Heard in"
   audio and the transcript shows which lines are DQs;
 * the meet as it would look about two hours in. Events swim in number order,
@@ -55,7 +56,7 @@ RANDOM_SEED = 2026
 CLIP_SECONDS = 4.0
 MINUTES_BETWEEN_EVENTS = 3
 MINUTES_BEFORE_NOTIFYING = 4  # after its race, an event is closed and notified this much later
-DQS_PER_EVENT = (4, 10)
+DQS_PER_EVENT = (6, 12)
 LANES = 8
 # Event number -> stage of the meet when the training data is built (events close in number order).
 LAST_NOTIFIED_EVENT = 19
@@ -143,6 +144,34 @@ INFRACTIONS = {
         Infraction("changed order", "Relay: changed order", "6L", "Swim"),
     ),
 }
+# Infractions often called together on one swimmer (owner, 2026-10-16): in breaststroke a
+# scissors kick with a one hand touch; in butterfly a flutter kick, one hand touch and
+# non-simultaneous arms. About MULTI_CALL_SHARE of the DQs in these strokes are such calls.
+MULTI_CALLS = {
+    constants.STROKE_BREASTSTROKE: (
+        (Infraction("scissors kick", "Kick: scissors", "3C", "Swim"), Infraction("one hand touch", "One hand touch", "3J", "Finish")),
+        (Infraction("alternating kick", "Kick: alternating", "3A", "Swim"), Infraction("one hand touch", "One hand touch", "3J", "Finish")),
+        (Infraction("scissors kick", "Kick: scissors", "3C", "Swim"), Infraction("arms past the hipline", "Arms: past hipline", "3D", "Swim")),
+    ),
+    constants.STROKE_BUTTERFLY: (
+        (Infraction("flutter kick", "Kick: alternating", "1A", "Swim"), Infraction("one hand touch", "One hand touch", "1J", "Finish"),
+         Infraction("non simultaneous arms", "Arms: non-simultaneous", "1E", "Swim")),
+        (Infraction("flutter kick", "Kick: alternating", "1A", "Swim"), Infraction("one hand touch", "One hand touch", "1J", "Finish")),
+        (Infraction("breaststroke kick", "Kick: breast", "1B", "Swim"), Infraction("non simultaneous arms", "Arms: non-simultaneous", "1E", "Swim")),
+    ),
+}
+MULTI_CALL_SHARE = 0.4
+SPOKEN_JOINER = ", "
+SPOKEN_LAST_JOINER = " and "
+# Codes that depend on the stroke ("one hand touch" is 1J in butterfly, 3J in breaststroke). In the
+# events still being worked on (and in every UNSURE_EVENT_EVERY-th event, so a notified event has
+# some too), every UNSURE_CODE_EVERY-th DQ leaves the code open between the two, as when the
+# stroke is not known yet: the training meet shows the amber "[1J/3J?]" chips, and the event
+# summary lists both codes for the Meet Manager operator to pick from.
+SAME_LINE_OTHER_STROKE = {"1A": "3A", "3A": "1A", "1B": "3B", "1C": "3C", "3C": "1C", "1E": "3E", "3E": "1E",
+                          "1J": "3J", "3J": "1J", "1K": "3K", "3K": "1K", "1L": "3L", "3L": "1L"}
+UNSURE_CODE_EVERY = 3
+UNSURE_EVENT_EVERY = 7
 ACKNOWLEDGMENTS = ("Accepted.", "Got it, accepted.", "Copy, accepted.", "Accepted, thank you.")
 
 
@@ -216,6 +245,22 @@ def _detail(infraction: Infraction, randomizer: random.Random) -> tuple[str, str
     return "", ""
 
 
+def _spoken_list(phrases: list[str]) -> str:
+    """"scissors kick and one hand touch", "flutter kick, one hand touch and non simultaneous arms"."""
+    if len(phrases) == 1:
+        return phrases[0]
+    return SPOKEN_JOINER.join(phrases[:-1]) + SPOKEN_LAST_JOINER + phrases[-1]
+
+
+def _infraction_entry(infraction: Infraction, detail: str, unsure: bool) -> dict[str, object]:
+    """One infraction of a DQ; ``unsure`` leaves a stroke-dependent code open (amber chip)."""
+    other = SAME_LINE_OTHER_STROKE.get(infraction.code)
+    if unsure and other:
+        return {"description": infraction.description, "code": None, "code_options": sorted([infraction.code, other]),
+                "phases": [infraction.phase], "detail": detail}
+    return {"description": infraction.description, "code": infraction.code, "phases": [infraction.phase], "detail": detail}
+
+
 def create_demo_meet(database: Database, recordings_directory: Path, replace: bool = False, now: datetime | None = None) -> int:
     """Create (or rebuild) the training meet and its DQs.
 
@@ -265,10 +310,14 @@ def create_demo_meet(database: Database, recordings_directory: Path, replace: bo
         spots.sort()
         declined_index = randomizer.randrange(dq_count) if randomizer.random() < 0.35 else None
         for position, (heat, lane) in enumerate(spots):
-            infraction = randomizer.choice(INFRACTIONS[event.stroke])
+            if event.stroke in MULTI_CALLS and randomizer.random() < MULTI_CALL_SHARE:
+                called = list(randomizer.choice(MULTI_CALLS[event.stroke]))
+            else:
+                called = [randomizer.choice(INFRACTIONS[event.stroke])]
+            infraction = called[0]  # decides the relay swimmer / turn detail
             detail, detail_spoken = _detail(infraction, randomizer)
             called_at = race_time + timedelta(seconds=20 + 15 * position)
-            said = f"Event {number}, heat {heat}, lane {lane}, {infraction.spoken}{detail_spoken}."
+            said = f"Event {number}, heat {heat}, lane {lane}, {_spoken_list([item.spoken for item in called])}{detail_spoken}."
             clip_number += 1
             audio_path = folder / f"training_clip_{clip_number:03d}.wav"
             audio_path.write_bytes(audio)
@@ -304,8 +353,11 @@ def create_demo_meet(database: Database, recordings_directory: Path, replace: bo
                 "relay_leg": detail if infraction.detail_kind == "swimmer" else None,
                 "notes": DEMO_NOTE,
                 constants.REQUEST_KEY_CANDIDATE_KEY: f"{utterance_id}:{lane}",
-                "infractions": [{"description": infraction.description, "code": infraction.code,
-                                 "phases": [infraction.phase], "detail": detail if infraction.detail_kind == "turn" else ""}],
+                "infractions": [
+                    _infraction_entry(item, detail if index == 0 and item.detail_kind == "turn" else "",
+                                      unsure=(number > LAST_READY_EVENT or number % UNSURE_EVENT_EVERY == 0) and position % UNSURE_CODE_EVERY == 0)
+                    for index, item in enumerate(called)
+                ],
                 "evidence": [{"clip_id": clip_id, "utterance_id": utterance_id, "start_seconds": 0.0, "end_seconds": 2.5,
                               "role": constants.EVIDENCE_ROLE_CALL}],
             }

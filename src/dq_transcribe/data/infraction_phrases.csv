@@ -10,6 +10,8 @@ no touch,No touch at turn,,Butterfly=1M;Backstroke=2A;Breaststroke=3M;Freestyle=
 didn't touch,No touch at turn,,Butterfly=1M;Backstroke=2A;Breaststroke=3M;Freestyle=4A
 did not touch,No touch at turn,,Butterfly=1M;Backstroke=2A;Breaststroke=3M;Freestyle=4A
 alternating kick,Kick: alternating,,Butterfly=1A;Breaststroke=3A
+flutter kick,Kick: alternating,,Butterfly=1A;Breaststroke=3A
+flutter kicks,Kick: alternating,,Butterfly=1A;Breaststroke=3A
 scissors kick,Kick: scissors,,Butterfly=1C;Breaststroke=3C
 scissor kick,Kick: scissors,,Butterfly=1C;Breaststroke=3C
 butterfly kick,Kick: butterfly,Breaststroke,Breaststroke=3B
