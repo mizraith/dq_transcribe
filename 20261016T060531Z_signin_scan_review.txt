@@ -1,0 +1,272 @@
+task: 20261016T060531Z_signin_scan_review
+started: 2026-10-15T23:05:41-07:00
+finished: 2026-10-15T23:05:42-07:00
+work_repo_commit: 65baa55
+exit_code: 0
+--- output ---
+== code
+65baa55 2026-10-15 23:05:31 -0700
+== stored officials
+(1, 'Mark "Red" Byer', None, None, 2, '2026-10-16T05:54:43+00:00')
+(2, 'Mark Red Byer', 'PC', 'PPASA', 2, '2026-10-16T06:02:28+00:00')
+(3, 'Jimmy Fallon', None, None, None, '2026-10-16T06:03:31+00:00')
+== scans
+20261015T182034
+20261015T182113
+20261015T183512
+20261015T230131
+20261015T230154
+20261015T230243
+
+######## 20261015T230131  stills/frames: 0
+CAMERA environment [1920, 1080] focus: ['manual', 'single-shot', 'continuous']
+GUIDE moving sharp 10.3 motion 8.4 screen [56, 48, 168, 64] t 2871
+GUIDE edge sharp 3 motion 25 screen [160, 0, 312, 184] t 3798
+GUIDE blurry sharp 9 motion 2 screen [80, 8, 320, 184] t 4737
+GUIDE good sharp 42.4 motion 2.1 screen [80, 8, 320, 184] t 5662
+STILL rank 2 sharp 89 box [224, 0, 1472, 822] t 6553
+ORIENT {'kind': 'orientation', 'sideways_ratio': 10.97, 'rotation': 270, 'elapsed_ms': 6554}
+STILL rank 1 sharp 89.8 box [224, 0, 1472, 822] t 6553
+PASS 2 layout=4 rot=270 size=[1000, 1791] ocr=2002ms card=True t=8775
+    | Membership card Certifications
+    | Official @
+    | MARK "RED" BYER
+    | Member Id; [ID]
+    | LSC & Club: PC-PasSA
+    | In Good Standing Until:
+    | 09/21/2027
+    | Expiration Date: 12/31/9999
+    | Background Check: 09/30/2027
+    | Athlete Protection Training: 09/21/2027
+    | Concussion Protocol Training: 01/01/3000
+    | (CANRA) Mandatory Reporting: 01/01/3000
+PASS 1 layout=6 rot=270 size=[1000, 1791] ocr=2376ms card=True t=9041
+    | a - CX
+    | € Backie My prome
+    | Memb.
+    | : —_—lre Certifications
+    | ———
+    | Official @ in
+    | MARK "RED" BYER
+    | Member id: [ID]
+    | LSC& Club: PC-pAsA
+    | In Good Standing Until: 09/21/2027
+    | Expiration Date: 12/31/9999
+    | Background Check: 09/30/2027 }
+MERGED {'passes': 2, 'complete': True, 'missing': [], 'elapsed_ms': 9078}
+RESULT {'passes': 2, 'card_passes': 2, 'complete': True, 'missing': [], 'cancelled': False, 'elapsed_ms': 9080}
+
+######## 20261015T230154  stills/frames: 0
+CAMERA environment [1920, 1080] focus: ['manual', 'single-shot', 'continuous']
+GUIDE blurry sharp 8.9 motion 1.1 screen [64, 48, 160, 64] t 1939
+GUIDE blurry sharp 9.6 motion 1 screen [64, 48, 160, 64] t 2850
+GUIDE good sharp 11.7 motion 1.1 screen [64, 48, 160, 64] t 3775
+STILL rank 1 sharp 20.8 box [160, 138, 832, 364] t 4749
+ORIENT {'kind': 'orientation', 'sideways_ratio': 0.81, 'rotation': 0, 'elapsed_ms': 4751}
+STILL rank 2 sharp 16.9 box [160, 138, 832, 364] t 4749
+PASS 1 layout=6 rot=0 size=[1000, 438] ocr=857ms card=False t=5651
+    | enti
+    | lr OPS. oe velit * N
+    | CT Pp A
+    | - i» + a W 7 pad - }
+    | a J
+    | -, op. . yd
+PASS 2 layout=6 rot=0 size=[1000, 438] ocr=842ms card=False t=5663
+    | ot A
+    | Te rd A \
+    | - Is PR
+    | + AA I ig ) —
+    | Tene oC ny and
+    | er ———
+PASS 3 layout=6 rot=0 size=[1000, 438] ocr=1005ms card=False t=6715
+    | Ce C- oo i
+    | Ld *. “. er
+    | Pd a cee cL
+    | y ~~. " i. hs h ~
+    | H Fo Lo 0 In Cee
+    | J LD oo 3 on ~ = .
+    | SER oo
+    | \ . te" Rand
+GUIDE good sharp 12.6 motion 2.2 screen [152, 32, 312, 216] t 7795
+STILL rank 1 sharp 14.9 box [512, 74, 1312, 972] t 8573
+STILL rank 2 sharp 13.9 box [512, 74, 1312, 972] t 8574
+ORIENT {'kind': 'orientation', 'sideways_ratio': 4.93, 'rotation': 270, 'elapsed_ms': 8579}
+PASS 5 layout=4 rot=270 size=[1000, 1350] ocr=1246ms card=False t=9977
+    | Lic 4 2°
+    | ve Gy
+    | Your 2s ka,
+    | mor ry a
+    | CER Jey WHYS gry
+    | HULL UD Ae irs
+    | L220 JF SER
+    | © wing
+PASS 4 layout=6 rot=270 size=[1000, 1350] ocr=2431ms card=False t=11084
+    | bd] co SE RA Situ
+    | EL ony
+    | ny tm 7 Bann,
+    | ye » Tn
+    | Le LTT ™ y
+    | OT
+    | ERENCE ee _
+    | ous 7g roy
+    | L204 TX Holder Marge ——
+    | Re ep NYY ay
+    | | PHONE sas any
+    | Ed Li, worn
+PASS 7 layout=4 rot=90 size=[1000, 1350] ocr=998ms card=False t=12253
+    | tun §
+    | WRK "RD gyi
+    | Wot A SE ott
+    | WES Oum: Wt amy,
+    | oy 23, 2nck
+    | RZ 32, tgs,
+    | Wy ey eh
+    | Wy Lk enh
+PASS 6 layout=6 rot=90 size=[1000, 1350] ocr=3000ms card=False t=14175
+    | Sontuiip wry Cae aban
+    | ES ———— TT mee mm em ce ° -
+    | Lene @ a!
+    | DOWARK REE pv :
+    | Wah tive ng: SE DT pp ’
+    | SAECO myn
+    | Sonat: Werinting Ame: "2d, arch
+    | Soanmmionn Gane. 225), thsi.
+    | Coe Tee Ss
+    | rns Qt. LEW
+    | Ramana oo EY SAY ~ :
+    | $b sa
+PASS 8 layout=6 rot=90 size=[1000, 1350] ocr=2662ms card=False t=16937
+    | tts) We SRY
+    | oo Pray gHmnS
+    | {iia oo
+    | $ © wun
+    | ’ £119 CHE Baw
+    | NHI ne 19 Mme rInaR
+    | ‘ acy GER
+    | FRCNCY ITs gional teed? A
+    | Jr ad
+    | ee TTT JUTE
+    | . woo oe Fir Samervmprodh
+    | Spo od oi qh amass pois
+GUIDE good sharp 12.5 motion 1.7 screen [64, 48, 160, 64] t 18048
+ORIENT {'kind': 'orientation', 'sideways_ratio': 0.97, 'rotation': 0, 'elapsed_ms': 18471}
+STILL rank 2 sharp 12.8 box [160, 138, 832, 364] t 18470
+STILL rank 1 sharp 13.4 box [160, 138, 832, 364] t 18469
+PASS 9 layout=6 rot=0 size=[1000, 438] ocr=1014ms card=False t=19515
+    | cor inde eg
+    | — sl Bal
+    | . 4 pe FN =
+    | a’ a PJ
+    | . Rte To H 4 Po J
+    | . - .. ye -
+    | a ———
+PASS 10 layout=6 rot=0 size=[1000, 438] ocr=1072ms card=False t=19602
+    | AAT ah mma
+    | ST - P's M
+    | . pe . A ¢ 4
+    | . on NN
+    | Va nr & ~~
+    | Le 3 or
+    | . «7 £3
+    | - hs rr
+    | —~ —- p——
+    | a marr
+PASS 11 layout=6 rot=0 size=[1000, 438] ocr=833ms card=False t=20484
+    | SN roy en
+    | Bai ~ a
+    | EAE —- 3 -
+    | —] a ~ t., “a
+    | E a 1 ha Seen .
+    | -~. . . -
+    | —
+GUIDE edge sharp 17.6 motion 8.5 screen [272, 64, 168, 200] t 21550
+GUIDE moving sharp 14.6 motion 61.2 screen [184, 32, 176, 208] t 22238
+GUIDE moving sharp 85 motion 8.4 screen [136, 24, 312, 192] t 22960
+GUIDE good sharp 115.8 motion 3.9 screen [136, 24, 288, 200] t 23688
+STILL rank 1 sharp 108.1 box [448, 42, 1408, 908] t 24303
+ORIENT {'kind': 'orientation', 'sideways_ratio': 1.56, 'rotation': 270, 'elapsed_ms': 24305}
+STILL rank 2 sharp 107.5 box [448, 42, 1408, 908] t 24303
+PASS 13 layout=4 rot=270 size=[1000, 1551] ocr=2524ms card=False t=26989
+    | Bugunymg YS$njo 1npuoy 0 2p0) pup ‘suonopsa, ‘saps
+    | 41 Aq 9piq0 0} 33.60. Aqasay; Buptunmg VSN Jo nquow o Buwosaq Ag
+    | HRmaisuodsay 0A Juipueye;
+    | 000¢/10/10
+    | Bupuoday Koyepueyy (v
+    | 000¢/10/10
+    | L20z/1z/50
+    | 120z/0¢/60
+    | pun
+    | YNY2)
+    | 3ujujesy 102030194 uoissniuoy
+    | Bupuyesy UoNa30.g My
+PASS 12 layout=6 rot=270 size=[1000, 1551] ocr=3055ms card=False t=27439
+    | Suruniymg YSN 40 1npuos
+    | Sy A k 10 9p03 pug "SuonDnBay i
+    | 4149 9piqu 0) daubp, Aqosay, Bupwunmg 5010 saquisw o Suruorog A
+    | Hiqrsuodsay ano), Buipueyssy
+    | | pun
+    | 000¢€/10/10 Bupoday fioyepueyy (vinys)
+    | 000€/10/10 Jujujesy 10303044 uoissnuoy
+    | 220Z/1z/60 Bupuesy UoR330.4 aay
+    | L20Z/0g/60 HY PUnciy>eg
+    | 6666/15/71 eq uonendiy
+    | 2202/12/60 nun 3upueyg Pooy uy
+    | VSvd-dd :qn)y 5 by
+PASS 14 layout=6 rot=90 size=[1000, 1551] ocr=2137ms card=True t=29684
+    | €= Bckto My Profile
+    | Certifications
+    | Membership card
+    | EE ——————————
+    | in sod sanding SENN
+    | Joa]
+    | Official @ 4
+    | MARK "RED" BYER
+    | Member Id: [ID]
+    | LSC& Club: PC. PASA
+    | In Good Standing Until; 09/21/2027
+    | Expiration Date; 12/31/9999
+PASS 15 layout=4 rot=90 size=[1000, 1551] ocr=2437ms card=True t=30072
+    | hip card Certifications
+    | Membership ¢
+    | —————————— EEE
+    | Dn good standing EE
+    | Official &@
+    | MARK "RED" BYER
+    | Member Id: [ID]
+    | LSC& Club: PC-PpAsA
+    | in Good Standing until; 09/21/2027
+    | 12/31/9999
+    | Expiration Date;
+    | Background Check: 09/30/2027
+MERGED {'passes': 2, 'complete': True, 'missing': [], 'elapsed_ms': 30110}
+RESULT {'passes': 15, 'card_passes': 2, 'complete': True, 'missing': [], 'cancelled': False, 'elapsed_ms': 30111}
+
+######## 20261015T230243  stills/frames: 0
+CAMERA environment [1920, 1080] focus: ['manual', 'single-shot', 'continuous']
+GUIDE edge sharp 0.2 motion 119.8 screen [0, 0, 208, 264] t 1971
+GUIDE edge sharp 5.1 motion 13.2 screen [208, 0, 224, 264] t 3037
+GUIDE edge sharp 1 motion 17.6 screen [208, 0, 200, 264] t 4005
+GUIDE edge sharp 2.8 motion 19.3 screen [208, 0, 200, 224] t 4944
+GUIDE edge sharp 1.6 motion 6.9 screen [224, 72, 224, 192] t 5854
+GUIDE edge sharp 1.8 motion 10.8 screen [216, 56, 232, 208] t 6754
+GUIDE edge sharp 6.2 motion 12.5 screen [192, 40, 232, 224] t 7680
+GUIDE edge sharp 44.8 motion 7.1 screen [192, 88, 224, 176] t 8635
+GUIDE edge sharp 9.9 motion 19 screen [184, 112, 216, 152] t 9543
+GUIDE edge sharp 18.6 motion 9.9 screen [192, 104, 224, 160] t 10480
+GUIDE edge sharp 7.6 motion 21 screen [216, 120, 224, 144] t 11395
+GUIDE edge sharp 22.6 motion 15.3 screen [176, 80, 224, 184] t 12329
+GUIDE edge sharp 48.4 motion 4.8 screen [168, 80, 232, 184] t 13252
+GUIDE edge sharp 50.3 motion 20.8 screen [168, 0, 240, 264] t 14177
+GUIDE edge sharp 36.8 motion 8.7 screen [168, 0, 248, 264] t 15105
+GUIDE edge sharp 44.5 motion 9 screen [168, 0, 248, 264] t 16023
+GUIDE edge sharp 40.4 motion 17.1 screen [176, 8, 280, 256] t 16975
+GUIDE edge sharp 63.5 motion 3.8 screen [176, 0, 288, 264] t 17929
+GUIDE edge sharp 65.5 motion 2.1 screen [176, 0, 288, 264] t 18846
+GUIDE edge sharp 53.9 motion 35 screen [176, 0, 288, 264] t 19784
+GUIDE edge sharp 16 motion 14.1 screen [176, 0, 280, 264] t 20714
+GUIDE edge sharp 4.4 motion 5.4 screen [200, 0, 280, 264] t 21650
+GUIDE edge sharp 3.2 motion 6.1 screen [168, 0, 296, 264] t 22585
+GUIDE edge sharp 2.9 motion 17.4 screen [0, 16, 336, 248] t 23548
+GUIDE edge sharp 22 motion 9.9 screen [8, 40, 320, 224] t 24468
+GUIDE edge sharp 27.1 motion 2.3 screen [0, 40, 328, 224] t 25407
+RESULT {'passes': 0, 'card_passes': 0, 'complete': False, 'missing': None, 'cancelled': False, 'elapsed_ms': 26237}
