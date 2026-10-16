@@ -65,41 +65,36 @@ relay described below.
 - It should be **its own app** that outputs a **final officials listing** for
   dq_transcribe to ingest.
 
-## Proposed design (confirm with the owner, then build)
+## Design (confirmed with the owner 2026-10-15)
 
-- **Same repo, separate app.** Put it in `src/officials_signin/` with its own
-  server, port, database, web page, constants and start script. It shares no code
-  or database with dq_transcribe, only the roster file format below. Reasons: the
-  device relay already works in this repo; one clone on the tablet. If the owner
-  prefers a separate GitHub repo, he will say so.
-- **Port 8010** (dq_transcribe uses 8000; its whisper servers use 8178/8179).
-  Data in `~/.officials_signin/` on the tablet.
-- **Start script** `scripts/start_signin.sh`, mirroring `start_dq.sh` (start, stop,
-  status; opens Chrome at `http://localhost:8010`). Do **not** start, stop or
-  restart dq_transcribe or the device agent from it.
-- **Fast sign-in (the common case should be about two taps):**
-  1. Before the session the admin **imports the host's list**. A meet host can
-     pull a *Non-Athlete Membership Status Report* from SWIMS (USA Swimming's
-     database). Ask the owner for a sample (names may be redacted) and build an
-     importer for its real format. Officials on it who are current are
-     **validated automatically** (active membership, background check, athlete
-     protection training).
-  2. An official types a few letters of their name and taps their row. Returning
-     officials (from earlier sessions and meets) have club, zone and years
-     certified pre-filled. They tap the role(s) they are working this session,
-     plus any later sessions today (one tap each).
-  3. Only someone missing from the list, or with something expired, needs the admin.
-- **Camera check (second path):** use the tablet camera in Chrome
-  (`getUserMedia` works on `localhost`) to read the phone screen or card. Two
-  on-device options, no network:
-  - Chrome's `BarcodeDetector` (supported on Android Chrome), *if* the USA
-    Swimming card shows a barcode or QR code. **Unknown:** ask the owner for a
-    screenshot of his own card in the USA Swimming app.
-  - Text recognition (OCR) with a bundled library such as Tesseract.js (install
-    from npm; serve the files locally, no CDN at the meet) to read the name and
-    member ID, then match against the host's list.
-  Start with whichever the sample card supports. The manual "looks good" tap
-  always stays available.
+- **Same repo, separate app** in `src/officials_signin/` with its own server,
+  port, database, web page, constants and start script. It shares no code or
+  database with dq_transcribe, only the roster file format below.
+- **Port 8010**; data in `~/.officials_signin/`.
+- **Start script** `scripts/start_signin.sh` (start, stop, status; opens the
+  browser). It never starts, stops or restarts dq_transcribe or the device agent.
+  Works on Termux, ChromeOS/Linux and macOS.
+- **Cross-platform, simple packaging:** Android tablet is the preferred (cheaper)
+  target; ChromeOS and Mac are welcome; Windows is low priority. Needs only
+  Python 3 (stdlib) and Chrome.
+- **No host list.** Officials sign up at the meet; nobody pulls a SWIMS report
+  ahead of time. (`host_list` stays reserved in the roster format.)
+- **Camera first: "Capture USA Registration".** The tablet camera reads the
+  Membership card tab in the official's USA Swimming app. The card has **no
+  barcode/QR**, so it is read by **OCR in Chrome (Tesseract.js, bundled under
+  `web/vendor/tesseract/`, served from localhost, offline)**. The scanner keeps
+  reading frames until every field is read (no shutter tap), cycles page layouts,
+  cleans up frames (grayscale, contrast, sharpen) and flips mirrored frames.
+  The server parses and merges the OCR text (`card_reader.py`, unit tested).
+  Frames are never stored.
+- **Validation:** membership good-standing date, background check and athlete
+  protection training must be current on the session date → validated
+  (`camera`). Otherwise the sign-in goes to the admin, who taps **Looks good**
+  (`visual`) or **Remove**. A camera check is reused for later sessions at the same meet.
+- **Returning officials:** type a few letters, tap the row: club, zone, years
+  certified and last roles are pre-filled. **Zone** comes from the LSC code;
+  **years certified** is typed once.
+- **Pre-sign-up:** one tap per later session that day on the sign-in sheet.
 - **Note:** check-in confirms membership, background check and training. It does
   **not** prove position certifications (stroke & turn, starter, referee). The
   Referee assigns positions.
@@ -195,17 +190,13 @@ prints it. A round trip takes about 15–40 s.
 - Your cloud workspace reaches GitHub and the package registries (pip, npm), not
   arbitrary websites.
 
-## First steps
+## Status and next steps
 
-1. Confirm the proposed design with the owner in a few short questions, multiple
-   choice where you can. Ask for: a sample SWIMS Non-Athlete Membership Status
-   Report (redacted is fine), a screenshot of a USA Swimming app credential, and
-   whether same-repo is OK.
-2. Scaffold `src/officials_signin/` (constants, database, server, a page with the
-   sign-in search-and-tap screen), the start script and tests. Commit.
-3. Build in this order: host-list import → fast sign-in with returning officials
-   → admin exceptions queue → per-session and later-session sign-up → roster
-   export (`/roster.json` + download) → camera check → team builder (rules from
-   the owner).
-4. Keep `ai_docs/officials_signin_memory.md` (decisions, facts, open items) and
-   `ai_docs/officials_signin_handoff.md` (this file) current before each pause.
+Done (2026-10-15): app scaffold, camera card reading, fast sign-in with returning
+officials, admin exceptions (Looks good / Remove), per-session and later-session
+sign-up, `/roster.json` + download, tests (`tests/officials_signin`).
+
+Next:
+1. Test on the tablet (camera, lighting, speed). Ask before starting anything there.
+2. Team builder: ask the owner for the rules; refuse to leave a trainee unpaired.
+3. Keep `ai_docs/officials_signin_memory.md` and this file current before each pause.

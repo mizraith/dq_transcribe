@@ -1,0 +1,63 @@
+# Officials roster file (format `officials-roster`, version 1)
+
+The contract between **officials_signin** (writes it) and **dq_transcribe**
+(reads it with its "Import officials" button). This file is owned by the
+officials_signin side; any change bumps `version` and is recorded below.
+
+## Where to get it
+
+- Live: `GET http://localhost:8010/roster.json`: the **active session**.
+  `?session_id=<id>` picks another session.
+- Download: `GET http://localhost:8010/roster-download.json` (same content, saved as
+  `officials_roster_<session date>_<session-name>.json`).
+
+## Shape
+
+```json
+{
+  "format": "officials-roster",
+  "version": 1,
+  "generated_at": "2026-10-16T07:45:00-07:00",
+  "meet": {"name": "Candy Meet", "start_date": "2026-10-16"},
+  "session": {"name": "Friday PM", "date": "2026-10-16", "start_time": "13:00"},
+  "officials": [
+    {
+      "name": "Pat Example",
+      "role": "Stroke & Turn Judge",
+      "club": "PASA",
+      "zone": "Western",
+      "years_certified": 6,
+      "trainee": false,
+      "validated": true,
+      "validation_method": "camera",
+      "team": null,
+      "member_id": null
+    }
+  ]
+}
+```
+
+## Field rules
+
+| Field | Rule |
+|---|---|
+| `generated_at` | Local time with UTC offset, seconds precision. |
+| `session.start_time` | `HH:MM`, or `null` if not set. |
+| `officials` | Sorted by name. An official working two roles appears **twice**, once per role. |
+| `name` | As read from the USA Swimming card (title case, nickname in quotes, e.g. `Mark "Red" Byer`) or as typed. |
+| `role` | Exactly one of dq_transcribe's `MEET_ROSTER_ROLES`: "Stroke & Turn Judge", "Chief Judge", "Deck Referee", "Meet Referee", "Starter", "Relay Take-off Judge", "Admin Official". (officials_signin keeps an identical `ROSTER_ROLES`; a test fails if they drift.) |
+| `club` | Club code from the card (e.g. `PASA`), or `null`. |
+| `zone` | `Eastern`, `Southern`, `Central` or `Western`, worked out from the card's LSC code, or `null`. |
+| `years_certified` | Whole number or `null` (typed once, then stored as a starting year so it ages automatically). |
+| `trainee` | `true` for a trainee, who must be paired with a certified official. |
+| `validated` | `true` once membership, background check and athlete protection training are confirmed current for the session date. |
+| `validation_method` | `camera` (card read by the tablet camera, or a camera check earlier at the same meet), `visual` (admin looked at the card), `host_list` (reserved; not produced yet) or `none`. A failed camera check is `validated: false` with method `camera`. |
+| `team` | Team name, or `null` until the team builder exists. |
+| `member_id` | USA Swimming member ID or `null`. **Personal data:** never log it, never put it in commit messages or device reports. |
+
+Validation confirms membership and safety requirements only, **not** position
+certifications; the Referee assigns positions.
+
+## Change log
+
+- **Version 1** (2026-10-15): first version, as proposed in the handoff.
