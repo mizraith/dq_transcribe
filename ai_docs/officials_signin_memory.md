@@ -5,6 +5,23 @@ within each section.
 
 ## Decisions
 
+- **2026-10-16 (00:15): who goes on teams, demo per session, Back to Teams.**
+  - Only **checked** stroke & turn officials (card or "Looks good") are put on teams;
+    unchecked ones are listed on Teams as "not checked yet" and appear as "not placed yet"
+    once checked. The Teams button first lists anyone in the session not checked yet
+    ("Go back and check them" / "Continue to Teams").
+  - **Corner officials** (`CORNER_ROLES`: Chief Judge, Deck Referee, Meet Referee,
+    Starter, Admin Official) are never placed or counted for teams, even if they also
+    ticked Stroke & Turn Judge.
+  - **Demo setup**: Sessions first (- / + box), one column per session with stroke & turn
+    judges and trainees, a "Signed in" total per session, and "Corner officials and the
+    admin in every session". Each session gets exactly those numbers (a random selection
+    of one shared crew). The page starts from the current demo's size. (The owner's
+    "18 instead of 11" was 11 judges + 2 trainees + 5 corner officials; the old page did
+    not say so.)
+  - Team page: "Back to Teams" (opens the sign-in page on Teams via `/?open=teams`), and
+    the rotation line starts with **Fixed ends** / **Rotating ends** (3+ teams). The Team
+    page link on the Teams screen opens in the same tab, so it is easy to go back and forth.
 - **2026-10-16 (after midnight): history rewrite, archive meets, drag and drop.**
   - **main was rewritten and force-pushed** (owner's request) to remove his member ID from
     old commits (`git filter-repo --replace-text`, only `main`; files unchanged, same 191
@@ -77,8 +94,8 @@ within each section.
     picked per browser by the cookie `officials_signin_demo=1`; the real meet and the
     roster that dq_transcribe fetches (no cookie) are never touched. The user picks judges,
     trainees, sessions and head officials; names and clubs (`DMOA`...) are made up.
-    Everyone works the first session, about 85% each later one, one judge is left "needs
-    admin". A purple banner shows demo mode, with New demo and Back to the real meet.
+    Each session gets exactly the numbers asked for; one judge in the first session is left
+    "needs admin". A purple banner shows demo mode, with New demo and Back to the real meet.
   - Live guide, from the owner's tablet scans: sharpness threshold 30 (sharp 42-116,
     blurry 2-27 there), screen must cover 15% of the frame, and an upright phone that runs
     off the top or bottom gets "Turn the phone sideways so the whole screen fits".

@@ -3,7 +3,12 @@
 Lets anyone try the whole workflow (the sign-in list and admin exceptions, Teams,
 printouts, the roster) without touching the real meet. The demo lives in its own
 SQLite file (``constants.DEMO_DATABASE_PATH``) and is rebuilt from scratch every
-time a demo is started.
+time a demo is started or reset.
+
+The size is set per session (``DemoSize``): how many stroke & turn judges and
+trainees sign in to each session, plus, when ticked, the corner officials and the
+admin in every session. People are shared between sessions, as at a real meet: a
+session with fewer judges than another gets a random selection of the same crew.
 
 Names are invented from short first/last-name lists; clubs use made-up codes
 (``DMOA``...) so nothing looks like a real person or club.
@@ -11,20 +16,89 @@ Names are invented from short first/last-name lists; clubs use made-up codes
 
 from __future__ import annotations
 
+import json
 import random
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 from officials_signin import constants
 from officials_signin.database import Database, Validation, not_checked_validation
 
 _SQLITE_SIDE_FILE_SUFFIXES = ("-wal", "-shm")
-_SIZE_SETTINGS = (
-    constants.SETTING_DEMO_JUDGES,
-    constants.SETTING_DEMO_TRAINEES,
-    constants.SETTING_DEMO_SESSIONS,
-    constants.SETTING_DEMO_HEAD_OFFICIALS,
-)
+
+
+@dataclass(frozen=True)
+class SessionSize:
+    """How many stroke & turn officials sign in to one demo session.
+
+    Attributes:
+        judges: Certified stroke & turn judges.
+        trainees: Stroke & turn trainees (they shadow a mentor).
+    """
+
+    judges: int
+    trainees: int
+
+
+@dataclass(frozen=True)
+class DemoSize:
+    """The size of a demo meet.
+
+    Attributes:
+        sessions: One ``SessionSize`` per session, in order (1 to
+            ``constants.DEMO_MAX_SESSIONS``).
+        corner_officials: Also sign in the corner officials and the admin
+            (``constants.DEMO_SPECIAL_ROLES``) to every session.
+    """
+
+    sessions: tuple[SessionSize, ...]
+    corner_officials: bool
+
+    def to_payload(self) -> dict[str, Any]:
+        """The size in the shape the demo page sends (also stored for "Reset demo")."""
+        return {
+            constants.KEY_SESSIONS: [
+                {constants.KEY_JUDGES_COUNT: size.judges, constants.KEY_TRAINEES_COUNT: size.trainees}
+                for size in self.sessions
+            ],
+            constants.KEY_CORNER_OFFICIALS: self.corner_officials,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> DemoSize:
+        """Read and check a size sent by the demo page (or stored).
+
+        Raises:
+            ValueError: With a message for the admin when a number is out of range.
+        """
+        rows = payload.get(constants.KEY_SESSIONS)
+        if not isinstance(rows, list) or not 1 <= len(rows) <= constants.DEMO_MAX_SESSIONS:
+            raise ValueError(f"Sessions must be 1 to {constants.DEMO_MAX_SESSIONS}")
+        sizes = []
+        for number, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                raise ValueError(f"Session {number}: expected numbers")
+            judges = row.get(constants.KEY_JUDGES_COUNT)
+            trainees = row.get(constants.KEY_TRAINEES_COUNT)
+            if isinstance(judges, bool) or not isinstance(judges, int) or not 0 <= judges <= constants.DEMO_MAX_JUDGES:
+                raise ValueError(f"Session {number}: judges must be 0 to {constants.DEMO_MAX_JUDGES}")
+            if isinstance(trainees, bool) or not isinstance(trainees, int) or not 0 <= trainees <= constants.DEMO_MAX_TRAINEES:
+                raise ValueError(f"Session {number}: trainees must be 0 to {constants.DEMO_MAX_TRAINEES}")
+            sizes.append(SessionSize(judges, trainees))
+        return cls(tuple(sizes), bool(payload.get(constants.KEY_CORNER_OFFICIALS, True)))
+
+
+def default_demo_size() -> DemoSize:
+    """The demo size used when none has been chosen yet."""
+    return DemoSize(
+        tuple(
+            SessionSize(constants.DEMO_DEFAULT_JUDGES, constants.DEMO_DEFAULT_TRAINEES)
+            for _ in range(constants.DEMO_DEFAULT_SESSIONS)
+        ),
+        corner_officials=True,
+    )
 
 
 def fake_names(count: int, generator: random.Random) -> list[str]:
@@ -48,29 +122,12 @@ def fake_names(count: int, generator: random.Random) -> list[str]:
     return names
 
 
-def assign_roles(judge_count: int, trainee_count: int, head_officials: bool) -> list[tuple[str, bool]]:
-    """Roles for a demo crew.
-
-    Args:
-        judge_count: Certified stroke & turn judges (these make the teams).
-        trainee_count: Stroke & turn trainees (shadow a mentor).
-        head_officials: Also add a meet referee, deck referee, starter, chief judge and admin official.
-
-    Returns:
-        ``(role, trainee)`` per official, in order.
-    """
-    roles = [(role, False) for role in constants.DEMO_SPECIAL_ROLES] if head_officials else []
-    roles += [(constants.TEAM_POOL_ROLE, False)] * judge_count
-    roles += [(constants.TEAM_POOL_ROLE, True)] * trainee_count
-    return roles
-
-
 def demo_years(generator: random.Random, head_official: bool) -> int:
     """Years certified for a made-up official (see ``constants.DEMO_YEARS_WEIGHTS``).
 
     Args:
         generator: Random source.
-        head_official: Referee, starter, chief judge or admin: at least
+        head_official: A corner official or the admin: at least
             ``constants.DEMO_HEAD_OFFICIAL_MIN_YEARS``.
 
     Returns:
@@ -88,23 +145,24 @@ def session_name(session_date: date, session_type: str) -> str:
     return f"{session_date.strftime('%A')} {session_type}"
 
 
-def build_demo(
-    database_path: Path,
-    judge_count: int,
-    trainee_count: int,
-    session_count: int,
-    head_officials: bool,
-    first_day: date,
-    seed: int | None = None,
-) -> Database:
+def planned_session_names(first_day: date) -> list[str]:
+    """Names of the sessions a demo starting on ``first_day`` can have, in order."""
+    return [
+        session_name(first_day + timedelta(days=day_offset), session_type)
+        for day_offset, session_type, _ in constants.DEMO_SESSION_PLAN[: constants.DEMO_MAX_SESSIONS]
+    ]
+
+
+def build_demo(database_path: Path, size: DemoSize, first_day: date, seed: int | None = None) -> Database:
     """Create a fresh demo database with a meet, sessions and signed-in officials.
+
+    Every session gets exactly the stroke & turn judges and trainees asked for (a
+    random selection of one shared crew), plus the corner officials when ticked. One
+    judge in the first session is left "card not checked" for the admin.
 
     Args:
         database_path: Demo SQLite file (deleted and recreated).
-        judge_count: Certified stroke & turn judges.
-        trainee_count: Stroke & turn trainees.
-        session_count: Sessions (1 to ``constants.DEMO_MAX_SESSIONS``).
-        head_officials: Add referees, starter, chief judge and admin official.
+        size: Sessions and how many sign in to each.
         first_day: Date of the first session.
         seed: Random seed (None for a different demo each time).
 
@@ -118,7 +176,7 @@ def build_demo(
     generator = random.Random(seed)
     meet_id = database.create_meet(constants.DEMO_MEET_NAME, first_day.isoformat())
     session_ids = []
-    for day_offset, session_type, start_time in constants.DEMO_SESSION_PLAN[:session_count]:
+    for day_offset, session_type, start_time in constants.DEMO_SESSION_PLAN[: len(size.sessions)]:
         session_date = first_day + timedelta(days=day_offset)
         start_minutes = int(start_time[:2]) * constants.MINUTES_PER_HOUR + int(start_time[3:])
         meeting_minutes = start_minutes - constants.OFFICIALS_MEETING_MINUTES_BEFORE_START
@@ -127,49 +185,58 @@ def build_demo(
             session_name(session_date, session_type), session_date.isoformat(), start_time, session_type, meeting,
             constants.DEFAULT_SESSION_MINUTES,
         ))
+
+    # The crew: enough judges and trainees for the busiest session, plus the corner officials.
+    judge_pool = max(session.judges for session in size.sessions)
+    trainee_pool = max(session.trainees for session in size.sessions)
+    corner_roles = list(constants.DEMO_SPECIAL_ROLES) if size.corner_officials else []
+    names = iter(fake_names(len(corner_roles) + judge_pool + trainee_pool, generator))
     lsc = generator.choice(constants.DEMO_LSC_CODES)
-    needs_admin_left = constants.DEMO_NEEDS_ADMIN_COUNT
-    roles = assign_roles(judge_count, trainee_count, head_officials)
-    for name, (role, trainee) in zip(fake_names(len(roles), generator), roles):
+
+    def add_official(trainee: bool, head_official: bool) -> int:
+        """Store one made-up official; returns their ID."""
         if generator.random() < constants.DEMO_UNKNOWN_YEARS_SHARE:
             years = None
         else:
-            years = 0 if trainee else demo_years(generator, head_official=role != constants.TEAM_POOL_ROLE)
-        official_id = database.save_official(None, name, years, None, None, first_day)
+            years = 0 if trainee else demo_years(generator, head_official)
+        official_id = database.save_official(None, next(names), years, None, None, first_day)
         _set_club(database, official_id, lsc, generator.choice(constants.DEMO_CLUB_CODES), meet_id)
-        # Everyone works the first session (so its count matches what was asked for);
-        # later sessions are each skipped now and then.
-        attending = session_ids[:1] + [
-            session_id for session_id in session_ids[1:] if generator.random() < constants.DEMO_ATTENDANCE_SHARE
-        ]
-        validations = {}
-        for session_id in attending:
-            if needs_admin_left > 0 and role == constants.TEAM_POOL_ROLE and not trainee:
-                validations[session_id] = not_checked_validation()
-            else:
-                validations[session_id] = Validation(True, constants.VALIDATION_CAMERA, [])
-        if any(not validation.validated for validation in validations.values()):
+        return official_id
+
+    role_of = {add_official(False, True): role for role in corner_roles}
+    judges = [add_official(False, False) for _ in range(judge_pool)]
+    trainees = [add_official(True, False) for _ in range(trainee_pool)]
+
+    # Who works which session: the corner officials every session; each session a random
+    # selection of the crew, exactly as many as asked for.
+    attending: dict[int, list[int]] = {official_id: list(session_ids) for official_id in role_of}
+    for session_id, session in zip(session_ids, size.sessions):
+        for official_id in generator.sample(judges, session.judges) + generator.sample(trainees, session.trainees):
+            attending.setdefault(official_id, []).append(session_id)
+
+    needs_admin_left = constants.DEMO_NEEDS_ADMIN_COUNT
+    first_session = session_ids[0]
+    trainee_ids = set(trainees)
+    for official_id, sessions in attending.items():
+        validations = {session_id: Validation(True, constants.VALIDATION_CAMERA, []) for session_id in sessions}
+        if needs_admin_left > 0 and official_id not in role_of and official_id not in trainee_ids and first_session in sessions:
+            validations[first_session] = not_checked_validation()
             needs_admin_left -= 1
-        database.sign_in(official_id, attending, [role], trainee, validations)
-    for key, value in zip(_SIZE_SETTINGS, (judge_count, trainee_count, session_count, int(head_officials))):
-        database.set_setting(key, value)
+        role = role_of.get(official_id, constants.TEAM_POOL_ROLE)
+        database.sign_in(official_id, sorted(sessions), [role], official_id in trainee_ids, validations)
+    database.set_text_setting(constants.SETTING_DEMO_SIZE, json.dumps(size.to_payload()))
     return database
 
 
-def stored_demo_size(database: Database) -> tuple[int, int, int, bool]:
-    """The size the demo was last built with, for "Reset demo" (the defaults if unknown).
-
-    Returns:
-        ``(judge_count, trainee_count, session_count, head_officials)``.
-    """
-    defaults = (
-        constants.DEMO_DEFAULT_JUDGES, constants.DEMO_DEFAULT_TRAINEES, constants.DEMO_DEFAULT_SESSIONS, 1,
-    )
-    judges, trainees, sessions, head = (
-        default if (value := database.get_setting(key)) is None else value
-        for key, default in zip(_SIZE_SETTINGS, defaults)
-    )
-    return judges, trainees, sessions, bool(head)
+def stored_demo_size(database: Database) -> DemoSize:
+    """The size the demo was last built with, for "Reset demo" (the default if unknown)."""
+    stored = database.get_text_setting(constants.SETTING_DEMO_SIZE)
+    if stored:
+        try:
+            return DemoSize.from_payload(json.loads(stored))
+        except (ValueError, json.JSONDecodeError):
+            pass
+    return default_demo_size()
 
 
 def _set_club(database: Database, official_id: int, lsc: str, club: str, meet_id: int) -> None:

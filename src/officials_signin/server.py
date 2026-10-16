@@ -31,7 +31,7 @@ from urllib.parse import parse_qs, urlsplit
 from officials_signin import constants
 from officials_signin.card_reader import CardReading, check_card, read_card
 from officials_signin.database import Database, SessionFields, SigninError, Validation, not_checked_validation
-from officials_signin.demo import build_demo, stored_demo_size
+from officials_signin.demo import DemoSize, build_demo, default_demo_size, planned_session_names, stored_demo_size
 from officials_signin.reports import render_meet_summary, render_session_summary, render_team_display
 from officials_signin.roster import build_roster, roster_download_filename
 from officials_signin.teams import (
@@ -193,6 +193,7 @@ def build_web_config() -> dict[str, Any]:
             "extras": constants.KEY_EXTRAS,
             "built": constants.KEY_BUILT,
             "unplaced": constants.KEY_UNPLACED,
+            "awaitingCheck": constants.KEY_AWAITING_CHECK,
             "unpairedTrainees": constants.KEY_UNPAIRED_TRAINEES,
             "rotation": constants.KEY_ROTATION,
             "extraAssignments": constants.KEY_EXTRA_ASSIGNMENTS,
@@ -206,6 +207,8 @@ def build_web_config() -> dict[str, Any]:
         "demoResetWarningSeconds": constants.DEMO_RESET_WARNING_SECONDS,
         "assignmentShortLabels": constants.ASSIGNMENT_SHORT_LABELS,
         "assignmentRelief": constants.ASSIGNMENT_RELIEF,
+        "openQueryKey": constants.OPEN_QUERY_KEY,
+        "openTeamsValue": constants.OPEN_TEAMS_VALUE,
         "coachesPage": _coaches_module() is not None,
         "rotationModes": [[mode, constants.ROTATION_MODE_LABELS[mode]] for mode in constants.ROTATION_MODES],
         "assignmentFifteenMeter": constants.ASSIGNMENT_FIFTEEN_METER,
@@ -350,27 +353,27 @@ def render_page() -> bytes:
     )
 
 
-def render_demo_page() -> bytes:
-    """Render the demo setup page."""
-    return _render(
-        constants.DEMO_PAGE_FILENAME,
-        {
-            "start_route": constants.ROUTE_DEMO_START,
-            "exit_route": constants.ROUTE_DEMO_EXIT,
-            "key_judges": constants.KEY_JUDGES_COUNT,
-            "key_trainees": constants.KEY_TRAINEES_COUNT,
-            "key_sessions": constants.KEY_SESSIONS_COUNT,
-            "key_head_officials": constants.KEY_HEAD_OFFICIALS,
-            "key_error": constants.KEY_ERROR,
-            "default_judges": str(constants.DEMO_DEFAULT_JUDGES),
-            "default_trainees": str(constants.DEMO_DEFAULT_TRAINEES),
-            "default_sessions": str(constants.DEMO_DEFAULT_SESSIONS),
-            "max_judges": str(constants.DEMO_MAX_JUDGES),
-            "max_trainees": str(constants.DEMO_MAX_TRAINEES),
-            "max_sessions": str(constants.DEMO_MAX_SESSIONS),
-            "home_route": constants.ROUTE_HOME,
+def render_demo_page(current_size: DemoSize) -> bytes:
+    """Render the demo setup page, starting from the current demo's size."""
+    demo_config = {
+        "routes": {"start": constants.ROUTE_DEMO_START, "exit": constants.ROUTE_DEMO_EXIT, "home": constants.ROUTE_HOME},
+        "keys": {
+            "sessions": constants.KEY_SESSIONS,
+            "judges": constants.KEY_JUDGES_COUNT,
+            "trainees": constants.KEY_TRAINEES_COUNT,
+            "cornerOfficials": constants.KEY_CORNER_OFFICIALS,
+            "error": constants.KEY_ERROR,
         },
-    )
+        "size": current_size.to_payload(),
+        "sessionNames": planned_session_names(date.today()),
+        "cornerRoles": list(constants.DEMO_SPECIAL_ROLES),
+        "maxSessions": constants.DEMO_MAX_SESSIONS,
+        "maxJudges": constants.DEMO_MAX_JUDGES,
+        "maxTrainees": constants.DEMO_MAX_TRAINEES,
+        "defaultJudges": constants.DEMO_DEFAULT_JUDGES,
+        "defaultTrainees": constants.DEMO_DEFAULT_TRAINEES,
+    }
+    return _render(constants.DEMO_PAGE_FILENAME, {"config": json.dumps(demo_config)})
 
 
 def render_script(filename: str) -> bytes:
@@ -486,7 +489,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             state[constants.KEY_DEMO] = self.in_demo
             self._send_json(HTTPStatus.OK, state)
         elif path == constants.ROUTE_DEMO:
-            self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_demo_page())
+            current = stored_demo_size(self.server.get_demo_database())
+            self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_demo_page(current))
         elif path == constants.ROUTE_MEETS:
             self._send_meet_overview()
         elif path == constants.ROUTE_TEAMS:
@@ -843,47 +847,31 @@ class RequestHandler(BaseHTTPRequestHandler):
             LOGGER.info("Deleted an archived meet and its %d sign-in(s)", deleted)
             self._send_json(HTTPStatus.OK, {constants.KEY_SIGNIN_COUNT: deleted})
 
-    def _rebuild_demo(self, judges: int, trainees: int, sessions: int, head_officials: bool) -> None:
+    def _rebuild_demo(self, size: DemoSize) -> None:
         """Build a fresh demo database (replacing the old one)."""
         with self.server.demo_lock:
-            self.server.demo_database = build_demo(
-                self.server.demo_database_path, judges, trainees, sessions, head_officials, date.today()
-            )
+            self.server.demo_database = build_demo(self.server.demo_database_path, size, date.today())
 
     def _handle_demo_open(self) -> None:
         """Switch this browser to the demo meet, building one with the defaults if there is none."""
         if self.server.get_demo_database().get_state()[constants.KEY_MEET] is None:
-            self._rebuild_demo(
-                constants.DEMO_DEFAULT_JUDGES, constants.DEMO_DEFAULT_TRAINEES, constants.DEMO_DEFAULT_SESSIONS, True
-            )
+            self._rebuild_demo(default_demo_size())
             LOGGER.info("Built the demo meet")
         self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=True))
 
     def _handle_demo_reset(self) -> None:
         """Rebuild the demo meet at the same size, erasing every change made in it."""
-        self._rebuild_demo(*stored_demo_size(self.server.get_demo_database()))
+        self._rebuild_demo(stored_demo_size(self.server.get_demo_database()))
         LOGGER.info("Reset the demo meet")
         self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=True))
 
     def _handle_demo_start(self, payload: dict[str, Any]) -> None:
-        """Build a fresh demo meet and switch this browser to it."""
-        limits = {
-            constants.KEY_JUDGES_COUNT: (0, constants.DEMO_MAX_JUDGES),
-            constants.KEY_TRAINEES_COUNT: (0, constants.DEMO_MAX_TRAINEES),
-            constants.KEY_SESSIONS_COUNT: (1, constants.DEMO_MAX_SESSIONS),
-        }
-        values = {}
-        for key, (low, high) in limits.items():
-            value = payload.get(key)
-            if not isinstance(value, int) or not low <= value <= high:
-                raise SigninError(f"{key.replace('_', ' ')} must be {low} to {high}")
-            values[key] = value
-        self._rebuild_demo(
-            values[constants.KEY_JUDGES_COUNT],
-            values[constants.KEY_TRAINEES_COUNT],
-            values[constants.KEY_SESSIONS_COUNT],
-            bool(payload.get(constants.KEY_HEAD_OFFICIALS, True)),
-        )
+        """Build a fresh demo meet of the size chosen on the demo page and switch this browser to it."""
+        try:
+            size = DemoSize.from_payload(payload)
+        except ValueError as error:
+            raise SigninError(str(error)) from error
+        self._rebuild_demo(size)
         LOGGER.info("Started a demo meet")
         self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=True))
 

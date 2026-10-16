@@ -158,6 +158,7 @@
     .job-chips { display: flex; gap: 0.35rem; margin: 0.25rem 0 0.4rem; flex-wrap: wrap; }
     .chip.small { min-height: 2.2rem; padding: 0.15rem 0.7rem; font-size: 0.9rem; }
     .drop-hint { color: var(--muted); font-size: 0.9rem; margin: 0.5rem 0 0; }
+    .check-names { margin: 0.3rem 0 0.6rem; padding-left: 1.2rem; font-weight: 600; }
     .member { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; margin-top: 0.35rem; min-height: 2.8rem; background: #fff; }
     .member .years { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
     .member.trainee { margin-left: 1.2rem; width: calc(100% - 1.2rem); border-style: dashed; font-size: 0.95rem; flex-direction: column; align-items: flex-start; gap: 0.1rem; }
@@ -396,13 +397,29 @@
       </div>
       <div id="teams-rotation" class="rotation"></div>
       <div class="teams-print-actions">
-        <a id="teams-display-link" class="button-link" href="#" target="_blank">Team page (full screen / print)</a>
+        <a id="teams-display-link" class="button-link" href="#">Team page (full screen / print)</a>
       </div>
       <div id="teams-alerts"></div>
       <div id="teams-grid" class="teams-grid"></div>
       <div class="sheet-actions">
         <button id="teams-rebuild" class="grow" type="button">Rebuild automatically</button>
         <button id="teams-close" class="primary" type="button">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Before Teams: some officials of this session are not checked yet (card or "Looks good"). -->
+  <div class="overlay" id="teams-check-overlay" hidden>
+    <div class="sheet">
+      <button class="sheet-close" type="button" data-closes="teams-check-back" aria-label="Close">✕</button>
+      <h2>Not everyone is checked yet</h2>
+      <p id="teams-check-detail"></p>
+      <ul id="teams-check-names" class="check-names"></ul>
+      <p class="signin-detail">They are kept off the teams until checked. Once checked, they show up on Teams as
+        "not placed yet": drag them onto a team, or Rebuild.</p>
+      <div class="sheet-actions">
+        <button id="teams-check-back" type="button">Go back and check them</button>
+        <button id="teams-check-continue" class="primary" type="button">Continue to Teams</button>
       </div>
     </div>
   </div>

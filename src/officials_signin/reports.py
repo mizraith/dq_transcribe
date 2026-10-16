@@ -27,7 +27,7 @@ _PAGE = """<!doctype html>
 <link rel="stylesheet" href="{stylesheet}">
 </head>
 <body class="{body_class}">
-<div class="toolbar"><button type="button" onclick="window.print()">Print</button><a href="/">Back to sign-in</a></div>
+<div class="toolbar"><button type="button" onclick="window.print()">Print</button>{extra_links}<a href="/">Back to sign-in</a></div>
 {body}
 <div class="footer">Printed {printed}</div>
 </body>
@@ -39,9 +39,10 @@ _CLOCK_FORMAT = "%H:%M"
 _NO_VALUE = "—"
 
 
-def _page(title: str, body: str, body_class: str = "") -> bytes:
-    """Wrap a page body in the shared HTML shell."""
+def _page(title: str, body: str, body_class: str = "", extra_links: str = "") -> bytes:
+    """Wrap a page body in the shared HTML shell (``extra_links``: more toolbar links, as HTML)."""
     return _PAGE.format(
+        extra_links=extra_links,
         title=escape(title),
         stylesheet=constants.ROUTE_PRINT_STYLESHEET,
         body_class=body_class,
@@ -245,6 +246,13 @@ def render_team_display(
         f"<tbody>{schedule_rows}</tbody></table>"
         if schedule_rows else ""
     )
+    # With 3 or more teams the ends matter: say which way first, in bold, then explain.
+    active_teams = sum(1 for team in view[constants.KEY_TEAMS] if team[constants.KEY_MEMBERS])
+    mode = view.get(constants.KEY_ROTATION_MODE) or constants.DEFAULT_ROTATION_MODE
+    mode_label = (
+        f"<strong>{escape(constants.ROTATION_MODE_LABELS[mode])}</strong> · "
+        if active_teams >= constants.MIN_TEAMS_FOR_BREAKS else ""
+    )
     title = f"{meet[constants.KEY_NAME]}: {session[constants.KEY_NAME]} teams"
     if signin_count is None:
         signin_count = len(view[constants.KEY_EXTRAS]) + sum(
@@ -254,12 +262,15 @@ def render_team_display(
     body = (
         f"<h1>{escape(session[constants.KEY_NAME])}: teams</h1>"
         f"<p class='subtitle'>{escape(meet[constants.KEY_NAME])} · {escape(subtitle)} · {view[constants.KEY_LANES]} lanes</p>"
-        f"<p class='subtitle'>{escape(view[constants.KEY_ROTATION])}</p>"
+        f"<p class='subtitle rotation-line'>{mode_label}{escape(view[constants.KEY_ROTATION])}</p>"
         f"<div class='display-columns'><div class='team-grid'>{''.join(cards)}</div>"
         f"<div><h2 class='rotation-heading'>Rotation</h2><p class='rotation-key'>S = start end, T = turn end</p>"
         f"{schedule}</div></div>"
     )
-    return _page(title, body, body_class="display")
+    back_to_teams = (
+        f"<a href='/?{constants.OPEN_QUERY_KEY}={constants.OPEN_TEAMS_VALUE}'>Back to Teams</a>"
+    )
+    return _page(title, body, body_class="display", extra_links=back_to_teams)
 
 
 def _team_number(name: str | None) -> str:

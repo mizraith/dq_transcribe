@@ -115,6 +115,18 @@ class TeamServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(view[constants.KEY_EXTRAS][0][constants.KEY_ASSIGNMENT], constants.ASSIGNMENT_RELIEF)
 
+    def test_corner_officials_never_go_on_teams(self) -> None:
+        # A starter who also ticked Stroke & Turn Judge stays off the teams.
+        official = self.database.save_official(None, "Casey Corner", 20, None, None, MEET_DATE)
+        validation = {self.session_id: Validation(True, constants.VALIDATION_VISUAL, [])}
+        self.database.sign_in(official, [self.session_id], ["Starter", constants.TEAM_POOL_ROLE], False, validation)
+        view = self.build()
+        self.assertEqual(view[constants.KEY_JUDGE_COUNT], JUDGE_COUNT)
+        everyone = [m[constants.KEY_NAME] for team in view[constants.KEY_TEAMS] for m in team[constants.KEY_MEMBERS]]
+        everyone += [m[constants.KEY_NAME] for m in view[constants.KEY_EXTRAS]]
+        self.assertNotIn("Casey Corner", everyone)
+        self.assertNotIn("Sam Starter", everyone)
+
     def test_build_proposes_four_teams_of_three_and_an_acj(self) -> None:
         view = self.build()
         self.assertEqual(view[constants.KEY_JUDGE_COUNT], JUDGE_COUNT)  # Starter and trainees not counted

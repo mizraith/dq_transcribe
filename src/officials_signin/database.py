@@ -381,6 +381,20 @@ class Database:
             self.open_meet(meet_id, today)
         return meet_id
 
+    def get_text_setting(self, key: str) -> str | None:
+        """Read one text setting (None when not set)."""
+        with self._connect() as connection:
+            row = connection.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return None if row is None else row["value"]
+
+    def set_text_setting(self, key: str, value: str | None) -> None:
+        """Write (or clear) one text setting."""
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+
     def get_setting(self, key: str) -> int | None:
         """Read one integer setting (None when not set)."""
         with self._connect() as connection:

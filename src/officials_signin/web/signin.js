@@ -672,6 +672,25 @@ async function loadTeams() {
   }
 }
 
+/**
+ * The Teams button: when some officials of this session are not checked yet (card or
+ * "Looks good"), say who first; they are kept off the teams until checked.
+ */
+function askBeforeTeams() {
+  const unchecked = pageState.signins.filter(function (signin) { return !signin[KEYS.validated]; });
+  if (!unchecked.length) { openTeams(); return; }
+  element("teams-check-detail").textContent = unchecked.length + " official" + (unchecked.length === 1 ? " has" : "s have")
+    + " not been checked by card or by the admin:";
+  const list = element("teams-check-names");
+  list.replaceChildren();
+  unchecked.forEach(function (signin) {
+    const item = document.createElement("li");
+    item.textContent = signin[KEYS.name];
+    list.appendChild(item);
+  });
+  element("teams-check-overlay").hidden = false;
+}
+
 async function openTeams() {
   try {
     await loadTeams();
@@ -797,11 +816,20 @@ function drawTeams() {
   // Alerts
   const alerts = element("teams-alerts");
   alerts.replaceChildren();
+  const awaiting = view[KEYS.awaitingCheck] || [];
+  if (awaiting.length) {
+    const alert = document.createElement("div");
+    alert.className = "teams-alert bad";
+    alert.textContent = "Not checked yet, so not on a team: "
+      + awaiting.map(function (signin) { return signin[KEYS.name]; }).join(", ") + ".";
+    alerts.appendChild(alert);
+  }
   const unplaced = view[KEYS.unplaced];
   if (unplaced.length) {
     const alert = document.createElement("div");
     alert.className = "teams-alert warn";
-    alert.textContent = unplaced.length + " signed in after the teams were built. Tap a name to place them, or Rebuild.";
+    alert.textContent = unplaced.length + " not on a team yet (signed in or checked after the teams were built). "
+      + "Drag them onto a team, tap a name to place them, or Rebuild.";
     alerts.appendChild(alert);
   }
   const unpaired = view[KEYS.unpairedTrainees];
@@ -1598,7 +1626,12 @@ element("demo-exit").addEventListener("click", async function () {
   await postJson(ROUTES.demoExit, {});
   window.location.reload();
 });
-element("teams-button").addEventListener("click", openTeams);
+element("teams-button").addEventListener("click", askBeforeTeams);
+element("teams-check-back").addEventListener("click", function () { element("teams-check-overlay").hidden = true; });
+element("teams-check-continue").addEventListener("click", function () {
+  element("teams-check-overlay").hidden = true;
+  openTeams();
+});
 element("teams-close").addEventListener("click", closeTeams);
 element("teams-rebuild").addEventListener("click", rebuildTeams);
 element("teams-fifteen").addEventListener("change", function () {
@@ -1631,6 +1664,12 @@ document.querySelectorAll(".sheet-close").forEach(function (closeButton) {
 });
 
 refresh().then(function () {
+  // "Back to Teams" from the team page: open Teams straight away (and tidy the address).
+  const query = new URLSearchParams(window.location.search);
+  if (query.get(CONFIG.openQueryKey) === CONFIG.openTeamsValue && pageState.activeSessionId !== null) {
+    window.history.replaceState(null, "", window.location.pathname);
+    openTeams();
+  }
   // Nothing to sign in to yet: go straight to Meet setup.
   if (pageState.activeSessionId === null) { openSetup(false); }
   // Load the OCR engine in the background so the first scan starts quickly.

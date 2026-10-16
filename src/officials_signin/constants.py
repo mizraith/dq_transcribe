@@ -75,6 +75,10 @@ PRINT_DENSE_ROW_COUNT = 40
 ROUTE_PRINT_SESSION = "/print/session"  # ?session_id= (default: active session)
 ROUTE_PRINT_MEET = "/print/meet"  # every session of the active meet, compact
 ROUTE_TEAM_DISPLAY = "/teams/display"  # ?session_id=: big-screen teams + rotation, prints on one page
+# "/?open=teams" opens the sign-in page straight on the Teams screen (the team page's
+# "Back to Teams" link).
+OPEN_QUERY_KEY = "open"
+OPEN_TEAMS_VALUE = "teams"
 ROUTE_PRINT_STYLESHEET = "/print.css"
 PRINT_STYLESHEET_FILENAME = "print.css"
 ROUTE_ROSTER_DOWNLOAD = "/roster-download.json"
@@ -395,6 +399,10 @@ ROSTER_ROLES = (
     "Stroke & Turn Judge", "Chief Judge", "Deck Referee", "Meet Referee", "Starter", "Relay Take-off Judge", "Admin Official",
 )
 DEFAULT_ROLE = "Stroke & Turn Judge"
+# Corner officials and the admin run the meet from the deck corners or the table: anyone
+# signed in with one of these roles is never put on (or counted for) a stroke & turn
+# team, even if they also ticked Stroke & Turn Judge (owner, 2026-10-16).
+CORNER_ROLES = ("Chief Judge", "Deck Referee", "Meet Referee", "Starter", "Admin Official")
 
 # --- Roster file (the contract with dq_transcribe) --------------------------------
 ROSTER_FORMAT_NAME = "officials-roster"
@@ -510,6 +518,7 @@ KEY_UNPLACED = "unplaced"
 KEY_UNPAIRED_TRAINEES = "unpaired_trainees"
 KEY_ROTATION = "rotation"
 KEY_EXTRA_ASSIGNMENTS = "extra_assignments"
+KEY_AWAITING_CHECK = "awaiting_check"  # S&T sign-ins not checked yet (kept off the teams)
 KEY_TEAMS_BUILT_AT = "teams_built_at"
 LANE_PATTERN_SEPARATOR = "-"
 LANE_PATTERN_ENDS_SEPARATOR = " / "
@@ -532,10 +541,7 @@ ROUTE_COACHES_API_PREFIX = "/api/coaches/"  # GET/POST: the coaches page's API
 SETTING_ACTIVE_MEET_ID = "active_meet_id"
 SETTING_ACTIVE_SESSION_ID = "active_session_id"
 # Kept in the demo database so "Reset demo" rebuilds the same size of demo.
-SETTING_DEMO_JUDGES = "demo_judges"
-SETTING_DEMO_TRAINEES = "demo_trainees"
-SETTING_DEMO_SESSIONS = "demo_sessions"
-SETTING_DEMO_HEAD_OFFICIALS = "demo_head_officials"
+SETTING_DEMO_SIZE = "demo_size"  # JSON: the per-session sizes the demo was built with
 
 # --- Limits ---------------------------------------------------------------------
 NAME_MAX_LENGTH = 80
@@ -571,7 +577,9 @@ KEY_OFFICIAL_COUNT = "official_count"
 KEY_TRAINEES_COUNT = "trainees"
 KEY_SESSIONS_COUNT = "session_count"
 KEY_JUDGES_COUNT = "judge_count"
-KEY_HEAD_OFFICIALS = "head_officials"
+KEY_CORNER_OFFICIALS = "corner_officials"
+# Demo setup: per session, how many stroke & turn judges and trainees sign in, plus (for
+# every session) the corner officials and the admin when that box is ticked.
 DEMO_DEFAULT_JUDGES = 13
 DEMO_DEFAULT_SESSIONS = 3
 DEMO_DEFAULT_TRAINEES = 2
@@ -579,8 +587,6 @@ DEMO_MAX_JUDGES = 60
 DEMO_MAX_TRAINEES = 10
 DEMO_MAX_SESSIONS = 5
 DEMO_MEET_NAME = "Demo Invitational"
-# Chance that an official signs in to a later session (everyone works the first one).
-DEMO_ATTENDANCE_SHARE = 0.85
 # Sessions of a typical weekend meet: (day offset from the first day, type, start time).
 DEMO_SESSION_PLAN = (
     (0, "PM", "13:00"),
@@ -589,8 +595,8 @@ DEMO_SESSION_PLAN = (
     (2, "Prelims", "08:00"),
     (2, "Finals", "17:00"),
 )
-# Head officials added when "head officials" is ticked.
-DEMO_SPECIAL_ROLES = ("Meet Referee", "Deck Referee", "Starter", "Chief Judge", "Admin Official")
+# Added to every session when "corner officials" is ticked.
+DEMO_SPECIAL_ROLES = CORNER_ROLES
 # Years certified in the demo, as the owner sees real crews (2026-10-16): most stroke &
 # turn judges have 1-3 years, it falls off quickly, very few reach 10, none above 15.
 # Relative weights per number of years.
@@ -601,7 +607,9 @@ DEMO_YEARS_WEIGHTS = {
 # Referees, starters and the chief judge come from the more experienced end.
 DEMO_HEAD_OFFICIAL_MIN_YEARS = 5
 DEMO_UNKNOWN_YEARS_SHARE = 0.1
-DEMO_NEEDS_ADMIN_COUNT = 1  # sign-ins left "card not checked" so the admin queue has something
+# One stroke & turn judge in the first session is left "card not checked", so the admin
+# queue (and the Teams warning) have something to show.
+DEMO_NEEDS_ADMIN_COUNT = 1
 DEMO_LSC_CODES = ("PC", "SN", "CC")
 DEMO_CLUB_CODES = ("DMOA", "DMOB", "DMOC", "DMOD", "DMOE")
 DEMO_FIRST_NAMES = (

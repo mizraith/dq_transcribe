@@ -20,7 +20,7 @@ from typing import Any
 
 from officials_signin import constants
 from officials_signin.database import Database, Validation
-from officials_signin.demo import assign_roles, build_demo, demo_years, fake_names
+from officials_signin.demo import DemoSize, SessionSize, build_demo, demo_years, fake_names, stored_demo_size
 from officials_signin.reports import render_meet_summary, render_session_summary, render_team_display
 from officials_signin.server import SigninServer
 from officials_signin.teams import build_team_view, format_slot_time, rotation_pairs, rotation_schedule
@@ -138,12 +138,6 @@ class DemoBuildTests(unittest.TestCase):
         names = fake_names(40, random.Random(DEMO_SEED))
         self.assertEqual(len(set(names)), 40)
 
-    def test_roles(self) -> None:
-        roles = assign_roles(3, 1, head_officials=True)
-        self.assertEqual(len(roles), len(constants.DEMO_SPECIAL_ROLES) + 4)
-        self.assertEqual(roles[-1], (constants.TEAM_POOL_ROLE, True))
-        self.assertEqual(len(assign_roles(3, 1, head_officials=False)), 4)
-
     def test_years_are_mostly_short_and_capped(self) -> None:
         generator = random.Random(DEMO_SEED)
         years = [demo_years(generator, head_official=False) for _ in range(2000)]
@@ -153,19 +147,35 @@ class DemoBuildTests(unittest.TestCase):
         heads = [demo_years(generator, head_official=True) for _ in range(200)]
         self.assertGreaterEqual(min(heads), constants.DEMO_HEAD_OFFICIAL_MIN_YEARS)
 
-    def test_build(self) -> None:
+    def test_build_gives_each_session_exactly_what_was_asked(self) -> None:
         path = Path(tempfile.mkdtemp()) / "demo.db"
-        database = build_demo(path, 13, 2, 3, True, MEET_DATE, seed=DEMO_SEED)
+        size = DemoSize((SessionSize(11, 2), SessionSize(8, 0), SessionSize(14, 1)), corner_officials=True)
+        database = build_demo(path, size, MEET_DATE, seed=DEMO_SEED)
         state = database.get_state()
         self.assertEqual(state[constants.KEY_MEET][constants.KEY_NAME], constants.DEMO_MEET_NAME)
-        self.assertEqual(len(state[constants.KEY_SESSIONS]), 3)
-        first = state[constants.KEY_SESSIONS][0]
-        self.assertEqual(first["signin_count"], 13 + 2 + len(constants.DEMO_SPECIAL_ROLES))
-        signins = database.list_signins(first[constants.KEY_ID])
-        self.assertEqual(sum(not signin[constants.KEY_VALIDATED] for signin in signins), constants.DEMO_NEEDS_ADMIN_COUNT)
+        corners = len(constants.DEMO_SPECIAL_ROLES)
+        for session, wanted in zip(state[constants.KEY_SESSIONS], size.sessions):
+            signins = database.list_signins(session[constants.KEY_ID])
+            stroke_and_turn = [signin for signin in signins if signin[constants.KEY_ROLES] == [constants.TEAM_POOL_ROLE]]
+            self.assertEqual(sum(not signin[constants.KEY_TRAINEE] for signin in stroke_and_turn), wanted.judges)
+            self.assertEqual(sum(bool(signin[constants.KEY_TRAINEE]) for signin in stroke_and_turn), wanted.trainees)
+            self.assertEqual(len(signins), wanted.judges + wanted.trainees + corners)
+        first = database.list_signins(state[constants.KEY_SESSIONS][0][constants.KEY_ID])
+        self.assertEqual(sum(not signin[constants.KEY_VALIDATED] for signin in first), constants.DEMO_NEEDS_ADMIN_COUNT)
+        later = database.list_signins(state[constants.KEY_SESSIONS][1][constants.KEY_ID])
+        self.assertTrue(all(signin[constants.KEY_VALIDATED] for signin in later))
+        self.assertEqual(stored_demo_size(database), size)
         # Building again replaces the demo rather than adding to it.
-        again = build_demo(path, 4, 0, 1, False, MEET_DATE, seed=DEMO_SEED)
+        again = build_demo(path, DemoSize((SessionSize(4, 0),), False), MEET_DATE, seed=DEMO_SEED)
         self.assertEqual(len(again.get_state()[constants.KEY_SESSIONS]), 1)
+        self.assertEqual(again.get_state()[constants.KEY_SESSIONS][0]["signin_count"], 4)
+
+    def test_size_checks(self) -> None:
+        with self.assertRaises(ValueError):
+            DemoSize.from_payload({constants.KEY_SESSIONS: []})
+        with self.assertRaises(ValueError):
+            DemoSize.from_payload({constants.KEY_SESSIONS: [
+                {constants.KEY_JUDGES_COUNT: constants.DEMO_MAX_JUDGES + 1, constants.KEY_TRAINEES_COUNT: 0}]})
 
 
 class DemoServerTests(unittest.TestCase):
@@ -204,8 +214,8 @@ class DemoServerTests(unittest.TestCase):
         return response.status, decoded, dict(response.getheaders())
 
     def start_demo(self) -> str:
-        body = {constants.KEY_JUDGES_COUNT: 13, constants.KEY_TRAINEES_COUNT: 2,
-                constants.KEY_SESSIONS_COUNT: 2, constants.KEY_HEAD_OFFICIALS: True}
+        row = {constants.KEY_JUDGES_COUNT: 13, constants.KEY_TRAINEES_COUNT: 2}
+        body = {constants.KEY_SESSIONS: [row, row], constants.KEY_CORNER_OFFICIALS: True}
         status, reply, headers = self.request("POST", constants.ROUTE_DEMO_START, body)
         self.assertEqual(status, 200, reply)
         return headers[constants.SET_COOKIE_HEADER].split(";")[0]
@@ -238,6 +248,36 @@ class DemoServerTests(unittest.TestCase):
         self.assertEqual(len(times), constants.DEFAULT_SESSION_MINUTES // constants.ROTATION_MINUTES)
         for time in times:
             self.assertIn(time.encode(), display)
+
+    def test_demo_page_starts_from_the_current_size(self) -> None:
+        cookie = self.start_demo()
+        status, page, _ = self.request("GET", constants.ROUTE_DEMO, cookie=cookie)
+        self.assertEqual(status, 200)
+        self.assertNotIn(b"$", page.replace(b"$$", b""))
+        self.assertIn(b'"judge_count": 13', page)
+
+    def test_team_page_has_back_to_teams_and_bold_mode(self) -> None:
+        cookie = self.start_demo()
+        self.request("POST", constants.ROUTE_TEAMS_BUILD, {}, cookie=cookie)
+        _, page, _ = self.request("GET", constants.ROUTE_TEAM_DISPLAY, cookie=cookie)
+        self.assertIn(f"/?{constants.OPEN_QUERY_KEY}={constants.OPEN_TEAMS_VALUE}".encode(), page)
+        self.assertIn(b"<strong>Fixed ends</strong>", page)
+
+    def test_unchecked_judge_is_kept_off_the_teams(self) -> None:
+        cookie = self.start_demo()
+        _, view, _ = self.request("POST", constants.ROUTE_TEAMS_BUILD, {}, cookie=cookie)
+        self.assertEqual(view[constants.KEY_JUDGE_COUNT], 13 - constants.DEMO_NEEDS_ADMIN_COUNT)
+        self.assertEqual(len(view[constants.KEY_AWAITING_CHECK]), constants.DEMO_NEEDS_ADMIN_COUNT)
+        waiting = view[constants.KEY_AWAITING_CHECK][0][constants.KEY_ID]
+        placed = [member[constants.KEY_ID] for team in view[constants.KEY_TEAMS] for member in team[constants.KEY_MEMBERS]]
+        placed += [member[constants.KEY_ID] for member in view[constants.KEY_EXTRAS]]
+        self.assertNotIn(waiting, placed)
+        # Once checked ("Looks good"), they show up as not placed yet.
+        self.request("POST", f"{constants.ROUTE_SIGNIN_PREFIX}{waiting}{constants.SIGNIN_VALIDATE_SUFFIX}", {},
+                     cookie=cookie)
+        _, view, _ = self.request("GET", constants.ROUTE_TEAMS, cookie=cookie)
+        self.assertEqual(view[constants.KEY_AWAITING_CHECK], [])
+        self.assertEqual([member[constants.KEY_ID] for member in view[constants.KEY_UNPLACED]], [waiting])
 
     def test_bad_rotation_mode_refused(self) -> None:
         cookie = self.start_demo()

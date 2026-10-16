@@ -422,14 +422,29 @@ def format_slot_time(start_time: str | None, offset_minutes: int) -> str:
     return f"{display_hour}:{total % per_hour:02d} {suffix}"
 
 
+def is_stroke_and_turn(signin: dict[str, Any]) -> bool:
+    """True for a stroke & turn sign-in that is not also a corner official or the admin."""
+    roles = signin[constants.KEY_ROLES]
+    return constants.TEAM_POOL_ROLE in roles and not any(role in constants.CORNER_ROLES for role in roles)
+
+
+def is_awaiting_check(signin: dict[str, Any]) -> bool:
+    """True for a stroke & turn sign-in whose card has not been checked yet (kept off the teams)."""
+    return is_stroke_and_turn(signin) and not signin[constants.KEY_VALIDATED]
+
+
 def is_team_judge(signin: dict[str, Any]) -> bool:
-    """True for a certified stroke & turn judge (goes into teams)."""
-    return constants.TEAM_POOL_ROLE in signin[constants.KEY_ROLES] and not signin[constants.KEY_TRAINEE]
+    """True for a checked, certified stroke & turn judge (goes into teams).
+
+    Corner officials and the admin never do; nor does anyone not yet checked by card
+    or by the admin's "Looks good" (owner, 2026-10-16).
+    """
+    return is_stroke_and_turn(signin) and not signin[constants.KEY_TRAINEE] and bool(signin[constants.KEY_VALIDATED])
 
 
 def is_team_trainee(signin: dict[str, Any]) -> bool:
-    """True for a stroke & turn trainee (shadows a mentor, not counted in team size)."""
-    return constants.TEAM_POOL_ROLE in signin[constants.KEY_ROLES] and signin[constants.KEY_TRAINEE]
+    """True for a checked stroke & turn trainee (shadows a mentor, not counted in team size)."""
+    return is_stroke_and_turn(signin) and bool(signin[constants.KEY_TRAINEE]) and bool(signin[constants.KEY_VALIDATED])
 
 
 def judges_from_signins(signins: list[dict[str, Any]]) -> list[Judge]:
@@ -536,4 +551,9 @@ def build_team_view(signins: list[dict[str, Any]], session: dict[str, Any]) -> d
         ),
         constants.KEY_ESTIMATED_MINUTES: session.get(constants.KEY_ESTIMATED_MINUTES) or constants.DEFAULT_SESSION_MINUTES,
         constants.KEY_EXTRA_ASSIGNMENTS: list(constants.EXTRA_ASSIGNMENTS),
+        constants.KEY_AWAITING_CHECK: [
+            {constants.KEY_ID: signin[constants.KEY_ID], constants.KEY_NAME: signin[constants.KEY_NAME]}
+            for signin in signins
+            if is_awaiting_check(signin)
+        ],
     }
