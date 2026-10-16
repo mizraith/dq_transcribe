@@ -5,8 +5,8 @@ shows only what a coach would get on paper: each DQ's event, heat, lane,
 swimmer, club, infractions and status, and (tapping a DQ) the slip itself. It
 never shows audio, transcripts, notes or DQs the coach has not been told about.
 
-With one club chosen, its DQs can be grouped by event (latest first, the
-default) or by swimmer (A to Z by last name), so a coach can see every DQ of one
+DQs can be grouped by event (latest first, the default) or by swimmer (A to Z
+by last name), for every club or one club, so a coach can see every DQ of one
 swimmer together.
 
 Which DQs: those of the active meet whose state is one of
@@ -115,12 +115,12 @@ def normalize_sort(sort: str | None) -> str:
 
 
 def _list_query(club: str | None, sort: str | None) -> str:
-    """"?club=PASA&sort=name" (empty for the default view). The sort only applies with a club."""
+    """"?club=PASA&sort=name" (empty for the default view: every club, by event)."""
     values = {}
     if club:
         values[constants.COACH_QUERY_KEY_CLUB] = club
-        if normalize_sort(sort) != constants.COACH_SORT_BY_EVENT:
-            values[constants.COACH_QUERY_KEY_SORT] = normalize_sort(sort)
+    if normalize_sort(sort) != constants.COACH_SORT_BY_EVENT:
+        values[constants.COACH_QUERY_KEY_SORT] = normalize_sort(sort)
     return ("?" + urlencode(values)) if values else ""
 
 
@@ -221,7 +221,7 @@ def _dq_count(count: int) -> str:
 def render_dq_list(
     meet: dict[str, Any] | None, dqs: list[dict[str, Any]], club: str | None, now: datetime, sort: str | None = None
 ) -> bytes:
-    """The DQ list with a club filter: by event (latest first), or, for one club, by swimmer.
+    """The DQ list with a club filter, by event (latest first) or by swimmer.
 
     Args:
         meet: The active meet (None if no meet is running).
@@ -229,13 +229,14 @@ def render_dq_list(
             heat, lane); only the coach-visible ones are shown.
         club: Show only this club's DQs (None = every club).
         now: The current time (for the "updated" line and protest windows).
-        sort: With a club chosen, ``constants.COACH_SORT_BY_EVENT`` (default) or
-            ``constants.COACH_SORT_BY_NAME`` (grouped by swimmer, A to Z by last name).
+        sort: ``constants.COACH_SORT_BY_EVENT`` (default) or ``constants.COACH_SORT_BY_NAME``
+            (grouped by swimmer, A to Z by last name; with every club shown, the
+            heading also names the swimmer's club).
     """
     if meet is None:
         body = f'<header><h1>{_escape(PAGE_TITLE)}</h1></header><main><p class="empty">{_escape(NO_MEET_TEXT)}</p></main>'
         return _render(PAGE_TITLE, body, refresh=True)
-    sort = normalize_sort(sort) if club else constants.COACH_SORT_BY_EVENT
+    sort = normalize_sort(sort)
     visible = coach_visible_dqs(dqs)
     clubs = sorted({dq["club"] for dq in visible if dq.get("club")})
     shown = [dq for dq in visible if not club or dq.get("club") == club]
@@ -244,10 +245,10 @@ def render_dq_list(
         f'<div class="muted">{_escape(UPDATED_FORMAT.format(time=_clock(now), seconds=constants.COACH_PAGE_REFRESH_SECONDS))}</div></header><main>'
     ]
     if clubs:
-        chips = [f'<a class="{"on" if not club else ""}" href="{_escape(list_url(None))}">{_escape(ALL_CLUBS_LABEL)}</a>']
+        chips = [f'<a class="{"on" if not club else ""}" href="{_escape(list_url(None, sort))}">{_escape(ALL_CLUBS_LABEL)}</a>']
         chips += [f'<a class="{"on" if name == club else ""}" href="{_escape(list_url(name, sort))}">{_escape(name)}</a>' for name in clubs]
         parts.append('<nav class="clubs">' + "".join(chips) + "</nav>")
-    if club:
+    if shown:
         options = [
             f'<a class="{"on" if option == sort else ""}" href="{_escape(list_url(club, option))}">{_escape(SORT_LABELS[option])}</a>'
             for option in constants.COACH_SORTS
@@ -257,11 +258,13 @@ def render_dq_list(
         text = NO_CLUB_DQS_TEXT.format(club=club) if club else NO_DQS_TEXT
         parts.append(f'<p class="empty">{_escape(text)}</p>')
     if sort == constants.COACH_SORT_BY_NAME:
-        swimmers: dict[str, list[dict[str, Any]]] = {}
+        swimmers: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for dq in sorted(shown, key=swimmer_sort_key):  # stable: each swimmer's DQs stay in event order
-            swimmers.setdefault(dq.get("swimmer") or "", []).append(dq)
-        for swimmer, swimmer_dqs in swimmers.items():
-            parts.append(_render_group(swimmer or "?", _dq_count(len(swimmer_dqs)), swimmer_dqs, club, sort, now))
+            swimmers.setdefault((dq.get("swimmer") or "", dq.get("club") or ""), []).append(dq)
+        for (swimmer, swimmer_club), swimmer_dqs in swimmers.items():
+            count = _dq_count(len(swimmer_dqs))
+            label = count if club or not swimmer_club else f"{swimmer_club}{STATUS_SEPARATOR}{count}"
+            parts.append(_render_group(swimmer or "?", label, swimmer_dqs, club, sort, now))
     else:
         events: dict[str, list[dict[str, Any]]] = {}
         for dq in shown:
