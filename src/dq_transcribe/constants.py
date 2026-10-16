@@ -489,3 +489,23 @@ RESPONSE_KEY_COACH_PAGE = "coach_page"
 ROUTE_VENDOR = "/vendor/"
 VENDOR_DIRECTORY_NAME = "vendor"
 QR_SCRIPT_FILENAME = "qrcode.js"  # qrcode-generator 1.4.4 (MIT, Kazuhiko Arase)
+
+# --- Printout requests (a coach asks for a paper slip from the coach page) ---------
+COACH_ROUTE_PRINT_REQUEST_SUFFIX = "/print-request"  # POST /dq/<id>/print-request on the coach server
+COACH_PRINT_REQUEST_BY = "Coach page"  # recorded in the DQ's history
+PRINT_REQUEST_CONFIRM_TEXT = "Are you sure you want to print a paper copy? The whole point of this system is to save paper."
+PRINT_REQUEST_QUEUED_TEXT = "Your request has been queued."
+PRINT_REQUEST_ALREADY_TEXT = "A printout of this DQ was already requested; it is in the queue."
+# Admin: GET /slips?print_requested=1&layout=two_up prints the requested slips;
+# POST /api/dqs/print-requests {"dq_ids": [...], "requested": false} clears them once printed (true = undo).
+QUERY_KEY_PRINT_REQUESTED = "print_requested"
+QUERY_KEY_LAYOUT = "layout"
+SLIP_LAYOUT_ONE_PER_PAGE = "one_per_page"
+SLIP_LAYOUT_TWO_UP = "two_up"  # two slips side by side on a portrait page, sorted by club
+SLIP_LAYOUTS = (SLIP_LAYOUT_ONE_PER_PAGE, SLIP_LAYOUT_TWO_UP)
+ROUTE_DQ_PRINT_REQUESTS = "/api/dqs/print-requests"
+REQUEST_KEY_DQ_IDS = "dq_ids"
+REQUEST_KEY_REQUESTED = "requested"
+PRINT_REQUEST_PRINTED_NOTE = "requested printout printed"
+PRINT_REQUEST_NOTE = "printout requested"
+DQ_FILTER_PRINT_REQUESTED = "print_requested"  # the DQ list filter for requested printouts

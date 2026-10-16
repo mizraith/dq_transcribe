@@ -113,6 +113,11 @@ class CoachServerTests(unittest.TestCase):
         connection.request("GET", path, headers={"Cookie": cookie} if cookie else {})
         return connection.getresponse()
 
+    def _post(self, path: str, cookie: str | None = None) -> http.client.HTTPResponse:
+        connection = http.client.HTTPConnection(LOOPBACK_HOST, self.port, timeout=5)
+        connection.request("POST", path, body=b"", headers={"Cookie": cookie} if cookie else {})
+        return connection.getresponse()
+
     def _sign_in(self) -> str:
         response = self._get("/?" + constants.COACH_QUERY_KEY_PASSWORD + "=" + self.coach_page.password.upper())
         self.assertEqual(response.status, 303)
@@ -143,6 +148,27 @@ class CoachServerTests(unittest.TestCase):
         self.assertIn("DISQUALIFICATION REPORT", slip.read().decode())
         hidden = self._get(f"{constants.COACH_ROUTE_DQ}{self.hidden_id}", cookie)
         self.assertEqual(hidden.status, 303)
+
+    def test_coach_requests_a_printout_once(self) -> None:
+        cookie = self._sign_in()
+        slip = self._get(f"{constants.COACH_ROUTE_DQ}{self.notified_id}", cookie).read().decode()
+        self.assertIn("Request a printout", slip)
+        self.assertIn("save paper", slip)  # the are-you-sure question
+        path = f"{constants.COACH_ROUTE_DQ}{self.notified_id}{constants.COACH_ROUTE_PRINT_REQUEST_SUFFIX}"
+        first = self._post(path, cookie).read().decode()
+        self.assertIn(constants.PRINT_REQUEST_QUEUED_TEXT, first)
+        self.assertIn("already requested", self._post(path, cookie).read().decode())
+        dq = next(dq for dq in self.store.list_dqs(self.meet_id) if dq["id"] == self.notified_id)
+        self.assertTrue(dq["print_requested_at"])
+        self.assertIn("printout requested", self._get("/", cookie).read().decode())
+
+    def test_printout_request_needs_sign_in_and_a_posted_dq(self) -> None:
+        path = f"{constants.COACH_ROUTE_DQ}{self.notified_id}{constants.COACH_ROUTE_PRINT_REQUEST_SUFFIX}"
+        self.assertIn("Meet password", self._post(path).read().decode())
+        cookie = self._sign_in()
+        hidden = f"{constants.COACH_ROUTE_DQ}{self.hidden_id}{constants.COACH_ROUTE_PRINT_REQUEST_SUFFIX}"
+        self.assertEqual(self._post(hidden, cookie).status, 303)
+        self.assertFalse(any(dq["print_requested_at"] for dq in self.store.list_dqs(self.meet_id)))
 
     def test_new_password_signs_phones_out(self) -> None:
         cookie = self._sign_in()
@@ -192,6 +218,26 @@ class CoachPageAdminTests(unittest.TestCase):
         old_password = status["password"]
         self.assertNotEqual(self._request("POST", constants.ROUTE_COACH_PAGE_PASSWORD, {})["password"], old_password)
         self.assertFalse(self._request("POST", constants.ROUTE_COACH_PAGE, {constants.REQUEST_KEY_ENABLED: False})["running"])
+
+    def test_requested_slips_print_two_up_by_club_and_clear(self) -> None:
+        store = self.server.dq_store
+        meet_id = self.database.create_meet(MEET_NAME, "2026-10-16")
+        ids = [store.create_dq(dict(COMPLETE_DQ, club=club, lane=lane), meet_id) for club, lane in (("SCSC", "1"), ("AAAA", "2"), ("PASA", "3"))]
+        store.set_print_requested(ids, True, "test")
+        connection = http.client.HTTPConnection(LOOPBACK_HOST, self.server.server_address[1], timeout=5)
+        query = f"?{constants.QUERY_KEY_PRINT_REQUESTED}=1&{constants.QUERY_KEY_LAYOUT}={constants.SLIP_LAYOUT_TWO_UP}"
+        connection.request("GET", constants.ROUTE_SLIPS + query)
+        page = connection.getresponse().read().decode()
+        self.assertEqual(page.count('class="sheet"'), 2)  # 3 slips, 2 per page
+        self.assertLess(page.index(">AAAA<"), page.index(">PASA<"))
+        self.assertLess(page.index(">PASA<"), page.index(">SCSC<"))
+        self.assertIn("Mark printed", page)
+        self.assertNotIn("${", page)
+        connection.request("POST", constants.ROUTE_DQ_PRINT_REQUESTS,
+                           body=json.dumps({constants.REQUEST_KEY_DQ_IDS: ids, constants.REQUEST_KEY_REQUESTED: False}),
+                           headers={constants.CONTENT_TYPE_HEADER: constants.JSON_CONTENT_TYPE})
+        self.assertEqual(sorted(json.loads(connection.getresponse().read())[constants.RESPONSE_KEY_DQ_IDS]), sorted(ids))
+        self.assertFalse(any(dq["print_requested_at"] for dq in store.list_dqs(meet_id)))
 
     def test_sign_and_qr_script_are_served(self) -> None:
         connection = http.client.HTTPConnection(LOOPBACK_HOST, self.server.server_address[1], timeout=5)

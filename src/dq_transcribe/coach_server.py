@@ -1,18 +1,21 @@
-"""The coach page server: a separate, read-only web server for phones on the meet Wi-Fi.
+"""The coach page server: a separate web server for phones on the meet Wi-Fi.
 
 The admin app listens on 127.0.0.1 only, so nothing on the network can reach the
 capture, transcripts or DQ editing. This second server listens on every network
-the tablet is on (``constants.COACH_SERVER_HOST``) and can do exactly three
+the tablet is on (``constants.COACH_SERVER_HOST``) and can do exactly four
 things:
 
 * ``GET /``: the active meet's posted DQs by event (``coach_page.render_dq_list``),
   or the password form;
 * ``GET /dq/<id>``: one posted DQ's slip, the same layout as the printed coach copy;
-* ``POST /login``: check the meet password.
+* ``POST /login``: check the meet password;
+* ``POST /dq/<id>/print-request``: ask the admin table for a paper copy of a
+  posted DQ (sets the DQ's "print requested" flag; the admin prints and clears it).
 
 It runs in a thread of the main app (so it shares the database objects) and is
-started and stopped from Meet setup. It never writes to the database, except
-the coach page settings the admin changes through ``CoachPage``.
+started and stopped from Meet setup. Apart from the print-request flag it never
+writes to the database (the coach page settings are changed by the admin
+through ``CoachPage``).
 
 **Access:** one meet password (a thin wall to keep curious parents out, as the
 owner asked). The QR code's link carries the password in ``?key=``; the server
@@ -26,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import re
 import secrets
 import socket
 import threading
@@ -45,15 +49,19 @@ from dq_transcribe.coach_page import (
     normalize_sort,
     render_dq_list,
     render_login_page,
+    render_print_request_form,
+    render_print_request_result,
 )
 from dq_transcribe.database import Database
 from dq_transcribe.dq_store import DqStore
-from dq_transcribe.slip_page import render_slips
+from dq_transcribe.slip_page import back_toolbar, render_slips
 
 LOGGER = logging.getLogger(__name__)
 _WEB_DIRECTORY = Path(__file__).parent / constants.WEB_DIRECTORY_NAME
 COACH_URL_FORMAT = "http://{address}:{port}/"
 LOOPBACK_PREFIX = "127."
+# POST /dq/<id>/print-request
+PRINT_REQUEST_PATH = re.compile(rf"^{re.escape(constants.COACH_ROUTE_DQ)}(\d+){re.escape(constants.COACH_ROUTE_PRINT_REQUEST_SUFFIX)}$")
 SLIP_TITLE_FORMAT = "DQ: event {event}, heat {heat}, lane {lane}"
 
 
@@ -135,8 +143,17 @@ class CoachRequestHandler(BaseHTTPRequestHandler):
             self._redirect(constants.COACH_ROUTE_LIST)
 
     def do_POST(self) -> None:  # noqa: N802 (name required by BaseHTTPRequestHandler)
-        """The password form."""
-        if urlsplit(self.path).path != constants.COACH_ROUTE_LOGIN:
+        """The password form, or a printout request."""
+        url = urlsplit(self.path)
+        match = PRINT_REQUEST_PATH.match(url.path)
+        if match is not None:
+            self._discard_body()
+            query = parse_qs(url.query)
+            club = (query.get(constants.COACH_QUERY_KEY_CLUB) or [""])[0].strip() or None
+            sort = normalize_sort((query.get(constants.COACH_QUERY_KEY_SORT) or [""])[0].strip())
+            self._request_printout(int(match.group(1)), club, sort)
+            return
+        if url.path != constants.COACH_ROUTE_LOGIN:
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         try:
@@ -177,16 +194,47 @@ class CoachRequestHandler(BaseHTTPRequestHandler):
         )
         self._redirect(next_url, cookie)
 
-    def _send_slip(self, dq_id: int, club: str | None, sort: str) -> None:
-        """One posted DQ's slip (only DQs of the active meet the coach may see)."""
+    def _visible_dq(self, dq_id: int) -> dict[str, Any] | None:
+        """A DQ of the active meet the coach may see, or None."""
         meet_id = self.server.database.get_active_meet_id()
         dqs = coach_visible_dqs(self.server.dq_store.list_dqs(meet_id)) if meet_id is not None else []
-        dq = next((item for item in dqs if item["id"] == dq_id), None)
+        return next((item for item in dqs if item["id"] == dq_id), None)
+
+    def _send_slip(self, dq_id: int, club: str | None, sort: str) -> None:
+        """One posted DQ's slip, with "Request a printout" under it."""
+        dq = self._visible_dq(dq_id)
         if dq is None:
             self._redirect(list_url(club, sort))
             return
         title = SLIP_TITLE_FORMAT.format(event=dq.get("event") or "?", heat=dq.get("heat") or "?", lane=dq.get("lane") or "?")
-        self._send_html(HTTPStatus.OK, render_slips([dq], title, back_link=(list_url(club, sort), BACK_TO_LIST_LABEL)))
+        page = render_slips(
+            [dq],
+            title,
+            toolbar_html=back_toolbar(list_url(club, sort), BACK_TO_LIST_LABEL),
+            after_html=render_print_request_form(dq_id, club, sort),
+        )
+        self._send_html(HTTPStatus.OK, page)
+
+    def _request_printout(self, dq_id: int, club: str | None, sort: str) -> None:
+        """Flag a posted DQ for printing at the admin table, and say it is queued."""
+        if not self._signed_in():
+            self._send_html(HTTPStatus.OK, render_login_page(self._meet_name()))
+            return
+        if self._visible_dq(dq_id) is None:
+            self._redirect(list_url(club, sort))
+            return
+        changed = self.server.dq_store.set_print_requested([dq_id], True, constants.COACH_PRINT_REQUEST_BY)
+        LOGGER.info("Coach requested a printout of DQ %d", dq_id)
+        self._send_html(HTTPStatus.OK, render_print_request_result(not changed, list_url(club, sort)))
+
+    def _discard_body(self) -> None:
+        """Read (and ignore) a small request body so the connection stays usable."""
+        try:
+            length = int(self.headers.get(constants.CONTENT_LENGTH_HEADER, "0"))
+        except ValueError:
+            length = 0
+        if 0 < length <= constants.MAX_COACH_FORM_BYTES:
+            self.rfile.read(length)
 
     def _send_font(self, filename: str) -> None:
         """The slip's script font (only plain file names inside web/fonts/)."""

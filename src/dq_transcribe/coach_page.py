@@ -21,6 +21,7 @@ The page is plain HTML that reloads itself every
 from __future__ import annotations
 
 import html
+import json
 import re
 import string
 from datetime import datetime
@@ -46,6 +47,10 @@ INFRACTION_SEPARATOR = "; "
 STATUS_SEPARATOR = " \u00b7 "
 PROTEST_OPEN_FORMAT = "Protest window open until {time}"
 BACK_TO_LIST_LABEL = "All DQs"
+PRINT_REQUEST_BUTTON_LABEL = "Request a printout"
+PRINT_REQUEST_HINT = "Only if you need paper: the admin table prints it and you pick it up there."
+PRINT_REQUEST_TITLE = "Printout requested"
+PRINTOUT_QUEUED_LABEL = "\U0001F5A8 printout requested"
 SORT_LABELS = {constants.COACH_SORT_BY_EVENT: "By event", constants.COACH_SORT_BY_NAME: "By swimmer"}
 SORT_PROMPT = "Sort:"
 DQ_COUNT_FORMAT = "{count} DQ"
@@ -107,6 +112,37 @@ def infraction_text(dq: dict[str, Any]) -> str:
         code = infraction.get("code")
         parts.append(f"{code} {infraction['description']}" if code else infraction["description"])
     return INFRACTION_SEPARATOR.join(parts)
+
+
+def print_request_url(dq_id: int, club: str | None, sort: str | None = None) -> str:
+    """Where the "Request a printout" form posts (keeps the list view for the way back)."""
+    return f"{constants.COACH_ROUTE_DQ}{dq_id}{constants.COACH_ROUTE_PRINT_REQUEST_SUFFIX}" + _list_query(club, sort)
+
+
+def render_print_request_form(dq_id: int, club: str | None, sort: str | None) -> str:
+    """The "Request a printout" button under a slip, with the are-you-sure question.
+
+    The question is a browser confirm on submit; a phone without scripts sends the
+    request straight away (the request is harmless and the admin still decides to print).
+    """
+    question = json.dumps(constants.PRINT_REQUEST_CONFIRM_TEXT)
+    return (
+        f'<form class="print-request" method="post" action="{_escape(print_request_url(dq_id, club, sort))}" '
+        f'onsubmit="return window.confirm({_escape(question)})">'
+        f'<button type="submit">{_escape(PRINT_REQUEST_BUTTON_LABEL)}</button>'
+        f'<p class="muted">{_escape(PRINT_REQUEST_HINT)}</p></form>'
+    )
+
+
+def render_print_request_result(already_requested: bool, back_url: str) -> bytes:
+    """The answer after a printout request: queued (or already in the queue)."""
+    text = constants.PRINT_REQUEST_ALREADY_TEXT if already_requested else constants.PRINT_REQUEST_QUEUED_TEXT
+    body = (
+        f'<header><h1>{_escape(PRINT_REQUEST_TITLE)}</h1></header><main>'
+        f'<p class="queued">\u2713 {_escape(text)}</p>'
+        f'<p><a class="back" href="{_escape(back_url)}">\u2190 {_escape(BACK_TO_LIST_LABEL)}</a></p></main>'
+    )
+    return _render(PRINT_REQUEST_TITLE, body, refresh=False)
 
 
 def normalize_sort(sort: str | None) -> str:
@@ -191,6 +227,8 @@ def _render_dq(dq: dict[str, Any], club: str | None, sort: str, now: datetime) -
     deadline = _parse_moment(dq.get("protest_deadline"))
     if deadline is not None and dq["state"] in (constants.DQ_STATE_NOTIFIED, constants.DQ_STATE_UPHELD) and deadline > _now_like(deadline, now):
         status.append(_escape(PROTEST_OPEN_FORMAT.format(time=_clock(deadline))))
+    if dq.get("print_requested_at"):
+        status.append(_escape(PRINTOUT_QUEUED_LABEL))
     row_class = "dq " + (OVERTURNED_CSS_CLASS if dq["state"] == constants.DQ_STATE_OVERTURNED else "")
     return (
         f'<a class="{row_class.strip()}" href="{_escape(dq_url(dq["id"], club, sort))}">'

@@ -14,46 +14,69 @@
   <style>
     @font-face { font-family: "Slip Script"; src: url("${font_url}") format("woff2"); font-weight: 600; }
     :root { --ink: #111; --fill: #1d3fa8; --line: #222; }
-    @page { size: letter; margin: 0.4in; }
+    @page { size: letter portrait; margin: 0.35in; }
     body { margin: 0; background: #e5e7eb; color: var(--ink); font-family: Arial, Helvetica, sans-serif; }
-    .toolbar { position: relative; top: 0; display: flex; gap: 0.6rem; align-items: center; padding: 0.6rem 1rem; background: #111827; color: #fff; z-index: 2; }
+    .toolbar { position: relative; top: 0; display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; padding: 0.6rem 1rem; background: #111827; color: #fff; z-index: 2; }
     .toolbar a { color: #fff; font-size: 1.1rem; font-weight: 700; text-decoration: none; padding: 0.4rem 0.2rem; }
     .toolbar button { font-size: 1.1rem; padding: 0.5rem 1.2rem; border: 0; border-radius: 0.4rem; background: #1e3a8a; color: #fff; font-weight: 700; }
-    .slip { width: 5.2in; margin: 0.4in auto; padding: 0.35in 0.4in; background: #fff; box-shadow: 0 0.2rem 0.8rem rgba(0,0,0,0.2); font-size: 9.5pt; line-height: 1.45; font-variant: small-caps; page-break-after: always; break-after: page; }
+    .toolbar button.secondary { background: #374151; }
+    .toolbar .done { color: #86efac; font-weight: 700; }
+    /* The slip is compact across (tight gaps, short blanks) so two fit side by side on a portrait page. */
+    .slip { width: 4.6in; margin: 0.3in auto; padding: 0.25in 0.3in; background: #fff; box-shadow: 0 0.2rem 0.8rem rgba(0,0,0,0.2); font-size: 9pt; line-height: 1.4; font-variant: small-caps; page-break-after: always; break-after: page; }
     .slip:last-child { page-break-after: auto; break-after: auto; }
-    .slip h1 { font-size: 13pt; margin: 0 0 0.12in; letter-spacing: 0.02em; font-variant: normal; }
-    .row { display: flex; flex-wrap: wrap; gap: 0 0.18in; align-items: baseline; margin: 0.05in 0; }
-    .blank { display: inline-block; min-width: 0.45in; border-bottom: 1px solid var(--line); text-align: center; color: var(--fill); font-variant: normal; font-weight: 700; padding: 0 0.04in; }
-    .blank.wide { min-width: 1.1in; }
-    .blank.phase { min-width: 0.3in; }
-    .blank.full { flex: 1; min-width: 1.5in; text-align: left; }
-    .blank.big { font-size: 14pt; line-height: 1.2; }
-    .header-row { margin: 0.08in 0; }
-    .blank.name { font-family: "Slip Script", cursive; font-size: 20pt; font-weight: 600; line-height: 1.1; }
-    .section { margin-top: 0.1in; }
+    .slip h1 { font-size: 12.5pt; margin: 0 0 0.08in; letter-spacing: 0.02em; font-variant: normal; }
+    .row { display: flex; flex-wrap: wrap; gap: 0 0.1in; align-items: baseline; margin: 0.04in 0; }
+    .blank { display: inline-block; min-width: 0.32in; border-bottom: 1px solid var(--line); text-align: center; color: var(--fill); font-variant: normal; font-weight: 700; padding: 0 0.03in; }
+    .blank.wide { min-width: 0.75in; }
+    .blank.phase { min-width: 0.24in; }
+    .blank.full { flex: 1; min-width: 1.2in; text-align: left; }
+    .blank.big { font-size: 13pt; line-height: 1.2; }
+    .header-row { margin: 0.06in 0; }
+    .blank.name { font-family: "Slip Script", cursive; font-size: 18pt; font-weight: 600; line-height: 1.1; }
+    .section { margin-top: 0.08in; }
     .section-title { font-weight: 700; text-decoration: underline; margin-right: auto; }
     .item { white-space: nowrap; }
     .item.chosen { background: #fef9c3; }
     .group-label { font-weight: 400; }
     .indent { padding-left: 0.18in; }
-    .footer { display: flex; justify-content: space-between; margin-top: 0.15in; font-size: 8pt; font-variant: normal; }
-    .copy { color: #b91c1c; font-weight: 700; font-size: 11pt; }
+    .footer { display: flex; justify-content: space-between; align-items: baseline; gap: 0.1in; margin-top: 0.12in; font-size: 7.5pt; font-variant: normal; }
+    .copy { color: #b91c1c; font-weight: 700; font-size: 10pt; white-space: nowrap; }
     .hint { font-size: 7pt; font-style: italic; font-variant: normal; text-align: center; }
+    /* Two per page: two columns per sheet (sheets are printed one per page). */
+    .two-up .sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25in; width: 7.8in; margin: 0.3in auto; padding: 0.35in; background: #fff; box-shadow: 0 0.2rem 0.8rem rgba(0,0,0,0.2); page-break-after: always; break-after: page; }
+    .two-up .sheet:last-child { page-break-after: auto; break-after: auto; }
+    .two-up .slip { width: auto; margin: 0; padding: 0; box-shadow: none; font-size: 7.8pt; line-height: 1.3; page-break-after: auto; break-after: auto; }
+    .two-up .slip h1 { font-size: 10.5pt; }
+    .two-up .blank.big { font-size: 10.5pt; }
+    .two-up .blank.name { font-size: 14pt; }
+    .two-up .row { margin: 0.02in 0; gap: 0 0.07in; }
+    .two-up .section { margin-top: 0.05in; }
+    .two-up .footer { font-size: 6.5pt; }
+    .two-up .copy { font-size: 8.5pt; }
+    .after { max-width: 4.6in; margin: 0 auto 1.5rem; padding: 0 0.5rem; font-family: system-ui, Arial, sans-serif; }
+    .print-request button { width: 100%; font-size: 1.05rem; padding: 0.7rem; border: 1px solid #9ca3af; border-radius: 0.4rem; background: #fff; color: #111827; font-weight: 700; }
+    .print-request .muted { color: #4b5563; font-size: 0.85rem; text-align: center; }
     @media (max-width: 6in) {
       .slip { width: auto; margin: 0.5rem; padding: 0.8rem; font-size: 9pt; }
+      .two-up .sheet { display: block; width: auto; margin: 0; padding: 0; background: none; box-shadow: none; }
+      .two-up .slip { margin: 0.5rem; padding: 0.8rem; background: #fff; }
     }
     @media print {
       body { background: #fff; }
-      .toolbar { display: none; }
-      .slip { width: auto; margin: 0; padding: 0; box-shadow: none; font-size: 9pt; line-height: 1.32; }
+      .toolbar, .after { display: none; }
+      .slip { width: auto; margin: 0; padding: 0; box-shadow: none; line-height: 1.32; }
+      .one-per-page .slip { max-width: 5.6in; margin: 0 auto; }
       .row { margin: 0.025in 0; }
       .section { margin-top: 0.06in; }
+      .two-up .sheet { width: auto; margin: 0; padding: 0; box-shadow: none; }
+      .two-up .slip { line-height: 1.28; }
       .item.chosen { background: none; }
     }
   </style>
 </head>
-<body>
+<body class="${layout_class}">
   ${toolbar}
   ${slips}
+  <div class="after">${after}</div>
 </body>
 </html>

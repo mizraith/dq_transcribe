@@ -456,6 +456,36 @@ class DqStore:
             )
             return True
 
+    def set_print_requested(self, dq_ids: list[int], requested: bool, by_name: str | None = None) -> list[int]:
+        """Flag DQs as waiting for a printout (a coach asked), or clear the flag once printed.
+
+        Already flagged (or already cleared) DQs are left as they are, so a coach
+        tapping twice queues one printout. Each change is written to the history.
+
+        Args:
+            dq_ids: The DQs.
+            requested: True to request a printout, False once it is printed.
+            by_name: Who asked or printed (for the history).
+
+        Returns:
+            The ids whose flag changed.
+        """
+        changed = []
+        with self._database.transaction() as connection:
+            for dq_id in dq_ids:
+                row = connection.execute("SELECT state, print_requested_at FROM dqs WHERE id = ?", (dq_id,)).fetchone()
+                if row is None or (row["print_requested_at"] is not None) == requested:
+                    continue
+                now = utc_now_iso()
+                connection.execute("UPDATE dqs SET print_requested_at = ?, updated_at = ? WHERE id = ?", (now if requested else None, now, dq_id))
+                connection.execute(
+                    "INSERT INTO dq_history (dq_id, at, from_state, to_state, by_name, note) VALUES (?, ?, ?, ?, ?, ?)",
+                    (dq_id, now, row["state"], row["state"], by_name,
+                     constants.PRINT_REQUEST_NOTE if requested else constants.PRINT_REQUEST_PRINTED_NOTE),
+                )
+                changed.append(dq_id)
+        return changed
+
     def empty_trash(self, meet_id: int) -> int:
         """Permanently delete a closed meet's trashed and declined DQs. Overturned DQs are never deleted.
 
@@ -602,6 +632,7 @@ def _text_fields(payload: dict[str, Any]) -> dict[str, str | None]:
 _ADDED_DQ_COLUMNS = {
     "notified_at": "TEXT", "notified_by": "TEXT", "protested_at": "TEXT",
     "protest_count": "INTEGER NOT NULL DEFAULT 0", "ruled_by": "TEXT", "trashed_at": "TEXT",
+    "print_requested_at": "TEXT",  # a coach asked for a paper slip; cleared once it is printed
 }
 
 

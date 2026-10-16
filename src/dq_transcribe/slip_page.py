@@ -17,12 +17,14 @@ Printing is one of the ways to notify; the owner prefers paperless notification.
 from __future__ import annotations
 
 import html
+import json
 import string
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from dq_transcribe import constants
+from dq_transcribe.dq_store import number_sort_key
 from dq_transcribe.slip_codes import load_dq_codes
 
 SLIP_TITLE = "Disqualification Report"
@@ -171,36 +173,130 @@ def render_slip(dq: dict[str, Any], code_rows: list[dict[str, str]], revision: s
 
 PRINT_TOOLBAR_FORMAT = '<div class="toolbar"><button type="button" onclick="window.print()">Print</button><span>{text}</span></div>'
 BACK_TOOLBAR_FORMAT = '<div class="toolbar"><a href="{url}">\u2190 {label}</a></div>'
+PRINT_HINT_FORMAT = "{count} slip(s) \u00b7 {revision} \u00b7 {layout} \u00b7 tap Print, or use the browser's Share > Print"
+LAYOUT_LABELS = {constants.SLIP_LAYOUT_ONE_PER_PAGE: "one per page", constants.SLIP_LAYOUT_TWO_UP: "2 per page"}
+SLIPS_PER_SHEET = 2
+
+
+def back_toolbar(url: str, label: str) -> str:
+    """A toolbar with a back link in place of the Print button (the coach page on a phone)."""
+    return BACK_TOOLBAR_FORMAT.format(url=_escape(url), label=_escape(label))
+
+
+def print_hint(count: int, revision: str, layout: str) -> str:
+    """"3 slip(s) · rev. (1/24) · 2 per page · tap Print ..." (escaped)."""
+    return _escape(PRINT_HINT_FORMAT.format(count=count, revision=revision_label(revision), layout=LAYOUT_LABELS[layout]))
+
+
+def club_sort_key(dq: dict[str, Any]) -> tuple[str, Any, Any, Any]:
+    """Sort slips by club, then event, heat and lane (coaches pick up their club's pile)."""
+    return ((dq.get("club") or "\uffff").lower(), number_sort_key(dq.get("event")), number_sort_key(dq.get("heat")), number_sort_key(dq.get("lane")))
+
+
+# The toolbar for printing coaches' requested slips: Print, and clear the requests once printed.
+# Printing (the browser's "afterprint") clears them by itself; "Mark printed" does it by hand,
+# and Undo puts them back. A string.Template: the script must not contain a dollar sign.
+PRINT_REQUESTS_TOOLBAR = string.Template(
+    '<div class="toolbar"><button type="button" onclick="window.print()">Print</button>'
+    '<button type="button" class="secondary" id="mark-printed">Mark printed</button>'
+    '<span id="print-request-status">$hint</span></div>'
+    """<script>
+"use strict";
+(() => {
+  const ids = $ids;
+  const status = document.getElementById("print-request-status");
+  const markButton = document.getElementById("mark-printed");
+  let cleared = false;
+  async function setRequested(requested) {
+    const body = {};
+    body[$ids_key] = ids;
+    body[$requested_key] = requested;
+    const response = await fetch($route, { method: "POST", headers: { "Content-Type": $json_type }, body: JSON.stringify(body) });
+    if (!response.ok) {
+      throw new Error("server answered " + response.status);
+    }
+  }
+  async function markPrinted() {
+    if (cleared || !ids.length) {
+      return;
+    }
+    cleared = true;
+    try {
+      await setRequested(false);
+      status.textContent = "";
+      status.append(Object.assign(document.createElement("span"), { className: "done", textContent: "\\u2713 Print requests cleared " }));
+      const undo = Object.assign(document.createElement("button"), { type: "button", className: "secondary", textContent: "Undo" });
+      undo.addEventListener("click", async () => {
+        await setRequested(true);
+        cleared = false;
+        status.textContent = "Print requests restored.";
+      });
+      status.append(undo);
+    } catch (error) {
+      cleared = false;
+      status.textContent = "Could not clear the print requests: " + error.message;
+    }
+  }
+  markButton.addEventListener("click", markPrinted);
+  window.addEventListener("afterprint", markPrinted);
+})();
+</script>"""
+)
+
+
+def print_requests_toolbar(dq_ids: list[int], revision: str, layout: str) -> str:
+    """The toolbar for the coaches' requested slips (see ``PRINT_REQUESTS_TOOLBAR``)."""
+    return PRINT_REQUESTS_TOOLBAR.substitute(
+        hint=print_hint(len(dq_ids), revision, layout),
+        ids=json.dumps(dq_ids),
+        ids_key=json.dumps(constants.REQUEST_KEY_DQ_IDS),
+        requested_key=json.dumps(constants.REQUEST_KEY_REQUESTED),
+        route=json.dumps(constants.ROUTE_DQ_PRINT_REQUESTS),
+        json_type=json.dumps(constants.JSON_CONTENT_TYPE),
+    )
 
 
 def render_slips(
     dqs: list[dict[str, Any]],
     title: str,
     revision: str = constants.CURRENT_SLIP_REVISION,
-    back_link: tuple[str, str] | None = None,
+    toolbar_html: str | None = None,
+    layout: str = constants.SLIP_LAYOUT_ONE_PER_PAGE,
+    after_html: str = "",
 ) -> bytes:
-    """A page with one slip per DQ (one per printed page).
+    """A page of filled-in slips.
 
     Args:
-        dqs: DQs as returned by ``DqStore.list_dqs``.
+        dqs: DQs as returned by ``DqStore.list_dqs``, in printing order.
         title: The page title (shown in the browser tab and print header).
         revision: Slip revision whose layout to use.
-        back_link: ``(url, label)`` for a back link in place of the Print button
-            (the coach page shows one slip on a phone).
+        toolbar_html: The toolbar (default: a Print button with a hint). The coach
+            page passes ``back_toolbar(...)``.
+        layout: ``constants.SLIP_LAYOUT_ONE_PER_PAGE``, or ``SLIP_LAYOUT_TWO_UP``
+            (two slips side by side on a portrait page).
+        after_html: Trusted HTML shown after the slips (the coach page's
+            "Request a printout" form); never printed.
     """
+    if layout not in constants.SLIP_LAYOUTS:
+        layout = constants.SLIP_LAYOUT_ONE_PER_PAGE
     code_rows = load_dq_codes(revision)
     printed_at = datetime.now()
-    slips = "".join(render_slip(dq, code_rows, revision, printed_at) for dq in dqs)
+    rendered = [render_slip(dq, code_rows, revision, printed_at) for dq in dqs]
+    if layout == constants.SLIP_LAYOUT_TWO_UP:
+        slips = "".join(
+            '<div class="sheet">' + "".join(rendered[index:index + SLIPS_PER_SHEET]) + "</div>"
+            for index in range(0, len(rendered), SLIPS_PER_SHEET)
+        )
+    else:
+        slips = "".join(rendered)
     if not dqs:
         slips = '<p style="padding:1rem">No DQs to print.</p>'
     template = string.Template(SLIP_TEMPLATE_PATH.read_text("utf-8"))
     return template.substitute(
         title=_escape(title),
         font_url=constants.ROUTE_FONTS + constants.SLIP_FONT_FILENAME,
-        toolbar=(
-            BACK_TOOLBAR_FORMAT.format(url=_escape(back_link[0]), label=_escape(back_link[1]))
-            if back_link
-            else PRINT_TOOLBAR_FORMAT.format(text=_escape(f"{len(dqs)} slip(s) · {revision_label(revision)} · tap Print, or use the browser's Share > Print"))
-        ),
+        layout_class=layout.replace("_", "-"),
+        toolbar=toolbar_html if toolbar_html is not None else PRINT_TOOLBAR_FORMAT.format(text=print_hint(len(dqs), revision, layout)),
         slips=slips,
+        after=after_html,
     ).encode("utf-8")

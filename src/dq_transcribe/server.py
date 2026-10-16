@@ -35,7 +35,7 @@ from dq_transcribe.meet_archive import archive_filename, build_meet_archive
 from dq_transcribe.coach_server import CoachPage
 from dq_transcribe.demo_data import DEMO_MEET_NAME
 from dq_transcribe.officials_roster import RosterError, read_roster
-from dq_transcribe.slip_page import render_slips
+from dq_transcribe.slip_page import club_sort_key, print_requests_toolbar, render_slips
 from dq_transcribe.meet_files import MeetFileError, read_meet_file
 from dq_transcribe.meet_files.meet_sheet import download_address, read_meet_sheet_file, today
 from dq_transcribe.meet_files.store import MeetProgramStore
@@ -192,6 +192,11 @@ def build_web_config() -> dict[str, Any]:
         "coachPagePasswordRoute": constants.ROUTE_COACH_PAGE_PASSWORD,
         "coachPageKey": constants.RESPONSE_KEY_COACH_PAGE,
         "coachSignRoute": constants.ROUTE_COACH_SIGN,
+        "printRequestedQueryKey": constants.QUERY_KEY_PRINT_REQUESTED,
+        "layoutQueryKey": constants.QUERY_KEY_LAYOUT,
+        "slipLayoutOnePerPage": constants.SLIP_LAYOUT_ONE_PER_PAGE,
+        "slipLayoutTwoUp": constants.SLIP_LAYOUT_TWO_UP,
+        "printRequestedFilter": constants.DQ_FILTER_PRINT_REQUESTED,
         "enabledKey": constants.REQUEST_KEY_ENABLED,
         "meetFromSheetRoute": constants.ROUTE_MEET_FROM_SHEET,
         "sheetTextKey": constants.REQUEST_KEY_SHEET_TEXT,
@@ -480,6 +485,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_rebuild_training_meet()
         elif path == constants.ROUTE_COACH_PAGE:
             self._handle_coach_page_switch()
+        elif path == constants.ROUTE_DQ_PRINT_REQUESTS:
+            self._handle_print_requests()
         elif path == constants.ROUTE_COACH_PAGE_PASSWORD:
             self.server.coach_page.new_password()
             self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_COACH_PAGE: self.server.coach_page.status()})
@@ -760,11 +767,26 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id, constants.RESPONSE_KEY_SHEET: summary})
 
     def _send_slips(self, query: dict[str, list[str]]) -> None:
-        """Send printable slips: ``?ids=3,4`` for those DQs, or ``?event=12`` for an event of the active meet."""
+        """Send printable slips.
+
+        ``?ids=3,4`` for those DQs, ``?event=12`` for an event of the active meet, or
+        ``?print_requested=1`` for the slips coaches asked for. ``&layout=two_up``
+        prints two per page; the requested slips are then sorted by club.
+        """
         meet_id = self.server.database.get_active_meet_id()
         dqs = self.server.dq_store.list_dqs(meet_id)
         wanted_ids = {int(part) for value in query.get(constants.QUERY_KEY_IDS, []) for part in value.split(",") if part.strip().isdigit()}
         event = (query.get(constants.QUERY_KEY_EVENT) or [""])[0].strip()
+        layout = (query.get(constants.QUERY_KEY_LAYOUT) or [constants.SLIP_LAYOUT_ONE_PER_PAGE])[0]
+        if layout not in constants.SLIP_LAYOUTS:
+            layout = constants.SLIP_LAYOUT_ONE_PER_PAGE
+        if query.get(constants.QUERY_KEY_PRINT_REQUESTED):
+            dqs = [dq for dq in dqs if dq.get("print_requested_at")]
+            if layout == constants.SLIP_LAYOUT_TWO_UP:
+                dqs.sort(key=club_sort_key)
+            toolbar = print_requests_toolbar([dq["id"] for dq in dqs], constants.CURRENT_SLIP_REVISION, layout)
+            self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_slips(dqs, "Requested DQ slips", toolbar_html=toolbar, layout=layout))
+            return
         if wanted_ids:
             dqs = [dq for dq in self.server.dq_store.list_dqs(None) if dq["id"] in wanted_ids]
             title = "DQ slips"
@@ -774,7 +796,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         else:
             self._send_json_error(HTTPStatus.BAD_REQUEST, "Say which DQs: ?ids=3,4 or ?event=12")
             return
-        self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_slips(dqs, title))
+        self._send_bytes(HTTPStatus.OK, constants.HTML_CONTENT_TYPE, render_slips(dqs, title, layout=layout))
 
     def _send_font(self, filename: str) -> None:
         """Send a bundled font file (only plain file names inside web/fonts/)."""
@@ -991,6 +1013,19 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         meet_id = create_demo_meet(self.server.database, self.server.recordings_directory, replace=True)
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id})
+
+    def _handle_print_requests(self) -> None:
+        """Clear coaches' print requests once printed (or put them back): ``{"dq_ids": [...], "requested": false}``."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        dq_ids = payload.get(constants.REQUEST_KEY_DQ_IDS)
+        requested = payload.get(constants.REQUEST_KEY_REQUESTED)
+        if not isinstance(dq_ids, list) or not all(isinstance(item, int) for item in dq_ids) or not isinstance(requested, bool):
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "Send dq_ids (a list of numbers) and requested (true or false)")
+            return
+        changed = self.server.dq_store.set_print_requested(dq_ids, requested)
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_DQ_IDS: changed})
 
     def _handle_coach_page_switch(self) -> None:
         """Turn the coach page on or off: ``{"enabled": true|false}``. Replies with its status."""

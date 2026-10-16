@@ -26,6 +26,7 @@ const ROSTER_SUGGESTIONS = {
 const MAX_CODE_CHIPS = 4;
 const DQ_FILTER_ALL = "all";
 const DQ_FILTER_STORAGE_KEY = "dq_transcribe.dqFilter";
+const PRINT_REQUESTED_LABEL = "\ud83d\udda8 Print requested";
 const DQ_GROUP_STORAGE_KEY = "dq_transcribe.dqGroupByEvent";
 const NOTIFIED_BY_STORAGE_KEY = "dq_transcribe.notifiedBy";
 // Protest statuses get a filter button only once some DQ has them (fewer buttons on deck).
@@ -298,7 +299,8 @@ function saveSetting(key, value) {
 function loadDqFilter() {
   try {
     const saved = localStorage.getItem(DQ_FILTER_STORAGE_KEY);
-    return saved && (saved === DQ_FILTER_ALL || saved in CONFIG.dqStatusLabels) ? saved : DQ_FILTER_ALL;
+    const known = saved === DQ_FILTER_ALL || saved === CONFIG.printRequestedFilter || saved in CONFIG.dqStatusLabels;
+    return saved && known ? saved : DQ_FILTER_ALL;
   } catch (error) {
     return DQ_FILTER_ALL;
   }
@@ -332,6 +334,11 @@ function buildDqFilterBar(dqs) {
       addButton(status, label, count);
     }
   }
+  // Coaches' printout requests (from the coach page): a filter of its own, shown once there are any.
+  const printCount = dqs.filter((dq) => dq.print_requested_at).length;
+  if (printCount || dqFilter === CONFIG.printRequestedFilter) {
+    addButton(CONFIG.printRequestedFilter, PRINT_REQUESTED_LABEL, printCount);
+  }
   const group = makeButton("dq-group-toggle" + (dqGroupByEvent ? " on" : ""), (dqGroupByEvent ? "\u2713 " : "") + "Group by event", () => {
     dqGroupByEvent = !dqGroupByEvent;
     saveSetting(DQ_GROUP_STORAGE_KEY, String(dqGroupByEvent));
@@ -339,6 +346,21 @@ function buildDqFilterBar(dqs) {
   });
   group.setAttribute("aria-pressed", dqGroupByEvent ? "true" : "false");
   bar.append(group);
+  return bar;
+}
+
+/**
+ * Above the requested slips: print them one per page, or two per page sorted by
+ * club. The print page clears the requests once printed (with Undo).
+ */
+function buildPrintRequestsBar(count) {
+  const bar = makeElement("div", "print-requests-bar");
+  bar.append(makeElement("strong", "", "Print the " + count + " requested slip" + (count === 1 ? "" : "s") + ":"));
+  const open = (layout) => window.open(
+    CONFIG.slipsRoute + "?" + CONFIG.printRequestedQueryKey + "=1&" + CONFIG.layoutQueryKey + "=" + layout, "_blank");
+  bar.append(makeButton("primary", "One per page", () => open(CONFIG.slipLayoutOnePerPage)));
+  bar.append(makeButton("primary", "2 per page, sorted by club", () => open(CONFIG.slipLayoutTwoUp)));
+  bar.append(makeElement("span", "muted", "Requests clear once printed."));
   return bar;
 }
 
@@ -432,7 +454,9 @@ async function notifyEvent(event, notifiedBy, includeNotReady) {
 
 /** Draw the filter bar and the DQ list, sorted by event, heat and lane (the server sorts). */
 function renderDqList(dqs) {
-  const shown = dqFilter === DQ_FILTER_ALL ? dqs : dqs.filter((dq) => dq.status === dqFilter);
+  const shown = dqFilter === DQ_FILTER_ALL
+    ? dqs
+    : dqs.filter((dq) => (dqFilter === CONFIG.printRequestedFilter ? Boolean(dq.print_requested_at) : dq.status === dqFilter));
   const cards = [];
   if (dqGroupByEvent) {
     // One block per event (in event order); readiness counts all of the event's DQs, not just the filtered ones.
@@ -449,9 +473,14 @@ function renderDqList(dqs) {
   if (dqs.length === 0) {
     cards.push(makeElement("p", "note", "No DQs yet for this meet. Create them from the detected calls in the transcript."));
   } else if (cards.length === 0) {
-    cards.push(makeElement("p", "note", "No DQs are " + CONFIG.dqStatusLabels[dqFilter].toLowerCase() + ". Tap All to see every DQ."));
+    const filterLabel = dqFilter === CONFIG.printRequestedFilter ? "waiting for a printout" : CONFIG.dqStatusLabels[dqFilter].toLowerCase();
+    cards.push(makeElement("p", "note", "No DQs are " + filterLabel + ". Tap All to see every DQ."));
   }
-  clipsContainer.replaceChildren(buildDqFilterBar(dqs), ...cards);
+  const top = [buildDqFilterBar(dqs)];
+  if (dqFilter === CONFIG.printRequestedFilter && shown.length) {
+    top.push(buildPrintRequestsBar(shown.length));
+  }
+  clipsContainer.replaceChildren(...top, ...cards);
   if (scrollToDqId !== null) {
     // Opened from a transcript line: bring that DQ into view (once).
     const target = clipsContainer.querySelector('[data-dq-id="' + scrollToDqId + '"]');
@@ -474,6 +503,9 @@ function buildDqCard(dq) {
   }
   summary.append(makeElement("span", "", " " + (dq.infractions.map((item) => item.description).join("; ") || "no infraction yet")));
   summary.append(makeElement("span", "badge dq-status-badge status-" + dq.status, CONFIG.dqStatusLabels[dq.status] || dq.status));
+  if (dq.print_requested_at) {
+    summary.append(makeElement("span", "badge print-requested-badge", PRINT_REQUESTED_LABEL));
+  }
   if (dq.missing.length && dq.state !== CONFIG.dqStates.declined) {
     summary.append(makeElement("span", "dq-missing", "missing: " + dq.missing.join(", ")));
   }
