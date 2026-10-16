@@ -1310,7 +1310,7 @@ const TRANSCRIPT_STATUS_HINTS = {
   processing: "Still being transcribed (first pass, or the more accurate second pass)",
   transcribed: "Final text with no DQ call in it",
   dq_made: "Every call in it is in a DQ",
-  needs_you: "A call the app could not make into a DQ by itself, or a clip that failed",
+  needs_you: "A call the app left for you (no lane heard, not understood, or for an event that has passed), or a clip that failed",
 };
 const TRANSCRIPT_FILTER_ALL = "all";
 const TRANSCRIPT_FILTER_STORAGE_KEY = "dq_transcribe.transcriptFilter";
@@ -1336,6 +1336,19 @@ function setTranscriptFilter(filter) {
     // Not remembered; it still applies now.
   }
   redrawLastClips();
+}
+
+/** One line under the filter bar saying what the selected filter shows (all of them for All). */
+function buildTranscriptFilterHint() {
+  const hint = makeElement("p", "note transcript-filter-hint");
+  if (transcriptFilter === TRANSCRIPT_FILTER_ALL) {
+    hint.textContent = Object.keys(TRANSCRIPT_STATUSES)
+      .map((status) => TRANSCRIPT_STATUSES[status].replace(/^\W+/, "") + ": " + TRANSCRIPT_STATUS_HINTS[status].charAt(0).toLowerCase() + TRANSCRIPT_STATUS_HINTS[status].slice(1))
+      .join(" \u00b7 ");
+  } else {
+    hint.textContent = TRANSCRIPT_STATUS_HINTS[transcriptFilter] + ".";
+  }
+  return hint;
 }
 
 /** A conversation's workflow status (a key of TRANSCRIPT_STATUSES). */
@@ -1436,7 +1449,8 @@ function renderClips(clips) {
     cards.push(makeElement("p", "note", emptyText));
   }
   if (!showingTrash && newestFirst.length) {
-    cards.unshift(buildTranscriptFilterBar(statuses));
+    // Touch screens have no hover, so the selected filter's meaning is spelled out under the bar.
+    cards.unshift(buildTranscriptFilterBar(statuses), buildTranscriptFilterHint());
   }
   if (showingTrash && trashedDqs.length) {
     const section = makeElement("section", "trashed-dqs");

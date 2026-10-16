@@ -20,6 +20,9 @@ What it leaves alone, for a person:
 
 * calls with no lane, or "not understood" (they stay in the transcript as
   detected calls, with their "+ DQ" button);
+* calls for an event that has passed: already notified, well behind where the
+  meet is, or not in the meet file. Most likely a misheard event number, so a
+  person double-checks them (``dq_store.review_reason``);
 * calls whose clips are still being transcribed: it waits for the slower,
   more accurate refine pass, but at most ``constants.AUTO_DQ_MAX_REFINE_WAIT_SECONDS``
   (the refine pass only runs in the gaps between calls);
@@ -190,6 +193,8 @@ class AutoDqCreator:
                 if dq_id is not None:
                     result["accepted"].append(dq_id)
                 continue
+            if candidate.get("review"):
+                continue  # an event that has passed, or not in the meet file: a person double-checks it
             if not candidate.get("lane") or FLAG_NOT_UNDERSTOOD in (candidate.get("flags") or []):
                 continue  # not enough to go on: a person makes this one from the transcript
             try:

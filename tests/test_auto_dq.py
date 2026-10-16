@@ -77,16 +77,28 @@ class AutoDqTests(unittest.TestCase):
         self.assertEqual(self.store.candidates(self.meet_id), [])  # every call is used, pointing to the DQ
         self.assertIn("same call heard again", [entry["note"] for entry in dqs[0]["history"]])
 
-    def test_call_after_notification_is_noted_not_added(self) -> None:
+    def test_call_for_a_notified_event_waits_for_a_person(self) -> None:
         self._add_clip(["Event 5, heat 2, lane 3, scissors kick.", "Accepted."])
         dq_id = self.auto.run_once()["created"][0]
         self.store.update_dq(dq_id, {"swimmer": "Pat", "club": "PASA", "official": "Lee", "referee": "Kim"})
         self.store.change_state(dq_id, constants.DQ_STATE_NOTIFIED, "Admin Official")
         self._add_clip(["Event 5, heat 2, lane 3, one hand touch."], second=95)
-        self.assertEqual(self.auto.run_once()["added_to"], [dq_id])
-        dq = self.store.list_dqs(self.meet_id)[0]
-        self.assertEqual(len(dq["infractions"]), 1)
-        self.assertTrue(any("after notification" in (entry["note"] or "") for entry in dq["history"]))
+        result = self.auto.run_once()
+        self.assertEqual((result["created"], result["added_to"]), ([], []))
+        waiting = self.store.candidates(self.meet_id)
+        self.assertEqual(len(waiting), 1)
+        self.assertIn("already notified", waiting[0]["review"])
+        self.assertEqual(len(self.store.list_dqs(self.meet_id)[0]["infractions"]), 1)
+
+    def test_call_for_an_event_that_has_passed_waits_for_a_person(self) -> None:
+        for second, event in ((0, 10), (20, 11), (40, 11)):
+            self._add_clip([f"Event {event}, heat 1, lane {second // 20 + 1}, scissors kick."], second=second)
+        self.assertEqual(len(self.auto.run_once()["created"]), 3)
+        self._add_clip(["Event 4, heat 1, lane 5, scissors kick."], second=60)  # "14" misheard as "4"?
+        self._add_clip(["Event 10, heat 2, lane 6, scissors kick."], second=80)  # one event back: a late call is normal
+        result = self.auto.run_once()
+        self.assertEqual(len(result["created"]), 1)
+        self.assertIn("has passed", self.store.candidates(self.meet_id)[0]["review"])
 
     def test_waits_for_the_refine_pass(self) -> None:
         self._add_clip(["Event 6, heat 4, lane 2, scissors kick."], refine_status=constants.CLIP_STATUS_QUEUED)

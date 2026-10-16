@@ -530,3 +530,8 @@ ROUTE_AUTO_DQS = "/api/auto-dqs"  # GET {"enabled"}; POST {"enabled": true|false
 EVENT_SUMMARY_FILENAME = "event_summary.html"
 ROUTE_EVENT_SUMMARY = "/event-summary"  # GET ?event=12 (active meet)
 RESPONSE_KEY_ADDED_TO_EXISTING = "added_to_existing"  # POST /api/dqs: the call was added to the swimmer's DQ
+# A new call waits for a person when its event is already notified, not in the meet file, or more
+# than REVIEW_EVENTS_BEHIND events behind the lowest event of the latest REVIEW_RECENT_DQ_COUNT DQs
+# (a late call for the previous event is normal; further back is most likely a misheard number).
+REVIEW_EVENTS_BEHIND = 1
+REVIEW_RECENT_DQ_COUNT = 3

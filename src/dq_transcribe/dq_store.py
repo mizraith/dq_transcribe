@@ -108,6 +108,10 @@ CALL_ADDED_NOTE = "another call added: {infractions}"
 CALL_REPEATED_NOTE = "same call heard again"
 CALL_AFTER_NOTIFY_NOTE = "call heard after notification (not added; check it): {infractions}"
 ACKNOWLEDGMENT_HEARD_NOTE = "acknowledgment heard on the radio"
+# Why a call waits for a person (shown with the call; see review_reason).
+REVIEW_NOT_IN_PROGRAM = "event {event} is not in the meet file: check the event number"
+REVIEW_ALREADY_NOTIFIED = "event {event} was already notified: check this call"
+REVIEW_EVENT_PASSED = "event {event} has passed (the meet is at about event {current}): check the event number"
 # Parsed calls are cached per conversation group and recomputed only when the
 # group's turns or their text change (parsing every group on every page refresh
 # was too slow on the tablet). The cache is cleared when it grows past this size.
@@ -211,8 +215,25 @@ class DqStore:
             key = candidate_key(call)
             if key not in used or include_used:
                 results.append({**call.to_dict(), "key": key, "group_id": group_id, "used": key in used})
+        context = self._review_context(meet_id)
+        for item in results:
+            item["review"] = None if item["used"] else review_reason(item, context)
+            if item["review"]:
+                item["flags"] = [*item["flags"], item["review"]]
         self._add_program_details(results, meet_id)
         return results
+
+    def _review_context(self, meet_id: int | None) -> dict[str, Any]:
+        """What a new call is checked against (see ``review_reason``): the events already
+        notified, about where the meet is now, and the events in the meet file."""
+        with self._database.connection() as connection:
+            rows = connection.execute(
+                "SELECT event, state FROM dqs WHERE meet_id IS ? AND trashed_at IS NULL AND event IS NOT NULL ORDER BY id DESC", (meet_id,)
+            ).fetchall()
+        notified = {normalize_event_number(row["event"]) for row in rows if row["state"] in constants.DQ_STATES_AFTER_NOTIFICATION}
+        recent = [number for number in (_event_integer(row["event"]) for row in rows[:constants.REVIEW_RECENT_DQ_COUNT]) if number is not None]
+        program = set(self._program_store.events(meet_id)) if self._program_store else set()
+        return {"notified": notified, "current_event": min(recent) if recent else None, "program_events": program}
 
     def _event_strokes(self, meet_id: int | None, calls: list[CandidateCall]) -> dict[str, str]:
         """Each event's stroke: from the meet file when loaded, otherwise where the
@@ -917,6 +938,36 @@ def _evidence(items: Any) -> list[tuple[int, int | None, float, float, str]]:
         except (KeyError, TypeError, ValueError, AttributeError) as error:
             raise DqError(f"bad evidence item: {error}") from error
     return rows
+
+
+def _event_integer(event: str | None) -> int | None:
+    """"12" -> 12, "2b" -> 2; None if there is no number."""
+    match = _EVENT_SORT_PATTERN.match((event or "").strip())
+    return int(match.group(1)) if match else None
+
+
+def review_reason(candidate: dict[str, Any], context: dict[str, Any]) -> str | None:
+    """Why a detected call should go to a person instead of becoming a DQ by itself, or None.
+
+    Owner, 2026-10-16: a call for an event that has already passed is most likely a
+    misheard event number (or a bad call), so it waits for a double check:
+
+    * the event is not in the meet file;
+    * the event was already notified (a new call after the coach was told);
+    * the event is well behind where the meet is now (``constants.REVIEW_EVENTS_BEHIND``
+      events behind the lowest event of the latest few DQs).
+    """
+    event = normalize_event_number(candidate.get("event") or "")
+    if not event:
+        return None
+    if context["program_events"] and event not in context["program_events"]:
+        return REVIEW_NOT_IN_PROGRAM.format(event=event)
+    if event in context["notified"]:
+        return REVIEW_ALREADY_NOTIFIED.format(event=event)
+    number, current = _event_integer(event), context["current_event"]
+    if number is not None and current is not None and number < current - constants.REVIEW_EVENTS_BEHIND:
+        return REVIEW_EVENT_PASSED.format(event=event, current=current)
+    return None
 
 
 def _number_text(value: Any) -> str:
