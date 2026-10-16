@@ -1,0 +1,157 @@
+task: 20261016T013641Z_signin_read_diagnostics
+started: 2026-10-15T18:36:50-07:00
+finished: 2026-10-15T18:36:50-07:00
+work_repo_commit: b07ab1d
+exit_code: 0
+--- output ---
+== scans
+20261015T181830
+20261015T181952
+20261015T182034
+20261015T182113
+20261015T183512
+
+######## 20261015T182034  frames: 9
+CAMERA facing=environment size=[1920, 1080] fps=30 focus=['manual', 'single-shot', 'continuous'] zoom={'max': 8, 'min': 1, 'step': 0.1}
+  agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 cores: 8
+--- pass 2 layout=4 rot=None mirror=False frame=[1600, 900] prep=194ms ocr=827ms card=False t=2024ms
+--- pass 1 layout=6 rot=None mirror=False frame=[1600, 900] prep=220ms ocr=17979ms card=False t=18801ms
+--- pass 4 layout=4 rot=None mirror=True frame=[1600, 900] prep=202ms ocr=333ms card=False t=19338ms
+--- pass 5 layout=6 rot=None mirror=True frame=[1600, 900] prep=194ms ocr=487ms card=False t=20018ms
+--- pass 6 layout=4 rot=None mirror=True frame=[1600, 900] prep=187ms ocr=386ms card=False t=20593ms
+--- pass 7 layout=6 rot=None mirror=True frame=[1600, 900] prep=243ms ocr=911ms card=False t=21747ms
+--- pass 8 layout=4 rot=None mirror=True frame=[1600, 900] prep=197ms ocr=375ms card=False t=22321ms
+--- pass 9 layout=6 rot=None mirror=True frame=[1600, 900] prep=889ms ocr=2677ms card=False t=25888ms
+--- pass 3 layout=6 rot=None mirror=False frame=[1600, 900] prep=197ms ocr=34918ms card=False t=37141ms
+RESULT {'passes': 9, 'card_passes': 0, 'complete': False, 'missing': None, 'cancelled': False, 'elapsed_ms': 37144}
+
+######## 20261015T182113  frames: 25
+CAMERA facing=environment size=[1920, 1080] fps=30 focus=['manual', 'single-shot', 'continuous'] zoom={'max': 8, 'min': 1, 'step': 0.1}
+  agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 cores: 8
+--- pass 1 layout=6 rot=None mirror=False frame=[1600, 900] prep=226ms ocr=397ms card=False t=1236ms
+--- pass 2 layout=4 rot=None mirror=False frame=[1600, 900] prep=216ms ocr=659ms card=False t=1888ms
+--- pass 3 layout=6 rot=None mirror=False frame=[1600, 900] prep=216ms ocr=622ms card=False t=2075ms
+--- pass 5 layout=6 rot=None mirror=False frame=[1600, 900] prep=180ms ocr=383ms card=False t=2639ms
+--- pass 4 layout=4 rot=None mirror=False frame=[1600, 900] prep=185ms ocr=756ms card=False t=2830ms
+--- pass 7 layout=6 rot=None mirror=False frame=[1600, 900] prep=196ms ocr=419ms card=False t=3445ms
+--- pass 6 layout=4 rot=None mirror=False frame=[1600, 900] prep=189ms ocr=808ms card=False t=3637ms
+--- pass 8 layout=4 rot=None mirror=False frame=[1600, 900] prep=190ms ocr=514ms card=False t=4151ms
+--- pass 9 layout=6 rot=None mirror=False frame=[1600, 900] prep=181ms ocr=512ms card=False t=4331ms
+--- pass 10 layout=4 rot=None mirror=False frame=[1600, 900] prep=177ms ocr=512ms card=False t=4842ms
+--- pass 11 layout=6 rot=None mirror=False frame=[1600, 900] prep=178ms ocr=622ms card=False t=5131ms
+--- pass 12 layout=4 rot=None mirror=False frame=[1600, 900] prep=193ms ocr=431ms card=False t=5468ms
+--- pass 13 layout=6 rot=None mirror=False frame=[1600, 900] prep=189ms ocr=613ms card=False t=5936ms
+--- pass 14 layout=4 rot=None mirror=False frame=[1600, 900] prep=182ms ocr=464ms card=False t=6115ms
+--- pass 16 layout=4 rot=None mirror=True frame=[1600, 900] prep=176ms ocr=360ms card=False t=6652ms
+--- pass 15 layout=6 rot=None mirror=True frame=[1600, 900] prep=177ms ocr=731ms card=False t=6845ms
+--- pass 18 layout=4 rot=None mirror=True frame=[1600, 900] prep=183ms ocr=772ms card=False t=7802ms
+--- pass 17 layout=6 rot=None mirror=True frame=[1600, 900] prep=192ms ocr=1407ms card=False t=8251ms
+--- pass 19 layout=6 rot=None mirror=True frame=[1600, 900] prep=185ms ocr=1498ms card=False t=9487ms
+--- pass 20 layout=4 rot=None mirror=False frame=[1600, 900] prep=193ms ocr=1237ms card=False t=9684ms
+--- pass 21 layout=6 rot=None mirror=False frame=[1600, 900] prep=194ms ocr=2437ms card=True t=12120ms
+    | Ch ria
+    | Aicial © [7A] n
+    | f av
+    | MARY "RED" BYER
+    | Member 1d: 65708 7T9DA0EAL
+    | 8C & Cluty; V( (AN
+    | 0 Gary SAnnding Umi 06/21/2037
+    | Brg an ims 12/41/0094
+    | Background Check (4/40/2021
+    | fdilata PraAsction Training 09/21/4047
+    | Concussion Pratacol Training 61/01/4000
+    | (CASRN) Mandatory flaparting 01/61/3000
+    | Understanding four ftaspansibility te
+    | o£ j 10 17 fiwr of 1 miming, | hereby agree 16 al fo iy thie
+MERGED {'pass': 21, 'complete': False, 'missing': ['name', 'member_id', 'lsc', 'club', 'good_standing_until', 'background_check_until', 'athlete_protection_until'], 'elapsed_ms': 12159}
+--- pass 22 layout=4 rot=None mirror=True frame=[1600, 900] prep=180ms ocr=2538ms card=False t=12403ms
+--- pass 23 layout=6 rot=None mirror=False frame=[1600, 900] prep=187ms ocr=1855ms card=True t=14203ms
+    | Official @ fu
+    | MAR
+    | Member Id: [ID]
+    | LSC & Club: PC-PASA
+    | In Good Standing Until: 05/21/2027
+    | Expiration Date: 12/31/9999
+    | Background Check: 09/30/2027
+    | Athlete Protection Training: 09/21/2027
+    | Concussion Protocol Training: 01/01/3000
+    | (CAMRA) Mandatory Reporting: 01/01/3000
+    | Understanding Your Responsibility: $=
+    | yy becoming 0 member of USh Swimming, | hereby agree to abide by the
+    | rules, regulation d Code of Conduct of USA Swimming
+MERGED {'pass': 23, 'complete': False, 'missing': ['name'], 'elapsed_ms': 14240}
+--- pass 24 layout=4 rot=None mirror=False frame=[1600, 900] prep=179ms ocr=1925ms card=True t=14507ms
+    | Oftlcle
+    | ficlal © ow
+    | MARK "RED" BYER
+    | Member Id: [ID]
+    | LSC & Clubt PC - PASA
+    | In Good Standing Until 09/21/2027
+    | Expiration Datel 12/31/0900
+    | Background Check: 00/20/2027
+    | Athlete Protection Training: 09/21/2027
+    | concussion Protocol Training 01/01/3000
+    | (CANRA) Mandatory Reporting! 01/01/3000
+    | Understanding Your Responsibility:
+    | ly becoming a member of USA Swimming, | hereby agreg to ablde by the
+    | rules, regulations and Code of Conduct of USA Swimming
+MERGED {'pass': 24, 'complete': True, 'missing': [], 'elapsed_ms': 14546}
+--- pass 25 layout=6 rot=None mirror=False frame=[1600, 900] prep=178ms ocr=2292ms card=True t=16712ms
+    | ee a binds
+    | In good standing
+    | Official
+    | J usa] 5
+    | " ff
+    | MARK "RED" BYER
+    | Member Id: [ID]
+    | LSC & Club: PC-PASA
+    | ee
+    | In Good Standing Until: 09/21/2027
+    | Expiration Date: 12/31/9999
+    | Background Check: 09/30/2027
+    | Athlete Protection Training: 09/21/2027
+    | Concussion protocol Training: 01/01/3000
+    | (CANRA) Mandatory Reporting: 01/01/3000
+    | Understanding Your Responsibility: ES
+    | By becoming a member of USA Swimming, | hereby agree © abide by the
+    | rules, regulations, and Code of Conduct of USA Swimming
+RESULT {'passes': 25, 'card_passes': 3, 'complete': True, 'missing': [], 'cancelled': False, 'elapsed_ms': 16714}
+
+######## 20261015T183512  frames: 20
+CAMERA facing=user size=[1920, 1080] fps=30 focus=['manual'] zoom={'max': 8, 'min': 1, 'step': 0.1}
+  agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 cores: 8
+--- pass 2 layout=4 rot=90 mirror=False frame=[458, 1154] prep=418ms ocr=402ms card=False t=1903ms
+--- pass 3 layout=6 rot=270 mirror=False frame=[458, 1155] prep=397ms ocr=1371ms card=False t=3673ms
+--- pass 4 layout=4 rot=0 mirror=True frame=[1333, 438] prep=253ms ocr=202ms card=False t=4130ms
+--- pass 1 layout=6 rot=0 mirror=False frame=[1326, 439] prep=228ms ocr=4300ms card=False t=5213ms
+--- pass 6 layout=4 rot=90 mirror=False frame=[446, 1157] prep=237ms ocr=238ms card=False t=5689ms
+CAMERA facing=environment size=[1920, 1080] fps=30 focus=['manual', 'single-shot', 'continuous'] zoom={'max': 8, 'min': 1, 'step': 0.1}
+  agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 cores: 8
+--- pass 5 layout=6 rot=0 mirror=False frame=[1330, 434] prep=185ms ocr=2241ms card=False t=6559ms
+--- pass 8 layout=4 rot=90 mirror=False frame=[900, 876] prep=195ms ocr=369ms card=False t=7305ms
+--- pass 9 layout=6 rot=270 mirror=False frame=[747, 1007] prep=195ms ocr=2589ms card=False t=10091ms
+--- pass 10 layout=4 rot=0 mirror=True frame=[1032, 741] prep=195ms ocr=840ms card=False t=11131ms
+--- pass 11 layout=6 rot=0 mirror=False frame=[1185, 670] prep=270ms ocr=1371ms card=False t=12774ms
+--- pass 7 layout=6 rot=0 mirror=False frame=[883, 667] prep=181ms ocr=7362ms card=False t=14103ms
+--- pass 12 layout=4 rot=90 mirror=False frame=[783, 1003] prep=239ms ocr=1810ms card=False t=14824ms
+--- pass 14 layout=4 rot=0 mirror=True frame=[907, 735] prep=225ms ocr=578ms card=False t=15629ms
+--- pass 13 layout=6 rot=270 mirror=False frame=[894, 934] prep=210ms ocr=2528ms card=False t=16842ms
+--- pass 15 layout=6 rot=0 mirror=False frame=[921, 734] prep=182ms ocr=3276ms card=False t=19088ms
+--- pass 16 layout=4 rot=90 mirror=False frame=[867, 915] prep=203ms ocr=2317ms card=False t=19363ms
+--- pass 18 layout=4 rot=0 mirror=True frame=[941, 742] prep=188ms ocr=994ms card=False t=20546ms
+--- pass 17 layout=6 rot=270 mirror=False frame=[854, 933] prep=200ms ocr=2612ms card=True t=21903ms
+    | WIARN REV” BYER
+    | Member Id: [ID]
+    | LSC & Club: PC-pasSA
+    | —
+    | In Good Standing Until: 09/21/202°
+    | Expiration Date: 12/31/999
+    | =
+    | Background Check: 09/30/20?
+    | Athlete Protection Training: 09/21/20:
+    | Concussion Protocol Training: 01/01/30(
+    | (CANRA) Mandatory Reporting: 01/01/30
+    | Understanding Your Responsibility:
+    | By becoming a member of USA Swimming, | hereby agree to abide b
+    | rules, regulations, and Code of Conduct of USA Swimming
+MERGED {'pass': 17, 'complete': False, 'missing': ['good_standing_until', 'background_check_until', 'athlete_protection_until'], 'elapsed_ms': 21941}
