@@ -385,6 +385,56 @@ class DqStore:
             )
             return True
 
+    def create_dq_from_utterance(self, utterance_id: int, selected_text: str | None = None) -> list[int]:
+        """Make DQs by hand from one transcript line (for calls the detector missed).
+
+        The line (or just the words the admin selected in it) is read by the call
+        parser, so event, heat, lane, infraction and slip code are filled in where
+        it can; one DQ is made per lane found, or one DQ with only the audio linked
+        if nothing was understood. The audio of the line is linked as evidence and
+        the words are kept in the DQ's notes.
+
+        Args:
+            utterance_id: The transcript line.
+            selected_text: Words selected in the line (default: the whole line).
+
+        Returns:
+            The new DQ ids (empty if there is no such line).
+        """
+        with self._database.connection() as connection:
+            row = connection.execute(
+                "SELECT u.id, u.clip_id, u.start_seconds, u.end_seconds, u.text, c.meet_id FROM utterances u "
+                "JOIN clips c ON c.id = u.clip_id WHERE u.id = ?",
+                (utterance_id,),
+            ).fetchone()
+        if row is None:
+            return []
+        text = (selected_text or "").strip() or row["text"] or ""
+        utterance = {"clip_id": row["clip_id"], "id": row["id"], "start_seconds": row["start_seconds"],
+                     "end_seconds": row["end_seconds"], "text": text}
+        calls = [call for call in parse_call_group([utterance], self._phrases) if call.lane or call.infractions]
+        meet_id = row["meet_id"]
+        event_strokes = self._event_strokes(meet_id, calls)
+        strokes_from_file = self._program_store.event_strokes(meet_id) if self._program_store else {}
+        evidence = [{"clip_id": row["clip_id"], "utterance_id": row["id"], "start_seconds": row["start_seconds"],
+                     "end_seconds": row["end_seconds"], "role": constants.EVIDENCE_ROLE_CALL}]
+        note = constants.MANUAL_DQ_NOTE_FORMAT.format(text=text[: constants.MAX_DQ_FIELD_CHARS - 40])
+        payloads = []
+        for call in calls:
+            if call.event in event_strokes:
+                choose_codes(call, event_strokes[call.event], stroke_is_certain=call.event in strokes_from_file)
+            payloads.append({
+                "event": call.event, "heat": call.heat, "lane": call.lane, "notes": note, "evidence": evidence,
+                "infractions": [
+                    {"description": description, "code": code, "phases": call.phases,
+                     "code_options": options or call.suggested_codes}
+                    for description, code, options in zip(call.infractions, call.codes, call.code_options)
+                ],
+            })
+        if not payloads:
+            payloads.append({"notes": note, "evidence": evidence, "infractions": []})
+        return [self.create_dq(payload, meet_id) for payload in payloads]
+
     def notify_event(self, meet_id: int | None, event: str, by_name: str | None, include_not_ready: bool = False) -> list[int]:
         """Notify every DQ of an event that is pending notification (the paper process:
         slips go to the coaches once all of the event's DQs are complete).

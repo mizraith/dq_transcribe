@@ -271,9 +271,6 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self._request("POST", "/nope", b"x").status, 404)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
     def test_upload_and_read_program(self) -> None:
         response = self._post_json(constants.ROUTE_MEETS, {constants.REQUEST_KEY_MEET_NAME: "Candy Meet",
@@ -292,3 +289,7 @@ if __name__ == "__main__":
         bad = self._request("POST", route, b"hello", {constants.CONTENT_TYPE_HEADER: "application/octet-stream"})
         self.assertEqual(bad.status, 422)
         self.assertIn("No events", json.loads(bad.read())["error"])
+
+
+if __name__ == "__main__":
+    unittest.main()

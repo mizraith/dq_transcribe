@@ -138,6 +138,7 @@ def build_web_config() -> dict[str, Any]:
         "downsampleCutoffFraction": constants.DOWNSAMPLE_CUTOFF_FRACTION,
         "clippingWarningSeconds": constants.CLIPPING_WARNING_SECONDS,
         "textKey": constants.REQUEST_KEY_TEXT,
+        "dqIdsKey": constants.RESPONSE_KEY_DQ_IDS,
         "audioSuffix": constants.CLIP_AUDIO_SUFFIX,
         "reprocessSuffix": constants.CLIP_REPROCESS_SUFFIX,
         "trashSuffix": constants.CLIP_TRASH_SUFFIX,
@@ -168,6 +169,9 @@ def build_web_config() -> dict[str, Any]:
         "maxProtestCycles": constants.MAX_PROTEST_CYCLES,
         "protestWindowMinutes": constants.PROTEST_WINDOW_MINUTES,
         "notifyEventRoute": constants.ROUTE_NOTIFY_EVENT,
+        "dqFromUtteranceRoute": constants.ROUTE_DQ_FROM_UTTERANCE,
+        "utteranceIdKey": constants.REQUEST_KEY_UTTERANCE_ID,
+        "textKey": constants.REQUEST_KEY_TEXT,
         "byKey": constants.REQUEST_KEY_BY,
         "noteKey": constants.REQUEST_KEY_NOTE,
         "atKey": constants.REQUEST_KEY_AT,
@@ -416,6 +420,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_dismiss_candidate()
         elif path == constants.ROUTE_NOTIFY_EVENT:
             self._handle_notify_event()
+        elif path == constants.ROUTE_DQ_FROM_UTTERANCE:
+            self._handle_dq_from_utterance()
         elif (match := _DQ_STATE_PATTERN.match(path)) is not None:
             self._handle_dq_state(int(match.group(1)))
         elif (match := _DQ_PATTERN.match(path)) is not None:
@@ -732,6 +738,22 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json_error(HTTPStatus.NOT_FOUND, "No such DQ")
             return
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_OK: True})
+
+    def _handle_dq_from_utterance(self) -> None:
+        """Make DQs by hand from a transcript line: {"utterance_id", "text" (selected words, optional)}."""
+        payload = self._read_json_object()
+        if payload is None:
+            return
+        utterance_id = payload.get(constants.REQUEST_KEY_UTTERANCE_ID)
+        text = payload.get(constants.REQUEST_KEY_TEXT)
+        if not isinstance(utterance_id, int):
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "utterance_id must be a number")
+            return
+        dq_ids = self.server.dq_store.create_dq_from_utterance(utterance_id, text if isinstance(text, str) else None)
+        if not dq_ids:
+            self._send_json_error(HTTPStatus.NOT_FOUND, "No such transcript line")
+            return
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_DQ_IDS: dq_ids})
 
     def _handle_notify_event(self) -> None:
         """Notify an event's DQs that are pending notification: {"event", "by", "include_not_ready"}."""

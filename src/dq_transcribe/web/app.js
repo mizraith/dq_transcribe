@@ -1184,7 +1184,12 @@ function buildClipRow(clip) {
     textarea.placeholder = "(no speech)";
     textarea.rows = Math.max(1, Math.ceil(utterance.text.length / 55));
     textarea.addEventListener("change", () => saveUtterance(utterance, textarea));
-    row.append(textarea);
+    // "+ DQ" beside each line: a DQ by hand from this line (or the words selected in it).
+    const line = makeElement("div", "utterance-line");
+    const makeDq = makeButton("utterance-dq", "+ DQ", () => createDqFromLine(utterance, textarea));
+    makeDq.title = "Make a DQ from this line (select words first to use only those)";
+    line.append(textarea, makeDq);
+    row.append(line);
     // A hand-edited line keeps the edit; show the refined text beside it for comparison.
     if (utterance.edited_at && utterance.refined_text && utterance.refined_text !== utterance.text) {
       row.append(makeElement("p", "note", "Refined pass heard: " + utterance.refined_text));

@@ -172,6 +172,22 @@ async function createDqFromCandidate(candidate) {
   forceRefresh();
 }
 
+/** Make DQs by hand from a transcript line, or from the words selected in it. */
+async function createDqFromLine(utterance, textarea) {
+  const selected = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+  const body = {};
+  body[CONFIG.utteranceIdKey] = utterance.id;
+  body[CONFIG.textKey] = selected || textarea.value;
+  try {
+    const reply = await postJson(CONFIG.dqFromUtteranceRoute, body);
+    const count = reply[CONFIG.dqIdsKey].length;
+    notify("\u2713 Made " + (count === 1 ? "a DQ" : count + " DQs") + " from " + (selected ? "the selected words" : "this line") + ". Open DQs to finish.");
+  } catch (error) {
+    notify("Could not make the DQ: " + error.message, "error");
+  }
+  forceRefresh();
+}
+
 /** Hide a detected call that is not a DQ. */
 async function dismissCandidate(candidate) {
   const body = {};

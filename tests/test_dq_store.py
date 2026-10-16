@@ -96,9 +96,6 @@ class DqStoreTests(unittest.TestCase):
         self.assertIn("2A", [row["code"] for row in codes])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
     def _complete_dq(self, event: str, lane: str, accepted: bool = True, evidence: list | None = None) -> int:
         """A DQ with every required field (pending notification once accepted)."""
@@ -139,6 +136,18 @@ if __name__ == "__main__":
         dq = self.store.list_dqs(None)[0]
         self.assertEqual((dq["protest_count"], dq["ruled_by"], dq["status"]), (2, "Meet Referee", constants.DQ_STATUS_OVERTURNED))
 
+    def test_dq_by_hand_from_a_line(self) -> None:
+        ids = self._add_transcribed_clip(["Event 20, heat 3, lanes 2 and 5, past hipline.", "Thank you, heard."])
+        made = self.store.create_dq_from_utterance(ids[0])
+        dqs = self.store.list_dqs(None)
+        self.assertEqual([(dq["lane"], dq["infractions"][0]["code"]) for dq in dqs], [("2", "3D"), ("5", "3D")])
+        self.assertEqual(len(made), 2)
+        self.assertEqual(dqs[0]["evidence"][0]["utterance_id"], ids[0])
+        only_words = self.store.create_dq_from_utterance(ids[1], "heard")  # nothing understood: audio and words only
+        dq = next(item for item in self.store.list_dqs(None) if item["id"] == only_words[0])
+        self.assertEqual((dq["event"], dq["infractions"], dq["notes"]), (None, [], "Made by hand from: \u201cheard\u201d"))
+        self.assertEqual(self.store.create_dq_from_utterance(9999), [])
+
 class DqStatusTests(unittest.TestCase):
     """Accepted DQs split into incomplete and pending notification."""
 
@@ -156,3 +165,7 @@ class DqStatusTests(unittest.TestCase):
             constants.DQ_STATUS_NOTIFIED, constants.DQ_STATUS_PROTESTED, constants.DQ_STATUS_UPHELD,
             constants.DQ_STATUS_OVERTURNED, constants.DQ_STATUS_DECLINED,
         ])
+
+
+if __name__ == "__main__":
+    unittest.main()

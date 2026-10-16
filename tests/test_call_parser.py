@@ -108,9 +108,6 @@ class ParseCallGroupTests(unittest.TestCase):
         self.assertFalse(is_acknowledgment("Event 4, heat 2, lane 1, one hand touch."))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class SlipCodeSuggestionTests(unittest.TestCase):
     """Slip codes for infractions the phrase list names only by group, or not at all."""
@@ -137,3 +134,7 @@ class SlipCodeSuggestionTests(unittest.TestCase):
         self.assertEqual(rank_codes("one hand touch", "Breaststroke"), ["3J"])
         self.assertEqual(rank_codes("he delayed initiating the turn"), ["2C", "2B"])
         self.assertEqual(rank_codes("event 5, heat 1, lane 3, thank you"), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
