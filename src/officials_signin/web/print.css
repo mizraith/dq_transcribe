@@ -37,6 +37,8 @@ td.number, th.number { text-align: right; width: 2.5em; }
 .team li { padding: 0.15rem 0; font-size: 1.25rem; }
 .team li.trainee { font-size: 1.05rem; color: var(--muted); padding-left: 1rem; }
 .display-columns { display: grid; grid-template-columns: 1fr 16rem; gap: 1rem; align-items: start; }
+.rotation-heading { margin-bottom: 0; font-size: 1.3em; }
+.rotation-key { margin: 0 0 0.4rem; color: var(--muted); font-size: 0.75em; }
 .rotation-table td, .rotation-table th { font-size: 1.15rem; text-align: center; }
 .rotation-table td:first-child, .rotation-table th:first-child { text-align: left; }
 @media (max-width: 820px) { .display-columns { grid-template-columns: 1fr; } }

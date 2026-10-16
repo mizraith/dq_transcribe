@@ -65,6 +65,24 @@ def assign_roles(judge_count: int, trainee_count: int, head_officials: bool) -> 
     return roles
 
 
+def demo_years(generator: random.Random, head_official: bool) -> int:
+    """Years certified for a made-up official (see ``constants.DEMO_YEARS_WEIGHTS``).
+
+    Args:
+        generator: Random source.
+        head_official: Referee, starter, chief judge or admin: at least
+            ``constants.DEMO_HEAD_OFFICIAL_MIN_YEARS``.
+
+    Returns:
+        1 to 15, mostly 1-3 for stroke & turn judges.
+    """
+    choices = [
+        (years, weight) for years, weight in constants.DEMO_YEARS_WEIGHTS.items()
+        if not head_official or years >= constants.DEMO_HEAD_OFFICIAL_MIN_YEARS
+    ]
+    return generator.choices([years for years, _ in choices], weights=[weight for _, weight in choices])[0]
+
+
 def session_name(session_date: date, session_type: str) -> str:
     """``Friday PM``, ``Saturday Prelims`` (same style as Meet setup's suggestion)."""
     return f"{session_date.strftime('%A')} {session_type}"
@@ -113,9 +131,10 @@ def build_demo(
     needs_admin_left = constants.DEMO_NEEDS_ADMIN_COUNT
     roles = assign_roles(judge_count, trainee_count, head_officials)
     for name, (role, trainee) in zip(fake_names(len(roles), generator), roles):
-        years = None if generator.random() < constants.DEMO_UNKNOWN_YEARS_SHARE else (
-            0 if trainee else generator.randint(1, constants.DEMO_MAX_YEARS_CERTIFIED)
-        )
+        if generator.random() < constants.DEMO_UNKNOWN_YEARS_SHARE:
+            years = None
+        else:
+            years = 0 if trainee else demo_years(generator, head_official=role != constants.TEAM_POOL_ROLE)
         official_id = database.save_official(None, name, years, None, None, first_day)
         _set_club(database, official_id, lsc, generator.choice(constants.DEMO_CLUB_CODES), meet_id)
         # Everyone works the first session (so its count matches what was asked for);

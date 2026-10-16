@@ -20,7 +20,7 @@ from typing import Any
 
 from officials_signin import constants
 from officials_signin.database import Database, Validation
-from officials_signin.demo import assign_roles, build_demo, fake_names
+from officials_signin.demo import assign_roles, build_demo, demo_years, fake_names
 from officials_signin.reports import render_meet_summary, render_session_summary, render_team_display
 from officials_signin.server import SigninServer
 from officials_signin.teams import build_team_view, format_slot_time, rotation_pairs, rotation_schedule
@@ -143,6 +143,15 @@ class DemoBuildTests(unittest.TestCase):
         self.assertEqual(len(roles), len(constants.DEMO_SPECIAL_ROLES) + 4)
         self.assertEqual(roles[-1], (constants.TEAM_POOL_ROLE, True))
         self.assertEqual(len(assign_roles(3, 1, head_officials=False)), 4)
+
+    def test_years_are_mostly_short_and_capped(self) -> None:
+        generator = random.Random(DEMO_SEED)
+        years = [demo_years(generator, head_official=False) for _ in range(2000)]
+        self.assertLessEqual(max(years), 15)
+        self.assertGreater(sum(1 for value in years if value <= 3) / len(years), 0.5)
+        self.assertLess(sum(1 for value in years if value >= 10) / len(years), 0.08)
+        heads = [demo_years(generator, head_official=True) for _ in range(200)]
+        self.assertGreaterEqual(min(heads), constants.DEMO_HEAD_OFFICIAL_MIN_YEARS)
 
     def test_build(self) -> None:
         path = Path(tempfile.mkdtemp()) / "demo.db"
@@ -385,6 +394,42 @@ class DemoServerTests(unittest.TestCase):
             del sys.modules[constants.COACHES_MODULE_NAME]
         self.assertEqual(calls, [(constants.ROUTE_COACHES, False, "Real Meet"),
                                  (constants.ROUTE_COACHES_API_PREFIX + "list", True, constants.DEMO_MEET_NAME)])
+
+    def meet_action(self, meet_id: int, suffix: str, body: dict[str, Any] | None = None) -> tuple[int, Any]:
+        status, reply, _ = self.request("POST", f"{constants.ROUTE_MEET_PREFIX}{meet_id}{suffix}", body or {})
+        return status, reply
+
+    def test_archive_restore_and_delete_a_meet(self) -> None:
+        old_meet = self.database.list_meets()[0][constants.KEY_ID]
+        session = self.database.add_session("Friday PM", "2026-10-16", "13:00")
+        official = self.database.save_official(None, "Pat Sample", 3, None, None, MEET_DATE)
+        self.database.sign_in(official, [session], [constants.TEAM_POOL_ROLE], False,
+                              {session: Validation(True, constants.VALIDATION_VISUAL, [])})
+        self.database.create_meet("New Meet", "2026-11-01")
+        # The open meet cannot be archived; deleting needs archiving first.
+        status, reply = self.meet_action(self.database.get_setting(constants.SETTING_ACTIVE_MEET_ID),
+                                         constants.MEET_ARCHIVE_SUFFIX, {constants.KEY_ARCHIVED: True})
+        self.assertEqual(status, 400, reply)
+        self.assertEqual(self.meet_action(old_meet, constants.MEET_DELETE_SUFFIX)[0], 400)
+        self.assertEqual(self.meet_action(old_meet, constants.MEET_ARCHIVE_SUFFIX, {constants.KEY_ARCHIVED: True})[0], 200)
+        _, overview, _ = self.request("GET", constants.ROUTE_MEETS)
+        archived = {meet[constants.KEY_NAME]: meet[constants.KEY_ARCHIVED] for meet in overview[constants.KEY_MEETS]}
+        self.assertEqual(archived, {"New Meet": False, "Real Meet": True})
+        self.assertEqual(self.meet_action(old_meet, constants.MEET_ARCHIVE_SUFFIX, {constants.KEY_ARCHIVED: False})[0], 200)
+        self.assertFalse(self.database.list_meets()[1][constants.KEY_ARCHIVED])
+        self.meet_action(old_meet, constants.MEET_ARCHIVE_SUFFIX, {constants.KEY_ARCHIVED: True})
+        status, reply = self.meet_action(old_meet, constants.MEET_DELETE_SUFFIX)
+        self.assertEqual((status, reply[constants.KEY_SIGNIN_COUNT]), (200, 1))
+        self.assertEqual([meet[constants.KEY_NAME] for meet in self.database.list_meets()], ["New Meet"])
+        self.assertIsNone(self.database.get_session(session))
+        self.assertEqual(self.database.list_officials(MEET_DATE)[0][constants.KEY_NAME], "Pat Sample")  # people stay
+
+    def test_opening_an_archived_meet_restores_it(self) -> None:
+        old_meet = self.database.list_meets()[0][constants.KEY_ID]
+        self.database.create_meet("New Meet", "2026-11-01")
+        self.meet_action(old_meet, constants.MEET_ARCHIVE_SUFFIX, {constants.KEY_ARCHIVED: True})
+        self.meet_action(old_meet, constants.MEET_OPEN_SUFFIX)
+        self.assertFalse(next(m for m in self.database.list_meets() if m[constants.KEY_ID] == old_meet)[constants.KEY_ARCHIVED])
 
     def test_exit_clears_the_cookie(self) -> None:
         cookie = self.start_demo()

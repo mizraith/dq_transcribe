@@ -49,6 +49,9 @@ ROUTE_STATE = "/api/state"  # GET: active meet, sessions, sign-ins
 ROUTE_MEETS = "/api/meets"  # GET: every meet (Meet overview); POST: create a meet (and make it active)
 ROUTE_MEET_PREFIX = "/api/meets/"  # POST /api/meets/<id>/open: make that meet the active one
 MEET_OPEN_SUFFIX = "/open"
+MEET_ARCHIVE_SUFFIX = "/archive"  # POST /api/meets/<id>/archive {archived: true|false}
+MEET_DELETE_SUFFIX = "/delete"  # POST /api/meets/<id>/delete: an archived meet, its sessions and sign-ins
+KEY_ARCHIVED = "archived"
 # POST {id or null, name, start_date, sessions: [{id or null, name, date, ...}]}: create or
 # change a meet and all its sessions at once (Meet setup's Save).
 ROUTE_MEET_SAVE = "/api/meets/save"
@@ -471,6 +474,8 @@ ASSIGNMENT_FIFTEEN_METER = "15 m"
 ASSIGNMENT_RELIEF = "Relief"
 LEFTOVER_ASSIGNMENT_ORDER = (ASSIGNMENT_ACJ, ASSIGNMENT_FIFTEEN_METER, ASSIGNMENT_RELIEF)
 EXTRA_ASSIGNMENTS = LEFTOVER_ASSIGNMENT_ORDER
+# Short labels for the job chips on the Teams screen ("Off the teams").
+ASSIGNMENT_SHORT_LABELS = {ASSIGNMENT_ACJ: "ACJ", ASSIGNMENT_FIFTEEN_METER: "15 m", ASSIGNMENT_RELIEF: "Relief"}
 # Officials with unknown years certified sort after everyone with years.
 UNKNOWN_YEARS_SORT_VALUE = -1
 DEFAULT_LANES = 8
@@ -512,6 +517,8 @@ ROUTE_TEAMS = "/api/teams"  # GET: the team view for the active session
 ROUTE_TEAMS_BUILD = "/api/teams/build"  # POST: build (or rebuild) teams automatically
 ROUTE_TEAMS_SETTINGS = "/api/teams/settings"  # POST: lanes, rotation mode, 15 m on every team (no rebuild)
 SIGNIN_TEAM_SUFFIX = "/team"  # POST /api/signins/<id>/team: move, lead, mentor
+SIGNIN_SWAP_SUFFIX = "/swap"  # POST /api/signins/<id>/swap {with_signin_id}: swap two officials' places
+KEY_WITH_SIGNIN_ID = "with_signin_id"
 
 # --- Coaches sign-in (a separate page on this server, built in its own files) ----
 # officials_signin/coaches.py, when present, handles these routes through
@@ -584,7 +591,15 @@ DEMO_SESSION_PLAN = (
 )
 # Head officials added when "head officials" is ticked.
 DEMO_SPECIAL_ROLES = ("Meet Referee", "Deck Referee", "Starter", "Chief Judge", "Admin Official")
-DEMO_MAX_YEARS_CERTIFIED = 30
+# Years certified in the demo, as the owner sees real crews (2026-10-16): most stroke &
+# turn judges have 1-3 years, it falls off quickly, very few reach 10, none above 15.
+# Relative weights per number of years.
+DEMO_YEARS_WEIGHTS = {
+    1: 22, 2: 20, 3: 16, 4: 10, 5: 8, 6: 6, 7: 4.5, 8: 3.5, 9: 2.5, 10: 1.8,
+    11: 1.3, 12: 1.0, 13: 0.7, 14: 0.5, 15: 0.3,
+}
+# Referees, starters and the chief judge come from the more experienced end.
+DEMO_HEAD_OFFICIAL_MIN_YEARS = 5
 DEMO_UNKNOWN_YEARS_SHARE = 0.1
 DEMO_NEEDS_ADMIN_COUNT = 1  # sign-ins left "card not checked" so the admin queue has something
 DEMO_LSC_CODES = ("PC", "SN", "CC")

@@ -83,6 +83,9 @@ _SCHEMA = (
 
 # Columns added after the first release, by table; `initialize` adds them to older databases.
 _ADDED_COLUMNS = {
+    "meets": {
+        "archived_at": "TEXT",  # set when the admin archives a finished meet (hidden from the main list)
+    },
     "sessions": {
         "session_type": "TEXT",
         "officials_meeting_time": "TEXT",
@@ -237,18 +240,63 @@ class Database:
         """Every meet for the Meet overview, newest first.
 
         Returns:
-            ``{"id", "name", "start_date", "session_count", "official_count"}`` per meet
-            (``official_count`` counts each person once across the meet's sessions).
+            ``{"id", "name", "start_date", "archived", "session_count", "official_count",
+            "signin_count"}`` per meet (``official_count`` counts each person once across
+            the meet's sessions; ``signin_count`` counts every sign-in).
         """
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT m.id, m.name, m.start_date, "
+                "SELECT m.id, m.name, m.start_date, m.archived_at IS NOT NULL AS archived, "
+                "(SELECT COUNT(*) FROM signins g JOIN sessions s ON s.id = g.session_id WHERE s.meet_id = m.id) "
+                " AS signin_count, "
                 "(SELECT COUNT(*) FROM sessions s WHERE s.meet_id = m.id) AS session_count, "
                 "(SELECT COUNT(DISTINCT g.official_id) FROM signins g JOIN sessions s ON s.id = g.session_id "
                 " WHERE s.meet_id = m.id) AS official_count "
                 "FROM meets m ORDER BY m.start_date DESC, m.id DESC"
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [dict(row, archived=bool(row["archived"])) for row in rows]
+
+    def set_meet_archived(self, meet_id: int, archived: bool) -> None:
+        """Archive a finished meet (hidden from the main Meets list) or bring it back.
+
+        Raises:
+            SigninError: For an unknown meet, or for archiving the meet that is open.
+        """
+        with self._connect() as connection:
+            if archived and self._get_setting_id(connection, constants.SETTING_ACTIVE_MEET_ID) == meet_id:
+                raise SigninError("This meet is open. Open another meet first, then archive this one.")
+            cursor = connection.execute(
+                "UPDATE meets SET archived_at = ? WHERE id = ?", (utc_now_iso() if archived else None, meet_id)
+            )
+            if cursor.rowcount == 0:
+                raise SigninError("No such meet")
+
+    def delete_meet(self, meet_id: int) -> int:
+        """Delete an archived meet with its sessions and sign-ins (the officials stay known).
+
+        Only archived meets can be deleted, so a meet is never deleted by one slip.
+
+        Returns:
+            How many sign-ins were deleted with it.
+
+        Raises:
+            SigninError: For an unknown meet or one that is not archived.
+        """
+        with self._connect() as connection:
+            row = connection.execute("SELECT archived_at FROM meets WHERE id = ?", (meet_id,)).fetchone()
+            if row is None:
+                raise SigninError("No such meet")
+            if row["archived_at"] is None:
+                raise SigninError("Archive the meet first, then delete it")
+            session_ids = "SELECT id FROM sessions WHERE meet_id = ?"
+            signin_count = connection.execute(
+                f"SELECT COUNT(*) AS count FROM signins WHERE session_id IN ({session_ids})", (meet_id,)
+            ).fetchone()["count"]
+            connection.execute(f"DELETE FROM signins WHERE session_id IN ({session_ids})", (meet_id,))
+            connection.execute("DELETE FROM sessions WHERE meet_id = ?", (meet_id,))
+            connection.execute("UPDATE officials SET card_meet_id = NULL WHERE card_meet_id = ?", (meet_id,))
+            connection.execute("DELETE FROM meets WHERE id = ?", (meet_id,))
+        return signin_count
 
     def open_meet(self, meet_id: int, today: date) -> None:
         """Make a meet the active one and pick its session to sign in to.
@@ -266,6 +314,7 @@ class Database:
         with self._connect() as connection:
             if connection.execute("SELECT 1 FROM meets WHERE id = ?", (meet_id,)).fetchone() is None:
                 raise SigninError("No such meet")
+            connection.execute("UPDATE meets SET archived_at = NULL WHERE id = ?", (meet_id,))  # open = in use
             sessions = connection.execute(
                 "SELECT id, date FROM sessions WHERE meet_id = ? ORDER BY date, start_time, id", (meet_id,)
             ).fetchall()
@@ -936,6 +985,43 @@ class Database:
                         value = int(bool(value))
                     connection.execute(f"UPDATE signins SET {column} = ? WHERE id = ?", (value, signin_id))
         return True
+
+    def swap_signin_places(self, session_id: int, first_id: int, second_id: int) -> None:
+        """Swap two certified officials' places (team and job), in one transaction.
+
+        Used when the admin drags one name onto another on the Teams screen. Both
+        lose a Team Lead star (they are on a new team); trainees they mentor move
+        with them.
+
+        Args:
+            session_id: The session both sign-ins belong to.
+            first_id: One sign-in.
+            second_id: The other sign-in.
+
+        Raises:
+            SigninError: If either is not in the session, or is a trainee.
+        """
+        with self._connect() as connection:
+            rows = {
+                row["id"]: row
+                for row in connection.execute(
+                    "SELECT id, team, assignment, trainee FROM signins WHERE session_id = ? AND id IN (?, ?)",
+                    (session_id, first_id, second_id),
+                )
+            }
+            if len(rows) != 2 or first_id == second_id:
+                raise SigninError("Both officials must be signed in to this session")
+            if any(row["trainee"] for row in rows.values()):
+                raise SigninError("Trainees move with their mentor: drop a trainee on their new mentor")
+            for moving, other in ((first_id, second_id), (second_id, first_id)):
+                connection.execute(
+                    "UPDATE signins SET team = ?, assignment = ?, team_lead = 0 WHERE id = ?",
+                    (rows[other]["team"], rows[other]["assignment"], moving),
+                )
+                connection.execute(
+                    "UPDATE signins SET team = ? WHERE mentor_signin_id = ? AND session_id = ?",
+                    (rows[other]["team"], moving, session_id),
+                )
 
     def roster_source(self, session_id: int) -> dict[str, Any] | None:
         """The meet, session and sign-ins needed to build the roster file.

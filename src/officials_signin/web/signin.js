@@ -694,6 +694,7 @@ async function teamsRequest(route, body) {
 
 function memberButton(member, isTrainee) {
   const button = makeButton("", "member" + (isTrainee ? " trainee" : ""), function () {
+    if (dragJustEnded) { return; } // the tap that ended a drag is not a "place" tap
     placeTarget = { id: member[KEYS.id], trainee: isTrainee };
     drawPlace();
     placeOverlay.hidden = false;
@@ -721,6 +722,9 @@ function memberButton(member, isTrainee) {
     detail.textContent = years === null || years === undefined ? "? yr" : years + " yr";
   }
   button.append(label, detail);
+  button.dataset.signinId = String(member[KEYS.id]);
+  if (isTrainee) { button.dataset.trainee = "1"; }
+  enableDrag(button);
   return button;
 }
 
@@ -814,17 +818,27 @@ function drawTeams() {
   view[KEYS.teams].forEach(function (team) {
     const pattern = team[KEYS.jurisdiction][KEYS.pattern];
     const card = teamCard(team[KEYS.name], pattern ? "lanes " + pattern : "", "");
+    card.dataset.dropTeam = team[KEYS.name];
     team[KEYS.members].forEach(function (member) { card.appendChild(memberButton(member, false)); });
     team[KEYS.trainees].forEach(function (trainee) { card.appendChild(memberButton(trainee, true)); });
     grid.appendChild(card);
   });
-  if (view[KEYS.extras].length) {
+  if (view[KEYS.teams].length) {
+    // Always there, so a name can be dragged off a team into it.
     const card = teamCard("Off the teams", "", "extras");
+    card.dataset.dropExtras = "1";
     view[KEYS.extras].forEach(function (member) {
       const button = memberButton(member, false);
-      button.querySelector(".years").textContent = member[KEYS.assignment];
+      button.querySelector(".years").textContent = CONFIG.assignmentShortLabels[member[KEYS.assignment]] || member[KEYS.assignment] || "";
       card.appendChild(button);
+      card.appendChild(extraJobChips(member, view));
     });
+    if (!view[KEYS.extras].length) {
+      const hint = document.createElement("p");
+      hint.className = "drop-hint";
+      hint.textContent = "Drag a name here to take them off the teams.";
+      card.appendChild(hint);
+    }
     grid.appendChild(card);
   }
   if (unplaced.length || unpaired.length) {
@@ -836,6 +850,190 @@ function drawTeams() {
   if (judgeCount === 0) {
     grid.textContent = "No stroke & turn judges have signed in to this session yet.";
   }
+}
+
+/**
+ * The job chips under someone off the teams: ACJ, Relief, and 15 m (offered when the
+ * teams do not have their own 15 m judges, or when this person already has it).
+ */
+function extraJobChips(member, view) {
+  const chips = document.createElement("div");
+  chips.className = "job-chips";
+  view[KEYS.extraAssignments].forEach(function (job) {
+    const isCurrent = member[KEYS.assignment] === job;
+    if (job === CONFIG.assignmentFifteenMeter && view[KEYS.fifteenMeterOnTeams] && !isCurrent) { return; }
+    const chip = makeButton(CONFIG.assignmentShortLabels[job] || job, "chip small", function () {
+      const body = {};
+      body[KEYS.team] = null;
+      body[KEYS.assignment] = job;
+      teamsRequest(ROUTES.signinPrefix + member[KEYS.id] + ROUTES.teamSuffix, body);
+    });
+    chip.classList.toggle("on", isCurrent);
+    chip.setAttribute("aria-pressed", isCurrent ? "true" : "false");
+    chips.appendChild(chip);
+  });
+  return chips;
+}
+
+// --- Drag and drop on the Teams screen -----------------------------------------
+// Press and drag a name (mouse: just drag; touch: hold briefly, then drag) and drop it:
+// on another name to swap the two (a trainee dropped on someone makes them the
+// mentor), on a team to move there, or on "Off the teams" to take them off (Relief).
+// Pointer events, so it works the same with a finger, a mouse or a pen.
+
+const DRAG_START_DISTANCE_PX = 8;
+const TOUCH_HOLD_MILLISECONDS = 280;
+const TOUCH_SLOP_PX = 12;
+const DRAG_EDGE_PX = 48;
+const DRAG_SCROLL_STEP_PX = 14;
+let drag = null; // {button, pointerId, startX, startY, active, ghost, holdTimer, target}
+let dragJustEnded = false;
+
+function enableDrag(button) {
+  button.addEventListener("pointerdown", startPress);
+  button.addEventListener("contextmenu", function (event) { event.preventDefault(); });
+}
+
+function startPress(event) {
+  if (event.button !== undefined && event.button > 0) { return; }
+  cancelDrag();
+  drag = {
+    button: event.currentTarget,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    active: false,
+    ghost: null,
+    holdTimer: null,
+    target: null,
+  };
+  if (event.pointerType === "touch") {
+    // Touch: a short hold starts the drag; moving first is an ordinary scroll.
+    drag.holdTimer = setTimeout(function () { if (drag) { beginDrag(drag.startX, drag.startY); } }, TOUCH_HOLD_MILLISECONDS);
+  }
+  document.addEventListener("pointermove", movePress);
+  document.addEventListener("pointerup", endPress);
+  document.addEventListener("pointercancel", cancelDrag);
+}
+
+function beginDrag(x, y) {
+  drag.active = true;
+  clearTimeout(drag.holdTimer);
+  try { drag.button.setPointerCapture(drag.pointerId); } catch (error) { /* capture is optional */ }
+  const box = drag.button.getBoundingClientRect();
+  const ghost = drag.button.cloneNode(true);
+  ghost.classList.add("drag-ghost");
+  ghost.style.width = box.width + "px";
+  document.body.appendChild(ghost);
+  drag.ghost = ghost;
+  drag.offsetX = x - box.left;
+  drag.offsetY = y - box.top;
+  drag.button.classList.add("dragging");
+  if (navigator.vibrate) { try { navigator.vibrate(15); } catch (error) { /* not supported */ } }
+  placeGhost(x, y);
+}
+
+function placeGhost(x, y) {
+  drag.ghost.style.left = (x - drag.offsetX) + "px";
+  drag.ghost.style.top = (y - drag.offsetY) + "px";
+}
+
+/** The name or card under the finger: {kind: "member"|"team"|"extras", element}. */
+function dropTargetAt(x, y) {
+  const under = document.elementFromPoint(x, y);
+  if (!under) { return null; }
+  const member = under.closest("#teams-grid .member");
+  if (member && member !== drag.button) { return { kind: "member", element: member }; }
+  const card = under.closest("#teams-grid .team-card");
+  if (card && card.dataset.dropTeam) { return { kind: "team", element: card }; }
+  if (card && card.dataset.dropExtras) { return { kind: "extras", element: card }; }
+  return null;
+}
+
+function movePress(event) {
+  if (!drag || event.pointerId !== drag.pointerId) { return; }
+  const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+  if (!drag.active) {
+    if (event.pointerType === "touch") {
+      if (distance > TOUCH_SLOP_PX) { cancelDrag(); } // the finger is scrolling
+      return;
+    }
+    if (distance < DRAG_START_DISTANCE_PX) { return; }
+    beginDrag(event.clientX, event.clientY);
+  }
+  event.preventDefault();
+  placeGhost(event.clientX, event.clientY);
+  const target = dropTargetAt(event.clientX, event.clientY);
+  if (drag.target) { drag.target.element.classList.remove("drop-here"); }
+  drag.target = target;
+  if (target) { target.element.classList.add("drop-here"); }
+  // Near the top or bottom of the Teams sheet: scroll it so every team can be reached.
+  const sheet = teamsOverlay.querySelector(".sheet");
+  const bounds = sheet.getBoundingClientRect();
+  if (event.clientY < bounds.top + DRAG_EDGE_PX) { sheet.scrollTop -= DRAG_SCROLL_STEP_PX; }
+  if (event.clientY > bounds.bottom - DRAG_EDGE_PX) { sheet.scrollTop += DRAG_SCROLL_STEP_PX; }
+}
+
+// While dragging with a finger, stop the page from scrolling under it.
+document.addEventListener("touchmove", function (event) {
+  if (drag && drag.active) { event.preventDefault(); }
+}, { passive: false });
+
+function endPress(event) {
+  if (!drag || event.pointerId !== drag.pointerId) { return; }
+  const finished = drag;
+  const wasActive = drag.active;
+  cancelDrag();
+  if (!wasActive) { return; } // a plain tap: the button's click opens the place sheet
+  dragJustEnded = true;
+  setTimeout(function () { dragJustEnded = false; }, 0);
+  if (finished.target) { dropOn(finished.button, finished.target); }
+}
+
+function cancelDrag() {
+  if (!drag) { return; }
+  clearTimeout(drag.holdTimer);
+  if (drag.ghost) { drag.ghost.remove(); }
+  if (drag.target) { drag.target.element.classList.remove("drop-here"); }
+  drag.button.classList.remove("dragging");
+  document.removeEventListener("pointermove", movePress);
+  document.removeEventListener("pointerup", endPress);
+  document.removeEventListener("pointercancel", cancelDrag);
+  drag = null;
+}
+
+/** Carry out a drop: swap, pick a mentor, move to a team, or take off the teams. */
+function dropOn(button, target) {
+  const signinId = Number(button.dataset.signinId);
+  const isTrainee = Boolean(button.dataset.trainee);
+  const body = {};
+  if (target.kind === "member") {
+    const otherId = Number(target.element.dataset.signinId);
+    if (isTrainee || target.element.dataset.trainee) {
+      if (!isTrainee || target.element.dataset.trainee) {
+        showToast("Drop a trainee on the official they will shadow", true);
+        return;
+      }
+      body[KEYS.mentorSigninId] = otherId;
+      teamsRequest(ROUTES.signinPrefix + signinId + ROUTES.teamSuffix, body);
+      return;
+    }
+    body[KEYS.withSigninId] = otherId;
+    teamsRequest(ROUTES.signinPrefix + signinId + ROUTES.swapSuffix, body);
+    return;
+  }
+  if (isTrainee) {
+    showToast("Drop a trainee on the official they will shadow", true);
+    return;
+  }
+  if (target.kind === "team") {
+    body[KEYS.team] = target.element.dataset.dropTeam;
+    body[KEYS.assignment] = null;
+  } else {
+    body[KEYS.team] = null;
+    body[KEYS.assignment] = CONFIG.assignmentRelief;
+  }
+  teamsRequest(ROUTES.signinPrefix + signinId + ROUTES.teamSuffix, body);
 }
 
 /** Find an official in the team view by sign-in ID. */
@@ -942,7 +1140,14 @@ function closeTeams() {
 const meetsOverlay = element("meets-overlay");
 let demoResetTimer = null;
 
-/** One meet in the overview: name, date, sessions and officials, and Open. */
+let showArchivedMeets = false;
+let meetBeingDeleted = null;
+
+/**
+ * One meet in the overview: name, date, sessions and officials, and its buttons.
+ * Current meet: "Open now". Other meets: Open and Archive. Archived meets: Open,
+ * Restore and Delete (behind a warning).
+ */
 function meetRow(meet, isCurrent) {
   const row = document.createElement("li");
   row.className = "meet-row" + (isCurrent ? " current" : "");
@@ -958,30 +1163,49 @@ function meetRow(meet, isCurrent) {
   detail.textContent = "starts " + meet[KEYS.startDate] + " · " + sessions + " session" + (sessions === 1 ? "" : "s")
     + " · " + people + " official" + (people === 1 ? "" : "s");
   text.append(title, detail);
-  row.appendChild(text);
+  const actions = document.createElement("span");
+  actions.className = "meet-actions";
   if (isCurrent) {
     const here = document.createElement("strong");
     here.textContent = "Open now";
-    row.appendChild(here);
+    actions.appendChild(here);
+  } else if (meet[KEYS.archived]) {
+    actions.append(
+      makeButton("Restore", "", function () { archiveMeet(meet, false); }),
+      makeButton("Delete…", "danger", function () { askDeleteMeet(meet); })
+    );
   } else {
-    row.appendChild(makeButton("Open", "go", function () { openMeet(meet[KEYS.id]); }));
+    actions.append(
+      makeButton("Archive", "", function () { archiveMeet(meet, true); }),
+      makeButton("Open", "go", function () { openMeet(meet[KEYS.id]); })
+    );
   }
+  row.append(text, actions);
   return row;
 }
 
 async function openMeetOverview(showResetWarning) {
   const overview = await getJson(ROUTES.meets);
+  const current = overview[KEYS.demo] ? null : overview[KEYS.activeMeetId];
+  const active = overview[KEYS.meets].filter(function (meet) { return !meet[KEYS.archived]; });
+  const archived = overview[KEYS.meets].filter(function (meet) { return meet[KEYS.archived]; });
   const list = element("meet-list");
   list.replaceChildren();
-  overview[KEYS.meets].forEach(function (meet) {
-    list.appendChild(meetRow(meet, !overview[KEYS.demo] && meet[KEYS.id] === overview[KEYS.activeMeetId]));
-  });
-  if (!overview[KEYS.meets].length) {
+  active.forEach(function (meet) { list.appendChild(meetRow(meet, meet[KEYS.id] === current)); });
+  if (!active.length) {
     const empty = document.createElement("li");
     empty.className = "signin-detail";
-    empty.textContent = "No meets yet.";
+    empty.textContent = archived.length ? "No meets in use. Start a new one, or open an archived meet." : "No meets yet.";
     list.appendChild(empty);
   }
+  const toggle = element("archived-toggle");
+  toggle.hidden = archived.length === 0;
+  toggle.textContent = (showArchivedMeets ? "Hide" : "Show") + " archived meets (" + archived.length + ")";
+  const archivedList = element("archived-list");
+  archivedList.replaceChildren();
+  archived.forEach(function (meet) { archivedList.appendChild(meetRow(meet, false)); });
+  archivedList.hidden = !showArchivedMeets || archived.length === 0;
+  closeMeetDeleteWarning();
   element("demo-row").classList.toggle("current", overview[KEYS.demo]);
   element("demo-open").textContent = overview[KEYS.demo] ? "Open now" : "Open";
   element("demo-open").disabled = overview[KEYS.demo];
@@ -989,6 +1213,49 @@ async function openMeetOverview(showResetWarning) {
   element("demo-size-link").href = ROUTES.demo;
   showDemoResetWarning(Boolean(showResetWarning));
   meetsOverlay.hidden = false;
+}
+
+async function archiveMeet(meet, archived) {
+  const body = {};
+  body[KEYS.archived] = archived;
+  try {
+    await postJson(ROUTES.meetPrefix + meet[KEYS.id] + ROUTES.meetArchiveSuffix, body);
+    showToast(meet[KEYS.name] + (archived ? " archived" : " restored"));
+    await openMeetOverview(false);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+function closeMeetDeleteWarning() {
+  meetBeingDeleted = null;
+  element("meet-delete-warning").hidden = true;
+}
+
+/** The big warning before deleting an archived meet for good. */
+function askDeleteMeet(meet) {
+  meetBeingDeleted = meet;
+  const signins = meet[KEYS.signinCount];
+  element("meet-delete-title").textContent = "⚠ Delete " + meet[KEYS.name] + " for good?";
+  element("meet-delete-detail").textContent = "Its " + meet[KEYS.sessionCount] + " session"
+    + (meet[KEYS.sessionCount] === 1 ? "" : "s") + " and " + signins + " sign-in" + (signins === 1 ? "" : "s")
+    + " (teams included) will be deleted. The officials stay in the app for next time. This cannot be undone. "
+    + "To keep a record, open it and print the meet summary first.";
+  const warning = element("meet-delete-warning");
+  warning.hidden = false;
+  warning.scrollIntoView({ block: "nearest" });
+}
+
+async function deleteMeet() {
+  const meet = meetBeingDeleted;
+  if (!meet) { return; }
+  try {
+    await postJson(ROUTES.meetPrefix + meet[KEYS.id] + ROUTES.meetDeleteSuffix, {});
+    showToast(meet[KEYS.name] + " deleted");
+    await openMeetOverview(false);
+  } catch (error) {
+    showToast(error.message, true);
+  }
 }
 
 async function openMeet(meetId) {
@@ -1316,6 +1583,12 @@ element("setup-meets").addEventListener("click", function () {
 });
 element("meets-close").addEventListener("click", function () { showDemoResetWarning(false); meetsOverlay.hidden = true; });
 element("meets-new").addEventListener("click", newMeetFromOverview);
+element("archived-toggle").addEventListener("click", function () {
+  showArchivedMeets = !showArchivedMeets;
+  openMeetOverview(false);
+});
+element("meet-delete-keep").addEventListener("click", closeMeetDeleteWarning);
+element("meet-delete-confirm").addEventListener("click", deleteMeet);
 element("demo-open").addEventListener("click", openDemo);
 element("demo-reset-overview").addEventListener("click", function () { showDemoResetWarning(true); });
 element("demo-reset-cancel").addEventListener("click", function () { showDemoResetWarning(false); });

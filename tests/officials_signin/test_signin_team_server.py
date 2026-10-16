@@ -70,6 +70,51 @@ class TeamServerTests(unittest.TestCase):
         members = next(item for item in view[constants.KEY_TEAMS] if item[constants.KEY_NAME] == team)
         return [member[constants.KEY_NAME] for member in members[constants.KEY_MEMBERS]]
 
+    def swap(self, name: str, other: str) -> tuple[int, dict[str, Any]]:
+        path = constants.ROUTE_SIGNIN_PREFIX + str(self.ids[name]) + constants.SIGNIN_SWAP_SUFFIX
+        status, view, _ = self.request("POST", path, {constants.KEY_WITH_SIGNIN_ID: self.ids[other]})
+        return status, view
+
+    def test_swap_two_judges_between_teams(self) -> None:
+        self.build()
+        self.change("Judge 01", {constants.KEY_TEAM_LEAD: True})
+        status, view = self.swap("Judge 01", "Judge 05")
+        self.assertEqual(status, 200, view)
+        self.assertIn("Judge 05", self.team_names(view, "Team 1"))
+        self.assertIn("Judge 01", self.team_names(view, "Team 2"))
+        team_one = next(team for team in view[constants.KEY_TEAMS] if team[constants.KEY_NAME] == "Team 1")
+        self.assertFalse(any(member[constants.KEY_TEAM_LEAD] for member in team_one[constants.KEY_MEMBERS]))
+
+    def test_swap_pulls_the_acj_onto_a_team(self) -> None:
+        view = self.build()
+        self.assertEqual(view[constants.KEY_EXTRAS][0][constants.KEY_NAME], "Judge 00")
+        status, view = self.swap("Judge 00", "Judge 12")
+        self.assertEqual(status, 200, view)
+        self.assertIn("Judge 00", self.team_names(view, "Team 4"))
+        self.assertEqual(view[constants.KEY_EXTRAS][0][constants.KEY_NAME], "Judge 12")
+        self.assertEqual(view[constants.KEY_EXTRAS][0][constants.KEY_ASSIGNMENT], constants.ASSIGNMENT_ACJ)
+
+    def test_trainees_follow_their_mentor_in_a_swap(self) -> None:
+        view = self.build()
+        trainee = next(trainee for team in view[constants.KEY_TEAMS] for trainee in team[constants.KEY_TRAINEES])
+        mentor_name = trainee[constants.KEY_MENTOR]
+        other = "Judge 12" if mentor_name != "Judge 12" else "Judge 11"
+        _, view = self.swap(mentor_name, other)
+        moved = next(team for team in view[constants.KEY_TEAMS]
+                     if any(t[constants.KEY_NAME] == trainee[constants.KEY_NAME] for t in team[constants.KEY_TRAINEES]))
+        self.assertIn(mentor_name, self.team_names(view, moved[constants.KEY_NAME]))
+
+    def test_trainee_cannot_be_swapped(self) -> None:
+        self.build()
+        status, _ = self.swap(TRAINEE_NAMES[0], "Judge 03")
+        self.assertEqual(status, 400)
+
+    def test_extra_can_be_given_another_job(self) -> None:
+        self.build()
+        status, view = self.change("Judge 00", {constants.KEY_TEAM: None, constants.KEY_ASSIGNMENT: constants.ASSIGNMENT_RELIEF})
+        self.assertEqual(status, 200)
+        self.assertEqual(view[constants.KEY_EXTRAS][0][constants.KEY_ASSIGNMENT], constants.ASSIGNMENT_RELIEF)
+
     def test_build_proposes_four_teams_of_three_and_an_acj(self) -> None:
         view = self.build()
         self.assertEqual(view[constants.KEY_JUDGE_COUNT], JUDGE_COUNT)  # Starter and trainees not counted

@@ -5,6 +5,28 @@ within each section.
 
 ## Decisions
 
+- **2026-10-16 (after midnight): history rewrite, archive meets, drag and drop.**
+  - **main was rewritten and force-pushed** (owner's request) to remove his member ID from
+    old commits (`git filter-repo --replace-text`, only `main`; files unchanged, same 191
+    commits, new IDs). The tablet followed with a foreground device task
+    (`git reset --keep` to the rewritten copy of its commit); a detached background
+    watcher was refused by the auto-mode classifier, so don't use one. Other clones must
+    `git pull --rebase` (never merge the old history back in).
+  - **Meets: archive and delete.** Archive hides a finished meet (not the open one);
+    "Show archived meets" lists them with Restore and Delete. Only archived meets can be
+    deleted, behind a warning; officials stay known. Opening an archived meet restores it.
+  - **Demo years** follow real crews: mostly 1-3 years, very few 10+, none over 15
+    (`DEMO_YEARS_WEIGHTS`); head officials 5+.
+  - **Teams: equal years are mixed randomly** when building (a new mix on every
+    rebuild), not alphabetically.
+  - **Drag and drop** on the Teams screen (pointer events: mouse drags, touch holds
+    ~0.3 s then drags): drop on a name to swap the two (`/api/signins/<id>/swap`, one
+    transaction, trainees follow their mentors, stars cleared), on a team to move there,
+    on "Off the teams" to take someone off (Relief). A trainee dropped on someone makes
+    them the mentor. A plain tap still opens the place sheet.
+  - **Off the teams** always shows (as a drop target), with job chips per person: ACJ,
+    Relief, and 15 m when the teams have no 15 m judges of their own.
+  - Team page: "Rotation" on its own line, "S = start end, T = turn end" smaller below.
 - **2026-10-16 (night): Meets view, new Meet setup, demo reset, mirror memory, coaches hook.**
   - **Meets** (header button, Meet overview): every meet with Open, "+ New meet", and the
     demo meet (Open, Reset demo behind a 10-second warning, as in dq_transcribe). Opening a
@@ -188,8 +210,8 @@ within each section.
 
 - The tablet's diagnostics folder holds frames with the owner's card: keep it as test
   data (owner, 2026-10-16), never copy it into the repo.
-- Member ID in old commits (see the 2026-10-16 night decision): history rewrite pending
-  the owner's answer.
+- GitHub may keep the old (rewritten) commits reachable by their IDs for a while; GitHub
+  Support can purge them if the owner wants.
 
 - **Test on the tablet:** camera permission, front vs back camera, scan speed and
   accuracy in pool lighting. Ask the owner before starting the server there.

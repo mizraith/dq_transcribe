@@ -16,6 +16,7 @@ import binascii
 import importlib
 import json
 import logging
+import random
 import re
 import string
 import threading
@@ -51,8 +52,10 @@ _SIGNIN_ACTION_PATTERN = re.compile(
     rf"^{re.escape(constants.ROUTE_SIGNIN_PREFIX)}(\d+)"
     rf"({re.escape(constants.SIGNIN_VALIDATE_SUFFIX)}|{re.escape(constants.SIGNIN_REMOVE_SUFFIX)})$"
 )
-_MEET_OPEN_PATTERN = re.compile(
-    rf"^{re.escape(constants.ROUTE_MEET_PREFIX)}(\d+){re.escape(constants.MEET_OPEN_SUFFIX)}$"
+_MEET_ACTION_PATTERN = re.compile(
+    rf"^{re.escape(constants.ROUTE_MEET_PREFIX)}(\d+)"
+    rf"({re.escape(constants.MEET_OPEN_SUFFIX)}|{re.escape(constants.MEET_ARCHIVE_SUFFIX)}"
+    rf"|{re.escape(constants.MEET_DELETE_SUFFIX)})$"
 )
 _SESSION_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_SESSION_PREFIX)}(\d+)$")
 _SESSION_DELETE_PATTERN = re.compile(
@@ -63,6 +66,9 @@ _SIGNIN_EDIT_PATTERN = re.compile(
 )
 _SIGNIN_TEAM_PATTERN = re.compile(
     rf"^{re.escape(constants.ROUTE_SIGNIN_PREFIX)}(\d+){re.escape(constants.SIGNIN_TEAM_SUFFIX)}$"
+)
+_SIGNIN_SWAP_PATTERN = re.compile(
+    rf"^{re.escape(constants.ROUTE_SIGNIN_PREFIX)}(\d+){re.escape(constants.SIGNIN_SWAP_SUFFIX)}$"
 )
 _TEAM_NAME_PATTERN = re.compile("^" + re.escape(constants.TEAM_NAME_FORMAT).replace(r"\{number\}", r"\d{1,2}") + "$")
 _SCAN_ID_PATTERN = re.compile(constants.DIAGNOSTICS_SCAN_ID_PATTERN)
@@ -104,11 +110,14 @@ def build_web_config() -> dict[str, Any]:
             "meetSave": constants.ROUTE_MEET_SAVE,
             "coaches": constants.ROUTE_COACHES,
             "meetOpenSuffix": constants.MEET_OPEN_SUFFIX,
+            "meetArchiveSuffix": constants.MEET_ARCHIVE_SUFFIX,
+            "meetDeleteSuffix": constants.MEET_DELETE_SUFFIX,
             "diagnostics": constants.ROUTE_DIAGNOSTICS,
             "teams": constants.ROUTE_TEAMS,
             "teamsBuild": constants.ROUTE_TEAMS_BUILD,
             "teamsSettings": constants.ROUTE_TEAMS_SETTINGS,
             "teamSuffix": constants.SIGNIN_TEAM_SUFFIX,
+            "swapSuffix": constants.SIGNIN_SWAP_SUFFIX,
             "rosterDownload": constants.ROUTE_ROSTER_DOWNLOAD,
         },
         "keys": {
@@ -133,6 +142,8 @@ def build_web_config() -> dict[str, Any]:
             "meets": constants.KEY_MEETS,
             "activeMeetId": constants.KEY_ACTIVE_MEET_ID,
             "officialCount": constants.KEY_OFFICIAL_COUNT,
+            "withSigninId": constants.KEY_WITH_SIGNIN_ID,
+            "archived": constants.KEY_ARCHIVED,
             "sessionCount": constants.KEY_SESSIONS_COUNT,
             "meet": constants.KEY_MEET,
             "sessions": constants.KEY_SESSIONS,
@@ -193,6 +204,8 @@ def build_web_config() -> dict[str, Any]:
         "roles": list(constants.ROSTER_ROLES),
         "teamPoolRole": constants.TEAM_POOL_ROLE,
         "demoResetWarningSeconds": constants.DEMO_RESET_WARNING_SECONDS,
+        "assignmentShortLabels": constants.ASSIGNMENT_SHORT_LABELS,
+        "assignmentRelief": constants.ASSIGNMENT_RELIEF,
         "coachesPage": _coaches_module() is not None,
         "rotationModes": [[mode, constants.ROTATION_MODE_LABELS[mode]] for mode in constants.ROTATION_MODES],
         "assignmentFifteenMeter": constants.ASSIGNMENT_FIFTEEN_METER,
@@ -559,10 +572,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_demo_open()
             elif path == constants.ROUTE_DEMO_RESET:
                 self._handle_demo_reset()
-            elif (match := _MEET_OPEN_PATTERN.match(path)) is not None:
-                # Opening a real meet always leaves demo mode.
-                self.server.database.open_meet(int(match.group(1)), date.today())
-                self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=False))
+            elif (match := _MEET_ACTION_PATTERN.match(path)) is not None:
+                self._handle_meet_action(int(match.group(1)), match.group(2), payload)
             elif path == constants.ROUTE_DIAGNOSTICS:
                 self._handle_diagnostics(payload)
             elif path == constants.ROUTE_TEAMS_BUILD:
@@ -571,6 +582,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_team_settings(payload)
             elif (match := _SIGNIN_TEAM_PATTERN.match(path)) is not None:
                 self._handle_signin_team(int(match.group(1)), payload)
+            elif (match := _SIGNIN_SWAP_PATTERN.match(path)) is not None:
+                other = payload.get(constants.KEY_WITH_SIGNIN_ID)
+                if not isinstance(other, int):
+                    raise SigninError("Pick the official to swap with")
+                self.database.swap_signin_places(self._active_session()[constants.KEY_ID], int(match.group(1)), other)
+                self._send_json(HTTPStatus.OK, self._team_view())
             elif (match := _SIGNIN_EDIT_PATTERN.match(path)) is not None:
                 self._handle_signin_edit(int(match.group(1)), payload)
             elif (match := _SIGNIN_ACTION_PATTERN.match(path)) is not None:
@@ -808,6 +825,24 @@ class RequestHandler(BaseHTTPRequestHandler):
             constants.KEY_DEMO_READY: demo_ready,
         })
 
+    def _handle_meet_action(self, meet_id: int, action: str, payload: dict[str, Any]) -> None:
+        """Open, archive / unarchive, or delete one of the real meets (Meet overview).
+
+        These always act on the real meets, even from a browser in demo mode; opening a
+        meet also leaves demo mode.
+        """
+        real = self.server.database
+        if action == constants.MEET_OPEN_SUFFIX:
+            real.open_meet(meet_id, date.today())
+            self._send_json(HTTPStatus.OK, {constants.KEY_OK: True}, cookie=self._demo_cookie(on=False))
+        elif action == constants.MEET_ARCHIVE_SUFFIX:
+            real.set_meet_archived(meet_id, bool(payload.get(constants.KEY_ARCHIVED, True)))
+            self._send_json(HTTPStatus.OK, {constants.KEY_OK: True})
+        else:
+            deleted = real.delete_meet(meet_id)
+            LOGGER.info("Deleted an archived meet and its %d sign-in(s)", deleted)
+            self._send_json(HTTPStatus.OK, {constants.KEY_SIGNIN_COUNT: deleted})
+
     def _rebuild_demo(self, judges: int, trainees: int, sessions: int, head_officials: bool) -> None:
         """Build a fresh demo database (replacing the old one)."""
         with self.server.demo_lock:
@@ -999,7 +1034,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         signins = database.list_signins(session_id)
         judges = judges_from_signins(signins)
         count = chosen_team_count(len(judges), session[constants.KEY_TEAM_COUNT])
-        placements = plan_teams(judges, count, bool(session[constants.KEY_FIFTEEN_METER_ON_TEAMS]))
+        # Judges with the same years are mixed randomly (a new mix on every rebuild).
+        placements = plan_teams(judges, count, bool(session[constants.KEY_FIFTEEN_METER_ON_TEAMS]), random.Random())
         # Trainees in sign-in order (the list is newest first).
         trainee_ids = [signin[constants.KEY_ID] for signin in reversed(signins) if is_team_trainee(signin)]
         mentors = assign_mentors(trainee_ids, placements, judges)

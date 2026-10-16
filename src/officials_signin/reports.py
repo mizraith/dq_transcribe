@@ -256,7 +256,8 @@ def render_team_display(
         f"<p class='subtitle'>{escape(meet[constants.KEY_NAME])} · {escape(subtitle)} · {view[constants.KEY_LANES]} lanes</p>"
         f"<p class='subtitle'>{escape(view[constants.KEY_ROTATION])}</p>"
         f"<div class='display-columns'><div class='team-grid'>{''.join(cards)}</div>"
-        f"<div><h2>Rotation (S = start end, T = turn end)</h2>{schedule}</div></div>"
+        f"<div><h2 class='rotation-heading'>Rotation</h2><p class='rotation-key'>S = start end, T = turn end</p>"
+        f"{schedule}</div></div>"
     )
     return _page(title, body, body_class="display")
 

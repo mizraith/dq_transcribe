@@ -29,6 +29,8 @@ Everything here is pure (no database), so it is easy to test.
 
 from __future__ import annotations
 
+import random
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -76,15 +78,26 @@ def team_number(name: str) -> int:
     return int(last_word) if last_word.isdigit() else 0
 
 
-def seniority_order(judges: list[Judge]) -> list[Judge]:
-    """Most years certified first; unknown years last; ties by name."""
-    return sorted(
-        judges,
-        key=lambda judge: (
-            -(judge.years_certified if judge.years_certified is not None else constants.UNKNOWN_YEARS_SORT_VALUE),
-            judge.name.lower(),
-        ),
-    )
+def seniority_order(judges: list[Judge], shuffle: random.Random | None = None) -> list[Judge]:
+    """Most years certified first; unknown years last.
+
+    Args:
+        judges: The judges.
+        shuffle: When given, judges with the same years are put in random order (so
+            teams are not built alphabetically; owner, 2026-10-16). Without it, ties go
+            by name (stable displays and tests).
+
+    Returns:
+        The judges, most senior first.
+    """
+    def years(judge: Judge) -> int:
+        return -(judge.years_certified if judge.years_certified is not None else constants.UNKNOWN_YEARS_SORT_VALUE)
+
+    if shuffle is not None:
+        pool = list(judges)
+        shuffle.shuffle(pool)
+        return sorted(pool, key=years)  # sorted() is stable: the shuffle decides ties
+    return sorted(judges, key=lambda judge: (years(judge), judge.name.lower()))
 
 
 def propose_team_count(judge_count: int) -> int:
@@ -117,18 +130,21 @@ def describe_layout(judge_count: int, team_count: int) -> dict[str, int]:
     return {constants.KEY_TEAM_SIZE: judge_count // team_count, constants.KEY_EXTRAS: judge_count % team_count}
 
 
-def plan_teams(judges: list[Judge], team_count: int, fifteen_meter_on_teams: bool) -> list[Placement]:
+def plan_teams(
+    judges: list[Judge], team_count: int, fifteen_meter_on_teams: bool, shuffle: random.Random | None = None
+) -> list[Placement]:
     """Place judges into equal seniority blocks, with extras for those left over.
 
     Args:
         judges: Certified stroke & turn judges for the session.
         team_count: Number of teams (``propose_team_count`` or the admin's choice).
         fifteen_meter_on_teams: Put the least senior member of each team on the 15 m mark.
+        shuffle: Random source for judges with the same years (see ``seniority_order``).
 
     Returns:
         One placement per judge.
     """
-    ordered = seniority_order(judges)
+    ordered = seniority_order(judges, shuffle)
     team_count = max(0, min(team_count, len(ordered)))
     if team_count == 0:
         return [Placement(judge.signin_id, None, constants.ASSIGNMENT_RELIEF) for judge in ordered]

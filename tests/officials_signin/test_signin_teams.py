@@ -8,6 +8,7 @@ Run from the repo root with:
 
 from __future__ import annotations
 
+import random
 import unittest
 
 from officials_signin import constants
@@ -128,6 +129,32 @@ class LaneTests(unittest.TestCase):
     def test_more_judges_than_lanes(self) -> None:
         self.assertEqual(split_lanes(2, 3), [(1, 1), (2, 2)])
         self.assertEqual(split_lanes(8, 0), [])
+
+
+class TieBreakTests(unittest.TestCase):
+    """Judges with the same years are not placed alphabetically when building teams."""
+
+    def test_default_order_is_by_name(self) -> None:
+        judges = [Judge(index, name, 2) for index, name in enumerate(["Cy", "Al", "Bo"])]
+        self.assertEqual([judge.name for judge in seniority_order(judges)], ["Al", "Bo", "Cy"])
+
+    def test_shuffled_ties_keep_seniority(self) -> None:
+        judges = [Judge(index, f"Judge {index:02d}", years) for index, years in enumerate([1] * 10 + [5] * 10)]
+        seen_orders = set()
+        for seed in range(20):
+            ordered = seniority_order(judges, random.Random(seed))
+            self.assertTrue(all(judge.years_certified == 5 for judge in ordered[:10]))
+            seen_orders.add(tuple(judge.signin_id for judge in ordered))
+        self.assertGreater(len(seen_orders), 10)
+
+    def test_plan_teams_mixes_equal_judges(self) -> None:
+        judges = [Judge(index, f"Judge {index:02d}", 2) for index in range(12)]
+        first_teams = {
+            tuple(placement.signin_id for placement in plan_teams(judges, 4, False, random.Random(seed))
+                  if placement.team == "Team 1")
+            for seed in range(10)
+        }
+        self.assertGreater(len(first_teams), 1)
 
 
 class RotationTests(unittest.TestCase):
