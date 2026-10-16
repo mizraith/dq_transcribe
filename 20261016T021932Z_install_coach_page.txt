@@ -1,0 +1,17 @@
+task: 20261016T021932Z_install_coach_page
+started: 2026-10-15T19:19:46-07:00
+finished: 2026-10-15T19:19:52-07:00
+work_repo_commit: 2632aa9
+exit_code: 0
+--- output ---
+running 2632aa9
+2026-10-15 19:19:49,957 whisper-server ready: ggml-base
+2026-10-15 19:19:50,457 whisper-server ready: ggml-small.en
+admin page 200
+running True urls ['http://192.168.123.26:8020/'] error None
+coach page on Wi-Fi address 200
+Meet password
+admin NOT reachable on Wi-Fi address: 000
+admin not reachable on Wi-Fi address (good)
+coach page left off: True
+active meet ['All Treats No Tricks Candy Meet Block Party']
