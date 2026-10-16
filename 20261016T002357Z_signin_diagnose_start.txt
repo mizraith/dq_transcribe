@@ -1,0 +1,37 @@
+task: 20261016T002357Z_signin_diagnose_start
+started: 2026-10-15T17:24:19-07:00
+finished: 2026-10-15T17:24:20-07:00
+work_repo_commit: 0048068
+exit_code: 0
+--- output ---
+== shortcuts
+lrwxrwxrwx. 1 u0_a307 u0_a307 79 Oct 15 17:20 /data/data/com.termux/files/usr/bin/admin_assistant -> /data/data/com.termux/files/home/dq_transcribe/scripts/start_admin_assistant.sh
+lrwxrwxrwx. 1 u0_a307 u0_a307 66 Oct 10 23:05 /data/data/com.termux/files/usr/bin/dq_transcribe -> /data/data/com.termux/files/home/dq_transcribe/scripts/start_dq.sh
+lrwxrwxrwx. 1 u0_a307 u0_a307 70 Oct 15 17:20 /data/data/com.termux/files/usr/bin/officials_signup -> /data/data/com.termux/files/home/dq_transcribe/scripts/start_signin.sh
+== repo head
+0048068 device task: 20261016T002357Z_signin_diagnose_start
+-rwx------. 1 u0_a307 u0_a307 1776 Oct 15 17:19 scripts/start_admin_assistant.sh
+-rwx------. 1 u0_a307 u0_a307 3897 Oct 15 17:19 scripts/start_signin.sh
+== python
+/data/data/com.termux/files/usr/bin/python3
+/data/data/com.termux/files/usr/bin/python
+Python 3.13.13
+== processes
+8110 python3 /data/data/com.termux/files/usr/bin/python3 -m officials_signin
+9066 python /data/data/com.termux/files/usr/bin/python -m dq_transcribe
+9075 /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/build/bin/whisper-server /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/build/bin/whisper-server -m /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/models/ggml-base.bin -t 4 -l en --host 127.0.0.1 --port 8178 -nt -sns --prompt Radio calls between swim officials. Possible DQ, event 7, heat 2, lane 4, one hand touch. Event 15, heat 1, lanes 3 and 8, scissors kick. Shoulders past vertical, did not finish, underwater recovery, arms past hipline. Accepted. Acknowledged. Confirmed.
+9076 /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/build/bin/whisper-server /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/build/bin/whisper-server -m /data/data/com.termux/files/home/.dq_transcribe/whisper.cpp/models/ggml-small.en.bin -t 4 -l en --host 127.0.0.1 --port 8179 -nt -sns --prompt Radio calls between swim officials. Possible DQ, event 7, heat 2, lane 4, one hand touch. Event 15, heat 1, lanes 3 and 8, scissors kick. Shoulders past vertical, did not finish, underwater recovery, arms past hipline. Accepted. Acknowledged. Confirmed.
+9173 timeout /data/data/com.termux/files/usr/bin/timeout 600 bash /data/data/com.termux/files/home/dq_transcribe/device_tasks/20261016T002357Z_signin_diagnose_start.sh
+9174 bash /data/data/com.termux/files/usr/bin/bash /data/data/com.termux/files/home/dq_transcribe/device_tasks/20261016T002357Z_signin_diagnose_start.sh
+30467 bash /data/data/com.termux/files/usr/bin/bash /data/data/com.termux/files/home/dq_transcribe/scripts/device_agent.sh
+== status via script
+[officials_signin] server: running (http://localhost:8010)
+== port 8010
+b'{"meet": {"id": 1, "name": "Test Party", "start_date": "2026-10-15"}, "sessions": [], "active_session_id": null, "signins": []}'
+== data folder
+total 51
+drwx------.  2 u0_a307 u0_a307  3452 Oct 15 17:24 .
+drwx------. 10 u0_a307 u0_a307  3452 Oct 15 17:20 ..
+-rw-------.  1 u0_a307 u0_a307     0 Oct 15 17:23 server.log
+-rw-------.  1 u0_a307 u0_a307 45056 Oct 15 17:23 signin.db
+== server.log (last 40 lines)
