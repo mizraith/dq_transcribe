@@ -2,8 +2,8 @@
 
 Offered when an event is notified (owner, 2026-10-15): the operator types each
 DQ's code into Hy-Tek Meet Manager and invalidates the time. So the page lists,
-in heat and lane order and in large type, exactly what that takes: heat, lane,
-swimmer (or relay), club, the DQ code(s) and description, the official and an
+in heat and lane order and in legible type, exactly what that takes: heat, lane,
+swimmer (or relay), club, the DQ code(s) and description, its status and an
 "entered" box to tick on paper.
 
 * Overturned DQs are listed apart, struck through: **not** to be entered (or to
@@ -40,9 +40,13 @@ NONE_TEXT = "No notified DQs in this event."
 ENTER_STATES = (constants.DQ_STATE_NOTIFIED, constants.DQ_STATE_PROTESTED, constants.DQ_STATE_UPHELD)
 PROTESTED_NOTE = "protest pending"
 NOT_YET_NOTIFIED_STATES = (constants.DQ_STATE_CALLED, constants.DQ_STATE_ACCEPTED)
-COLUMNS = ("Heat", "Lane", "Swimmer", "Club", "Code", "Infraction", "Official")
+COLUMNS = ("Heat", "Lane", "Swimmer", "Club", "Code", "Infraction")  # no official (owner, 2026-10-16)
 STATUS_COLUMN = "Status"
 ENTERED_COLUMN = "Entered"
+# Column classes for the fixed widths in web/event_summary.html (the table must fit a portrait page).
+COLGROUP_HTML = "<colgroup>" + "".join(
+    f'<col class="{name}">' for name in ("heat", "lane", "swimmer", "club", "code", "what", "status", "box")
+) + "</colgroup>"
 HEAD_WITH_STATUS_HTML = "<tr>" + "".join(f"<th>{name}</th>" for name in (*COLUMNS, STATUS_COLUMN, ENTERED_COLUMN)) + "</tr>"
 HEADING_FORMAT = "DQ Summary \u2013 Event {event} ({count} to enter)"
 REPORT_HEADING_FORMAT = "DQ Report \u2013 Event {event} (all {count} DQs)"
@@ -75,11 +79,11 @@ def infraction_code_text(infraction: dict[str, Any]) -> str:
 
 def _row(dq: dict[str, Any], css_class: str = "", with_status: bool = False) -> str:
     """One table row: heat, lane, swimmer, club, then each infraction on its own line
-    (code and description side by side), official and the entered box.
+    (code and description side by side), the status and the entered box.
 
     A DQ can carry several infractions, and an infraction whose code is not settled
     lists every code it could be: the operator picks the one to enter.
-    ``with_status`` adds the DQ's status ("Incomplete", "Declined", ...) after the official.
+    ``with_status`` adds the DQ's status ("Incomplete", "Declined", ...) after the infraction.
     """
     swimmer = dq.get("swimmer") or ""
     if dq.get("relay_leg"):
@@ -94,7 +98,7 @@ def _row(dq: dict[str, Any], css_class: str = "", with_status: bool = False) -> 
     return (
         f'<tr class="{css_class}"><td class="num">{_escape(dq.get("heat"))}</td><td class="num">{_escape(dq.get("lane"))}</td>'
         f"<td>{_escape(swimmer)}</td><td>{_escape(dq.get('club'))}</td><td class=\"code\">{codes}</td>"
-        f"<td class=\"what\">{descriptions}</td><td>{_escape(dq.get('official'))}</td>"
+        f"<td class=\"what\">{descriptions}</td>"
         + (f'<td class="status"><span class="status-{_escape(dq.get("status"))}">{_escape(status_label(dq))}</span></td>' if with_status else "")
         + "<td class=\"box\">\u2610</td></tr>"
     )
@@ -187,7 +191,7 @@ def render_event_summary(
         overturned = [dq for dq in dqs if dq["state"] == constants.DQ_STATE_OVERTURNED]
         if overturned:
             after += (
-                f'<h2>{_escape(OVERTURNED_HEADING)}</h2><table><thead>{HEAD_WITH_STATUS_HTML}</thead><tbody>'
+                f'<h2>{_escape(OVERTURNED_HEADING)}</h2><table>{COLGROUP_HTML}<thead>{HEAD_WITH_STATUS_HTML}</thead><tbody>'
                 + "".join(_row(dq, "struck", with_status=True) for dq in overturned)
                 + "</tbody></table>"
             )
@@ -201,6 +205,7 @@ def render_event_summary(
         title=_escape(TITLE_FORMAT.format(event=event)),
         heading=_escape(heading),
         meta=_meta_html(meet, event, label, dqs, printed_at),
+        colgroup=COLGROUP_HTML,
         head=HEAD_WITH_STATUS_HTML,
         rows=rows,
         after=after,
