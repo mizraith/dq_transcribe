@@ -31,6 +31,9 @@ automate first, fewest taps), `ai_docs/guidelines.md` (standards, safety) and
   (Hy-Tek database .zip/.mdb via mdbtools, PDF via pdftotext, HTML, text; `meet_files/`
   package, versioned, newest active; fills swimmer/club, event labels, strokes), **End of meet**
   (archive zip without Meet Manager files, close/reopen, empty trash only after close).
+- Also: DQ trash (swipe left, restorable), transcript lines show their DQs, **Import officials**
+  from the Sign-In app (`officials_roster.py`), view tabs at the top, and a workflow demo meet
+  (`python -m dq_transcribe.demo_data`).
 - Tests: `PYTHONPATH=src:tests python3 -m unittest discover -s tests` (all pass). Keep new test
   methods inside their class, above the `__main__` guard.
 
