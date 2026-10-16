@@ -258,8 +258,8 @@ def render_team_display(
         f"<h1>{escape(session[constants.KEY_NAME])}: teams</h1>"
         f"<p class='subtitle'>{escape(meet[constants.KEY_NAME])} · {escape(subtitle)} · {view[constants.KEY_LANES]} lanes</p>"
         f"<p class='subtitle rotation-line'>{mode_label}{escape(view[constants.KEY_ROTATION])}</p>"
-        f"<div class='display-columns'><div class='team-grid'>{''.join(cards)}</div>"
-        f"<div>{jurisdiction_box(view)}<h2 class='rotation-heading'>Rotation</h2><p class='rotation-key'>S = start end, T = turn end</p>"
+        f"<div class='display-columns'><div><div class='team-grid'>{''.join(cards)}</div>{jurisdiction_box(view)}</div>"
+        f"<div><h2 class='rotation-heading'>Rotation</h2><p class='rotation-key'>S = start end, T = turn end</p>"
         f"{schedule}</div></div>"
     )
     back_to_teams = (
