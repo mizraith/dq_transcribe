@@ -5,6 +5,27 @@ within each section.
 
 ## Decisions
 
+- **2026-10-15: team builder (owner's rules).** Only certified Stroke & Turn judges go
+  into teams named "Team 1".."Team N"; two teams on deck (one per end), rotating every
+  30 min. Team count: of 4 and 3 teams, the one leaving the fewest over wins; on a tie
+  4 (8→4×2, 9→3×3, 12→4×3, 13→4×3+ACJ, 14→4×3+2, 15→3×5 with 4×3+3 offered, 6→3×2,
+  2→2×1). No jurisdiction limit. Equal team sizes always. Seniority blocks: Team 1 =
+  most years certified. Leftovers: suggested most senior first as ACJ, then 15 m, then
+  Relief (the admin chooses who really does them). Option "Include 15 m on every team"
+  (default off): least senior non-lead member of each team on the 15 m mark; toggling
+  it keeps hand changes. Team Lead: none by default, one per team. Trainees shadow a
+  mentor (round robin over teams, most senior free member), not counted; the Teams
+  screen will not close while a trainee is unpaired. Lanes are per session (default 8).
+  Jurisdictions split as evenly as possible, mirrored (3-3-2 / 2-3-3). ACJ, Relief and
+  15 m are roster `assignment` values, not roles, so dq_transcribe's roles are unchanged.
+- **2026-10-15: the sign-in server restarts itself** when its Python code changes and
+  compiles (the tablet's server had kept old code after a pull and broke Meet setup).
+- **2026-10-15: camera diagnostics** ("Save frames for troubleshooting" in the camera
+  window) save camera settings, raw frames, OCR text and timings to
+  `~/.officials_signin/diagnostics/<scan>/`. The owner is testing on the tablet; the
+  frames show his card, so delete them once reviewed.
+- **2026-10-15: sessions can be deleted** (Edit session → Delete, big warning).
+
 - **2026-10-15: camera speed.** The owner held the phone up ~10 s on the tablet. Now two
   Tesseract workers read the newest frame in parallel ("snapshots processed as we go"),
   layout 6 goes first (reads every field of the sample photo in one pass), empty frames
@@ -69,8 +90,6 @@ within each section.
 
 - **Test on the tablet:** camera permission, front vs back camera, scan speed and
   accuracy in pool lighting. Ask the owner before starting the server there.
-- **Team builder rules:** ask the owner (trainees must be paired with a certified
-  official; the builder must refuse to leave one unpaired).
 - Certifications tab: could it give years certified or position certifications?
   Ask for a screenshot.
 - `pyproject.toml` does not list the package data for `officials_signin` (not needed

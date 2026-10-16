@@ -196,7 +196,12 @@ Done (2026-10-15): app scaffold, camera card reading, fast sign-in with returnin
 officials, admin exceptions (Looks good / Remove), per-session and later-session
 sign-up, `/roster.json` + download, tests (`tests/officials_signin`).
 
+Also done (2026-10-15): session type and officials meeting time, delete session,
+team builder (rules in `ai_docs/officials_signin_memory.md`), camera diagnostics,
+self-restart of the sign-in server on code changes.
+
 Next:
-1. Test on the tablet (camera, lighting, speed). Ask before starting anything there.
-2. Team builder: ask the owner for the rules; refuse to leave a trainee unpaired.
+1. Review the owner's camera diagnostics from the tablet and tune card reading.
+   Ask before starting anything there.
+2. Owner feedback on the Teams screen.
 3. Keep `ai_docs/officials_signin_memory.md` and this file current before each pause.

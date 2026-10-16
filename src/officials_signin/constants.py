@@ -365,7 +365,7 @@ LANE_PATTERN_SEPARATOR = "-"
 LANE_PATTERN_ENDS_SEPARATOR = " / "
 ROUTE_TEAMS = "/api/teams"  # GET: the team view for the active session
 ROUTE_TEAMS_BUILD = "/api/teams/build"  # POST: build (or rebuild) teams automatically
-ROUTE_TEAMS_SETTINGS = "/api/teams/settings"  # POST: lanes (no rebuild)
+ROUTE_TEAMS_SETTINGS = "/api/teams/settings"  # POST: lanes, 15 m on every team (no rebuild)
 SIGNIN_TEAM_SUFFIX = "/team"  # POST /api/signins/<id>/team: move, lead, mentor
 
 # --- Settings table keys -------------------------------------------------------

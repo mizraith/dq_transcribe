@@ -160,6 +160,41 @@ def plan_teams(judges: list[Judge], team_count: int, fifteen_meter_on_teams: boo
     return placements
 
 
+def fifteen_meter_changes(signins: list[dict[str, Any]], fifteen_meter_on_teams: bool) -> dict[int, str | None]:
+    """Turn "15 m on every team" on or off without rebuilding the teams.
+
+    On: each team with two or more members and nobody on 15 m yet gets its least
+    senior member (not the Team Lead) on the 15 m mark. Off: team members on 15 m
+    go back to a lane jurisdiction. Extras off the teams are left alone.
+
+    Args:
+        signins: ``Database.list_signins`` for the session.
+        fifteen_meter_on_teams: The new setting.
+
+    Returns:
+        ``{signin_id: new assignment}`` for the sign-ins that change.
+    """
+    judges = [signin for signin in signins if is_team_judge(signin) and signin[constants.KEY_TEAM]]
+    if not fifteen_meter_on_teams:
+        return {
+            signin[constants.KEY_ID]: None
+            for signin in judges
+            if signin[constants.KEY_ASSIGNMENT] == constants.ASSIGNMENT_FIFTEEN_METER
+        }
+    rank = {judge.signin_id: index for index, judge in enumerate(seniority_order(judges_from_signins(judges)))}
+    changes: dict[int, str | None] = {}
+    teams: dict[str, list[dict[str, Any]]] = {}
+    for signin in judges:
+        teams.setdefault(signin[constants.KEY_TEAM], []).append(signin)
+    for members in teams.values():
+        if len(members) < 2 or any(member[constants.KEY_ASSIGNMENT] == constants.ASSIGNMENT_FIFTEEN_METER for member in members):
+            continue
+        candidates = [member for member in members if not member[constants.KEY_TEAM_LEAD]] or members
+        least_senior = max(candidates, key=lambda member: rank[member[constants.KEY_ID]])
+        changes[least_senior[constants.KEY_ID]] = constants.ASSIGNMENT_FIFTEEN_METER
+    return changes
+
+
 def assign_mentors(trainee_ids: list[int], placements: list[Placement], judges: list[Judge]) -> dict[int, int]:
     """Pair each trainee with a certified mentor on a team.
 

@@ -156,6 +156,7 @@ function drawHeader() {
     sessionChips.appendChild(chip);
   });
   const ready = pageState.activeSessionId !== null;
+  element("teams-button").hidden = !ready;
   deskPanel.hidden = !ready;
   noSessionPanel.hidden = ready;
   const session = activeSession();
@@ -188,6 +189,13 @@ function drawSignins() {
       const badge = document.createElement("span");
       badge.className = "badge ok";
       badge.textContent = signin[KEYS.validationMethod] === CONFIG.validationMethods.visual ? "✓ admin" : "✓ card";
+      name.appendChild(badge);
+    }
+    const placement = signin[KEYS.team] || signin[KEYS.assignment];
+    if (placement) {
+      const badge = document.createElement("span");
+      badge.className = "badge team";
+      badge.textContent = placement + (signin[KEYS.teamLead] ? " ★" : "");
       name.appendChild(badge);
     }
     if (signin[KEYS.trainee]) {
@@ -630,6 +638,285 @@ async function saveSession() {
   }
 }
 
+// --- Teams --------------------------------------------------------------------------
+
+const teamsOverlay = element("teams-overlay");
+const placeOverlay = element("place-overlay");
+const REBUILD_CONFIRM_SECONDS = 3;
+let teamView = null;
+let placeTarget = null; // {id, trainee} of the official being moved
+
+/** "4 teams of 3 + 1 extra" for a team count. */
+function describeTeamLayout(count) {
+  const layout = teamView[KEYS.layouts][String(count)];
+  if (!layout) { return count + " teams"; }
+  const extras = layout[KEYS.extras];
+  return count + " team" + (count === 1 ? "" : "s") + " of " + layout[KEYS.teamSize]
+    + (extras ? " + " + extras + " extra" + (extras === 1 ? "" : "s") : "");
+}
+
+async function loadTeams() {
+  teamView = await getJson(ROUTES.teams);
+  if (teamView[KEYS.error]) { throw new Error(teamView[KEYS.error]); }
+  // First visit with judges signed in: build straight away (no tap needed).
+  if (!teamView[KEYS.built] && teamView[KEYS.judgeCount] > 0) {
+    teamView = await postJson(ROUTES.teamsBuild, {});
+  }
+}
+
+async function openTeams() {
+  try {
+    await loadTeams();
+    drawTeams();
+    teamsOverlay.hidden = false;
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function teamsRequest(route, body) {
+  try {
+    teamView = await postJson(route, body);
+    drawTeams();
+    if (!placeOverlay.hidden) { drawPlace(); }
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+function memberButton(member, isTrainee) {
+  const button = makeButton("", "member" + (isTrainee ? " trainee" : ""), function () {
+    placeTarget = { id: member[KEYS.id], trainee: isTrainee };
+    drawPlace();
+    placeOverlay.hidden = false;
+  });
+  const label = document.createElement("span");
+  label.textContent = (isTrainee ? "↳ " : "") + member[KEYS.name];
+  if (member[KEYS.teamLead]) {
+    const tag = document.createElement("span");
+    tag.className = "tag lead";
+    tag.textContent = "★ Lead";
+    label.appendChild(tag);
+  }
+  if (member[KEYS.assignment] === CONFIG.assignmentFifteenMeter && member[KEYS.team]) {
+    const tag = document.createElement("span");
+    tag.className = "tag fifteen";
+    tag.textContent = "15 m";
+    label.appendChild(tag);
+  }
+  const detail = document.createElement("span");
+  detail.className = "years";
+  if (isTrainee) {
+    detail.textContent = member[KEYS.mentor] ? "trainee, with " + member[KEYS.mentor] : "trainee, no mentor";
+  } else {
+    const years = member[KEYS.yearsCertified];
+    detail.textContent = years === null || years === undefined ? "? yr" : years + " yr";
+  }
+  button.append(label, detail);
+  return button;
+}
+
+function teamCard(title, subtitle, className) {
+  const card = document.createElement("div");
+  card.className = "team-card" + (className ? " " + className : "");
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  if (subtitle) {
+    const lanes = document.createElement("span");
+    lanes.className = "lanes";
+    lanes.textContent = subtitle;
+    heading.appendChild(lanes);
+  }
+  card.appendChild(heading);
+  return card;
+}
+
+function drawTeams() {
+  const view = teamView;
+  const judgeCount = view[KEYS.judgeCount];
+  element("teams-summary").textContent = judgeCount + " stroke & turn judge" + (judgeCount === 1 ? "" : "s");
+  // Lanes
+  const lanes = element("teams-lanes");
+  lanes.replaceChildren();
+  const laneChoices = view[KEYS.laneChoices].slice();
+  if (laneChoices.indexOf(view[KEYS.lanes]) < 0) { laneChoices.push(view[KEYS.lanes]); }
+  laneChoices.forEach(function (count) {
+    const chip = makeButton(String(count), "chip", function () {
+      const body = {};
+      body[KEYS.lanes] = count;
+      teamsRequest(ROUTES.teamsSettings, body);
+    });
+    chip.classList.toggle("on", count === view[KEYS.lanes]);
+    lanes.appendChild(chip);
+  });
+  // Team layouts: the suggestion and the other choice
+  const layouts = element("teams-layouts");
+  layouts.replaceChildren();
+  [view[KEYS.proposedTeamCount], view[KEYS.alternativeTeamCount]].forEach(function (count) {
+    if (!count) { return; }
+    const chip = makeButton(describeTeamLayout(count), "chip", function () {
+      const body = {};
+      body[KEYS.teamCount] = count;
+      teamsRequest(ROUTES.teamsBuild, body);
+    });
+    if (count === view[KEYS.proposedTeamCount]) {
+      const note = document.createElement("span");
+      note.className = "suggested";
+      note.textContent = "suggested";
+      chip.appendChild(note);
+    }
+    chip.classList.toggle("on", count === view[KEYS.teamCount]);
+    layouts.appendChild(chip);
+  });
+  element("teams-fifteen").checked = view[KEYS.fifteenMeterOnTeams];
+  element("teams-rotation").textContent = view[KEYS.rotation];
+  // Alerts
+  const alerts = element("teams-alerts");
+  alerts.replaceChildren();
+  const unplaced = view[KEYS.unplaced];
+  if (unplaced.length) {
+    const alert = document.createElement("div");
+    alert.className = "teams-alert warn";
+    alert.textContent = unplaced.length + " signed in after the teams were built. Tap a name to place them, or Rebuild.";
+    alerts.appendChild(alert);
+  }
+  const unpaired = view[KEYS.unpairedTrainees];
+  if (unpaired.length) {
+    const alert = document.createElement("div");
+    alert.className = "teams-alert bad";
+    alert.textContent = "Trainee" + (unpaired.length === 1 ? "" : "s") + " without a mentor: "
+      + unpaired.map(function (trainee) { return trainee[KEYS.name]; }).join(", ") + ". Tap to pair them.";
+    alerts.appendChild(alert);
+  }
+  // Cards
+  const grid = element("teams-grid");
+  grid.replaceChildren();
+  view[KEYS.teams].forEach(function (team) {
+    const pattern = team[KEYS.jurisdiction][KEYS.pattern];
+    const card = teamCard(team[KEYS.name], pattern ? "lanes " + pattern : "", "");
+    team[KEYS.members].forEach(function (member) { card.appendChild(memberButton(member, false)); });
+    team[KEYS.trainees].forEach(function (trainee) { card.appendChild(memberButton(trainee, true)); });
+    grid.appendChild(card);
+  });
+  if (view[KEYS.extras].length) {
+    const card = teamCard("Off the teams", "", "extras");
+    view[KEYS.extras].forEach(function (member) {
+      const button = memberButton(member, false);
+      button.querySelector(".years").textContent = member[KEYS.assignment];
+      card.appendChild(button);
+    });
+    grid.appendChild(card);
+  }
+  if (unplaced.length || unpaired.length) {
+    const card = teamCard("Not placed yet", "", "unplaced");
+    unplaced.forEach(function (member) { card.appendChild(memberButton(member, false)); });
+    unpaired.forEach(function (trainee) { card.appendChild(memberButton(trainee, true)); });
+    grid.appendChild(card);
+  }
+  if (judgeCount === 0) {
+    grid.textContent = "No stroke & turn judges have signed in to this session yet.";
+  }
+}
+
+/** Find an official in the team view by sign-in ID. */
+function findInTeamView(signinId) {
+  const view = teamView;
+  let found = null;
+  view[KEYS.teams].forEach(function (team) {
+    team[KEYS.members].concat(team[KEYS.trainees]).forEach(function (item) {
+      if (item[KEYS.id] === signinId) { found = item; }
+    });
+  });
+  view[KEYS.extras].concat(view[KEYS.unplaced], view[KEYS.unpairedTrainees]).forEach(function (item) {
+    if (item[KEYS.id] === signinId) { found = item; }
+  });
+  return found;
+}
+
+function postTeamChange(changes) {
+  teamsRequest(ROUTES.signinPrefix + placeTarget.id + ROUTES.teamSuffix, changes);
+}
+
+function drawPlace() {
+  const member = findInTeamView(placeTarget.id);
+  if (!member) { placeOverlay.hidden = true; return; }
+  element("place-name").textContent = member[KEYS.name];
+  element("place-move-block").hidden = placeTarget.trainee;
+  element("place-mentor-block").hidden = !placeTarget.trainee;
+  if (placeTarget.trainee) {
+    element("place-detail").textContent = "Trainee: shadows a mentor and moves with them.";
+    const mentors = element("place-mentors");
+    mentors.replaceChildren();
+    teamView[KEYS.teams].forEach(function (team) {
+      team[KEYS.members].forEach(function (candidate) {
+        const chip = makeButton(candidate[KEYS.name] + " (" + team[KEYS.name] + ")", "chip", function () {
+          const body = {};
+          body[KEYS.mentorSigninId] = candidate[KEYS.id];
+          postTeamChange(body);
+        });
+        chip.classList.toggle("on", candidate[KEYS.id] === member[KEYS.mentorSigninId]);
+        mentors.appendChild(chip);
+      });
+    });
+    return;
+  }
+  const years = member[KEYS.yearsCertified];
+  element("place-detail").textContent = (years === null || years === undefined ? "Years certified unknown" : years + " years certified")
+    + " · " + (member[KEYS.team] || member[KEYS.assignment] || "not placed");
+  const teamChips = element("place-teams");
+  teamChips.replaceChildren();
+  teamView[KEYS.teams].forEach(function (team) {
+    const chip = makeButton(team[KEYS.name], "chip", function () {
+      const body = {};
+      body[KEYS.team] = team[KEYS.name];
+      body[KEYS.assignment] = null;
+      postTeamChange(body);
+    });
+    chip.classList.toggle("on", member[KEYS.team] === team[KEYS.name]);
+    teamChips.appendChild(chip);
+  });
+  const extraChips = element("place-extras");
+  extraChips.replaceChildren();
+  teamView[KEYS.extraAssignments].forEach(function (job) {
+    const chip = makeButton(job, "chip", function () {
+      const body = {};
+      body[KEYS.team] = null;
+      body[KEYS.assignment] = job;
+      postTeamChange(body);
+    });
+    chip.classList.toggle("on", !member[KEYS.team] && member[KEYS.assignment] === job);
+    extraChips.appendChild(chip);
+  });
+  element("place-team-options").hidden = !member[KEYS.team];
+  element("place-lead").classList.toggle("on", Boolean(member[KEYS.teamLead]));
+  element("place-fifteen").classList.toggle("on", member[KEYS.assignment] === CONFIG.assignmentFifteenMeter);
+}
+
+function rebuildTeams() {
+  const button = element("teams-rebuild");
+  if (!button.dataset.armed) {
+    button.dataset.armed = "1";
+    button.textContent = "Tap again: replaces your changes";
+    setTimeout(function () { delete button.dataset.armed; button.textContent = "Rebuild automatically"; }, REBUILD_CONFIRM_SECONDS * 1000);
+    return;
+  }
+  delete button.dataset.armed;
+  button.textContent = "Rebuild automatically";
+  teamsRequest(ROUTES.teamsBuild, {});
+}
+
+function closeTeams() {
+  const unpaired = teamView ? teamView[KEYS.unpairedTrainees] : [];
+  const hasTeams = teamView && teamView[KEYS.teams].some(function (team) { return team[KEYS.members].length > 0; });
+  if (unpaired.length && hasTeams) {
+    // Trainees must be paired with a certified official.
+    showToast("Pair every trainee with a mentor first", true);
+    return;
+  }
+  teamsOverlay.hidden = true;
+  refresh();
+}
+
 // --- Camera -------------------------------------------------------------------
 
 function drawCameraFields(card) {
@@ -816,6 +1103,28 @@ element("sheet-scan").addEventListener("click", function () {
 element("sheet-cancel").addEventListener("click", function () { sheetOverlay.hidden = true; });
 element("sheet-submit").addEventListener("click", submitSheet);
 element("setup-button").addEventListener("click", function () { openSetup(false); });
+element("teams-button").addEventListener("click", openTeams);
+element("teams-close").addEventListener("click", closeTeams);
+element("teams-rebuild").addEventListener("click", rebuildTeams);
+element("teams-fifteen").addEventListener("change", function () {
+  const body = {};
+  body[KEYS.fifteenMeterOnTeams] = element("teams-fifteen").checked;
+  // Adjusts the current teams in place; hand changes are kept.
+  teamsRequest(ROUTES.teamsSettings, body);
+});
+element("place-close").addEventListener("click", function () { placeOverlay.hidden = true; });
+element("place-lead").addEventListener("click", function () {
+  const member = findInTeamView(placeTarget.id);
+  const body = {};
+  body[KEYS.teamLead] = !(member && member[KEYS.teamLead]);
+  postTeamChange(body);
+});
+element("place-fifteen").addEventListener("click", function () {
+  const member = findInTeamView(placeTarget.id);
+  const body = {};
+  body[KEYS.assignment] = member && member[KEYS.assignment] === CONFIG.assignmentFifteenMeter ? null : CONFIG.assignmentFifteenMeter;
+  postTeamChange(body);
+});
 element("setup-close").addEventListener("click", function () {
   setupOverlay.hidden = true;
   if (editingSessionId !== null) { stopEditingSession(); }

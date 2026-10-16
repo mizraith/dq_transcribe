@@ -30,6 +30,7 @@ def build_roster(source: dict[str, Any], generated_at: datetime | None = None) -
     meet = source[constants.KEY_MEET]
     session = source[constants.ROSTER_KEY_SESSION]
     officials = []
+    names = {signin[constants.KEY_ID]: signin[constants.KEY_NAME] for signin in source[constants.KEY_SIGNINS]}
     for signin in sorted(source[constants.KEY_SIGNINS], key=lambda item: item[constants.KEY_NAME].lower()):
         for role in signin[constants.KEY_ROLES]:
             officials.append(
@@ -44,6 +45,10 @@ def build_roster(source: dict[str, Any], generated_at: datetime | None = None) -
                     constants.KEY_VALIDATION_METHOD: signin[constants.KEY_VALIDATION_METHOD],
                     constants.KEY_TEAM: signin[constants.KEY_TEAM],
                     constants.KEY_MEMBER_ID: signin.get(constants.KEY_MEMBER_ID),
+                    # Optional keys added within version 1 (team builder).
+                    constants.KEY_TEAM_LEAD: bool(signin.get(constants.KEY_TEAM_LEAD)),
+                    constants.KEY_ASSIGNMENT: signin.get(constants.KEY_ASSIGNMENT),
+                    constants.KEY_MENTOR: names.get(signin.get(constants.KEY_MENTOR_SIGNIN_ID)),
                 }
             )
     return {

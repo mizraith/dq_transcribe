@@ -32,6 +32,7 @@ from officials_signin.teams import (
     assign_mentors,
     build_team_view,
     chosen_team_count,
+    fifteen_meter_changes,
     is_team_trainee,
     judges_from_signins,
     plan_teams,
@@ -594,9 +595,19 @@ class RequestHandler(BaseHTTPRequestHandler):
         return lanes
 
     def _handle_team_settings(self, payload: dict[str, Any]) -> None:
-        """Change the lane count (jurisdictions are recalculated; teams are kept)."""
+        """Change lanes or "15 m on every team" while keeping the teams and hand changes."""
+        database = self.server.database
         session = self._active_session()
-        self.server.database.save_team_settings(session[constants.KEY_ID], lanes=self._lanes_from(payload))
+        session_id = session[constants.KEY_ID]
+        fifteen = payload.get(constants.KEY_FIFTEEN_METER_ON_TEAMS)
+        database.save_team_settings(
+            session_id,
+            lanes=self._lanes_from(payload),
+            fifteen_meter_on_teams=None if fifteen is None else bool(fifteen),
+        )
+        if fifteen is not None:
+            for signin_id, assignment in fifteen_meter_changes(database.list_signins(session_id), bool(fifteen)).items():
+                database.update_signin_team(signin_id, {constants.KEY_ASSIGNMENT: assignment})
         self._send_json(HTTPStatus.OK, self._team_view())
 
     def _handle_build_teams(self, payload: dict[str, Any]) -> None:
