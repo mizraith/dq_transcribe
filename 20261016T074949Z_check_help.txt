@@ -1,0 +1,9 @@
+task: 20261016T074949Z_check_help
+started: 2026-10-16T00:50:06-07:00
+finished: 2026-10-16T00:50:06-07:00
+work_repo_commit: 7db9f07
+exit_code: 0
+--- output ---
+repo at 7db9f07
+1
+2
