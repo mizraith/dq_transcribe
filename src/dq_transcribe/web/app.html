@@ -198,7 +198,21 @@
     .confirm-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-top: 0.4rem; padding: 0.5rem 0.6rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 0.4rem; font-size: 0.95rem; }
     .confirm-bar button { font-size: 0.95rem; padding: 0.35rem 0.8rem; }
     button.danger { color: #fff; background: var(--rec); border: 0; border-radius: 0.3rem; }
-    .panel button.view-button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+    #view-tabs { position: sticky; top: -0.8rem; z-index: 3; display: flex; gap: 0.4rem; margin: -0.8rem -1rem 0.6rem; padding: 0.5rem 1rem; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .view-tab { font-size: 1.05rem; font-weight: 600; padding: 0.55rem 1.3rem; min-height: 2.8rem; border: 1px solid var(--line); border-radius: 0.6rem; background: #fff; color: var(--ink); }
+    .view-tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+    /* Left column: compact, so everything fits on the tablet without scrolling. */
+    #controls { font-size: 0.86rem; padding: 0.55rem; }
+    #controls h1 { font-size: 1rem; margin: 0 0 0.35rem; }
+    #controls .panel { padding: 0.5rem 0.6rem; margin-bottom: 0.5rem; border-radius: 0.6rem; }
+    #controls .panel h2 { font-size: 0.78rem; margin: 0 0 0.3rem; }
+    #controls .panel button.wide { font-size: 0.92rem; padding: 0.45rem; margin-top: 0.35rem; }
+    #controls .hint, #controls #level-text, #controls #last-audio-text, #controls #status, #controls #queue-text { font-size: 0.8rem; margin: 0.25rem 0 0; min-height: 0; }
+    #controls #rec-row { margin-bottom: 0.4rem; }
+    #controls #audio-input, #controls #meet-select { font-size: 0.92rem; padding: 0.4rem; }
+    #controls #level-check-button { font-size: 0.92rem; padding: 0.45rem; margin: 0.4rem 0; }
+    #controls #capture-button { font-size: 1.15rem; padding: 0.75rem; }
+    #controls .panel a { padding: 0.2rem 0; font-size: 0.85rem; }
     .muted { color: #555b66; }
     .candidates { margin-top: 0.5rem; padding: 0.5rem 0.6rem; background: #f5f7ff; border: 1px solid #c7d2fe; border-radius: 0.5rem; }
     .candidates-title { font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: #3730a3; margin-bottom: 0.3rem; }
@@ -288,13 +302,6 @@
   </section>
 
   <section class="panel">
-    <h2>View</h2>
-    <button id="transcript-view-button" class="wide view-button active" type="button">Transcript</button>
-    <button id="dq-view-button" class="wide view-button" type="button">DQs</button>
-    <button id="trash-view-button" class="wide view-button" type="button">&#128465; Trash</button>
-  </section>
-
-  <section class="panel">
     <h2>Downloads</h2>
     <a href="${transcript_route}" download>Transcript (text)</a>
     <a href="${export_route}" download>All data (JSON)</a>
@@ -303,6 +310,12 @@
 </aside>
 
 <main id="transcript">
+  <!-- The views as tabs across the top of the main area (always in reach on a tablet). -->
+  <nav id="view-tabs" aria-label="Views">
+    <button id="transcript-view-button" class="view-tab active" type="button">Transcript</button>
+    <button id="dq-view-button" class="view-tab" type="button">DQs</button>
+    <button id="trash-view-button" class="view-tab" type="button">&#128465; Trash</button>
+  </nav>
   <h2 id="view-title">Transcript</h2>
   <div id="clips"></div>
 </main>

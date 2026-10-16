@@ -433,8 +433,8 @@ function buildDqCard(dq) {
   const summary = makeElement("button", "dq-summary");
   summary.type = "button";
   summary.append(makeElement("strong", "dq-ehl", eventHeatLane(dq)));
-  if (dq.event_label) {
-    summary.append(makeElement("span", "dq-event-label", " " + dq.event_label));
+  if (dq.event_label && !dqGroupByEvent) {
+    summary.append(makeElement("span", "dq-event-label", " " + dq.event_label)); // the event header shows it when grouped
   }
   summary.append(makeElement("span", "", " " + (dq.infractions.map((item) => item.description).join("; ") || "no infraction yet")));
   summary.append(makeElement("span", "badge dq-status-badge status-" + dq.status, CONFIG.dqStatusLabels[dq.status] || dq.status));
