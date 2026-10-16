@@ -195,6 +195,14 @@ class GoodStandingTests(unittest.TestCase):
 class OcrSlipTests(unittest.TestCase):
     """A single misread must not send a valid official to the admin, or garble the name."""
 
+    def test_misread_labels_still_anchor_the_name(self) -> None:
+        text = CLEAN_CARD_TEXT.replace("Official @", "ficial (v]").replace("Member Id", "Member ld")
+        reading = parse_card_text(text)
+        self.assertEqual(reading.name, 'Pat "Skip" Example')
+        self.assertEqual(reading.member_id, FAKE_MEMBER_ID)
+        self.assertTrue(reading.is_official)
+        self.assertEqual(parse_card_text(text.replace("Member ld", "Member Ia")).member_id, FAKE_MEMBER_ID)
+
     def test_expiry_read_once_is_unconfirmed(self) -> None:
         misread = CLEAN_CARD_TEXT.replace("Until: 09/21/2027", "Until: 09/21/2021").replace("In good standing\n", "")
         result = check_card(read_card([misread]), SESSION_DATE)

@@ -183,9 +183,11 @@ CARD_DATE_ROW_PATTERNS = (
     (None, r"concussion"),
     (None, r"mandatory\s*report"),
 )
-CARD_MEMBER_ID_LABEL_PATTERN = r"member\s*i[dl1|]"
+# "Member Id" is often read as "Member ld", "Member Ia" or "Member 1d".
+CARD_MEMBER_ID_LABEL_PATTERN = r"member\s*[il1|][dla1|]\b"
 CARD_LSC_CLUB_LABEL_PATTERN = r"lsc\s*(?:&|and|8|%)?\s*club"
-CARD_OFFICIAL_PATTERN = r"\bofficial\b"
+# "Official" sometimes loses its first letter ("fficial", "ficial").
+CARD_OFFICIAL_PATTERN = r"(?:\bo?f|\b)ficial\b"
 # Banner text only: "In good standing" NOT followed by "until" (that is the date row).
 CARD_GOOD_STANDING_BANNER_PATTERN = r"in\s*good\s*standing(?!\s*until)"
 # Member IDs seen so far are 14 letters/digits; allow some slack for other formats.
@@ -218,9 +220,22 @@ OCR_PAGE_SEGMENTATION_MODES = ("6", "4")
 OCR_WORKER_COUNT = 2
 # Start the second worker a little later so the two read different frames.
 OCR_WORKER_STAGGER_MILLISECONDS = 400
-# A frame with at least this many letters but no card label is probably mirrored;
-# the next frames are flipped. Fewer letters means the phone is not in view yet.
-OCR_MIRROR_MIN_LETTERS = 40
+# Orientations tried, in order, until a frame shows card words: upright, phone turned
+# left, phone turned right (sideways fits the wide camera frame better), and mirrored
+# (some camera apps flip images). Each is (clockwise rotation in degrees, mirrored).
+OCR_ORIENTATIONS = ((0, False), (90, False), (270, False), (0, True))
+# Crop each frame to the phone screen (the largest bright area) before OCR: dark
+# borders, hands and background confuse Tesseract's layout detection. A row or column
+# belongs to the screen when at least this share of it is bright; "bright" means at
+# least the given percentile of the frame's brightness. Crops smaller than the minimum
+# share of the frame are ignored (the whole frame is read instead).
+OCR_SCREEN_BRIGHT_PERCENTILE = 0.6
+OCR_SCREEN_MIN_BRIGHT_SHARE = 0.35
+OCR_SCREEN_MIN_AREA_SHARE = 0.12
+OCR_SCREEN_MARGIN_SHARE = 0.02
+# Once an orientation shows card words it is kept; after this many passes in a row
+# without card words (the phone was turned or taken away) the search starts again.
+OCR_ORIENTATION_UNLOCK_MISSES = 2
 # Words that only appear on the card; a frame containing one is a card frame.
 OCR_CARD_HINT_PATTERN = r"member|standing|background|athlete|club|expiration|official"
 OCR_LANGUAGE = "eng"

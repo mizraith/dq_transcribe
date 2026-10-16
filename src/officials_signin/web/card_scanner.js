@@ -9,9 +9,10 @@
  * field has been read, so the common case needs no shutter tap.
  *
  * Passes alternate between Tesseract page layouts (each tends to read different
- * rows). A frame with plenty of text but no card words is probably mirrored
- * (front cameras and some camera apps flip the image), so the next frames are
- * flipped. Frames with little text (phone not in view yet) cost one pass only.
+ * rows). Until a frame shows card words, each pass tries the next orientation:
+ * upright, phone turned left or right (sideways fits the wide camera frame
+ * better), mirrored. The orientation that works is kept, and the search starts
+ * again if the phone is turned later.
  *
  * Everything runs on this device: the OCR engine is served from localhost
  * (web/vendor/tesseract) and frames are never uploaded or stored.
@@ -25,7 +26,7 @@ window.CardScanner = (function () {
   const CONFIG = ${config};
   const OCR = CONFIG.ocr;
   const KEYS = CONFIG.keys;
-  const CAMERA_STORAGE_KEY = "officials_signin.camera_facing";
+  const CAMERA_STORAGE_KEY = "officials_signin.camera_device";
   const FACING_FRONT = "user";
   const FACING_BACK = "environment";
   const SHARPEN_AMOUNT = 0.6; // 0 = off; weight of the 3x3 sharpening step
@@ -38,7 +39,9 @@ window.CardScanner = (function () {
   const BYTES_PER_PIXEL = 4;
 
   const CARD_HINT = new RegExp(OCR.cardHintPattern, "i");
-  const LETTER = /[A-Za-z]/g;
+  const QUARTER_TURN = 90;
+  const HALF_TURN = 180;
+  const THREE_QUARTER_TURN = 270;
   const FRAME_WAIT_MILLISECONDS = 200;
 
   let poolPromise = null;
@@ -66,43 +69,141 @@ window.CardScanner = (function () {
     return new Promise(function (resolve) { setTimeout(resolve, milliseconds); });
   }
 
-  /** The camera the admin last used (front by default: officials face the tablet). */
-  function preferredFacing() {
-    try {
-      return localStorage.getItem(CAMERA_STORAGE_KEY) || FACING_FRONT;
-    } catch (error) {
-      return FACING_FRONT;
-    }
+  /** The camera the admin last picked (a device ID), or null for "front camera, please". */
+  function rememberedCameraId() {
+    try { return localStorage.getItem(CAMERA_STORAGE_KEY); } catch (error) { return null; }
   }
 
-  function rememberFacing(facing) {
-    try { localStorage.setItem(CAMERA_STORAGE_KEY, facing); } catch (error) { /* private mode: fine */ }
+  function rememberCameraId(deviceId) {
+    try { localStorage.setItem(CAMERA_STORAGE_KEY, deviceId); } catch (error) { /* private mode: fine */ }
+  }
+
+  /** Every camera on this device (labels are known once camera permission is granted). */
+  async function listCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter(function (device) { return device.kind === "videoinput"; });
+  }
+
+  /** "Front camera", "Back camera" or the device's own label, for the camera window. */
+  function describeCamera(track, cameras) {
+    const settings = track.getSettings ? track.getSettings() : {};
+    const index = cameras.findIndex(function (camera) { return camera.deviceId === settings.deviceId; });
+    const position = index >= 0 ? " (" + (index + 1) + " of " + cameras.length + ")" : "";
+    if (settings.facingMode === FACING_FRONT) { return "Front camera" + position; }
+    if (settings.facingMode === FACING_BACK) { return "Back camera" + position; }
+    return (track.label || "Camera") + position;
   }
 
   /**
-   * Draw a video frame (or image) onto a canvas, scaled down, cleaned up for OCR.
+   * Draw a video frame (or image), scaled down and turned upright, crop it to the
+   * phone screen, and clean it up for OCR.
    * @param {CanvasImageSource} source  Video element or image.
    * @param {number} width  Source width in pixels.
    * @param {number} height  Source height in pixels.
-   * @param {boolean} mirror  Flip left-right.
+   * @param {number} rotation  Clockwise turn to apply: 0, 90, 180 or 270 degrees.
+   * @param {boolean} mirror  Flip left-right (after turning).
    * @returns {HTMLCanvasElement}
    */
-  function prepareFrame(source, width, height, mirror) {
-    const scale = Math.min(1, OCR.maxFrameWidth / width);
+  function prepareFrame(source, width, height, rotation, mirror) {
+    const scale = Math.min(1, OCR.maxFrameWidth / Math.max(width, height));
+    const scaledWidth = Math.round(width * scale);
+    const scaledHeight = Math.round(height * scale);
+    const sideways = rotation === QUARTER_TURN || rotation === THREE_QUARTER_TURN;
+    const turned = document.createElement("canvas");
+    turned.width = sideways ? scaledHeight : scaledWidth;
+    turned.height = sideways ? scaledWidth : scaledHeight;
+    const turnedContext = turned.getContext("2d", { willReadFrequently: true });
+    turnedContext.translate(turned.width / 2, turned.height / 2);
+    if (mirror) { turnedContext.scale(-1, 1); }
+    turnedContext.rotate(rotation * Math.PI / HALF_TURN);
+    turnedContext.drawImage(source, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
+    const box = findScreenBox(turnedContext.getImageData(0, 0, turned.width, turned.height));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(width * scale);
-    canvas.height = Math.round(height * scale);
+    canvas.width = box.width;
+    canvas.height = box.height;
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (mirror) {
-      context.translate(canvas.width, 0);
-      context.scale(-1, 1);
-    }
-    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+    context.drawImage(turned, box.left, box.top, box.width, box.height, 0, 0, box.width, box.height);
     const image = context.getImageData(0, 0, canvas.width, canvas.height);
     cleanUp(image);
-    context.setTransform(1, 0, 0, 1, 0, 0);
     context.putImageData(image, 0, 0);
     return canvas;
+  }
+
+  /** Brightness of one pixel (ITU-R BT.601 luma). */
+  function luma(pixels, offset) {
+    return LUMA_RED * pixels[offset] + LUMA_GREEN * pixels[offset + 1] + LUMA_BLUE * pixels[offset + 2];
+  }
+
+  /**
+   * The longest run of indexes whose share is at least ``minimum``, allowing short gaps.
+   * @param {Float32Array} shares  Bright share per row (or column).
+   * @param {number} minimum  Share needed to count as screen.
+   * @returns {{start: number, end: number}}  Inclusive range; end < start when none.
+   */
+  function longestBrightRun(shares, minimum) {
+    const allowedGap = Math.max(1, Math.round(shares.length * OCR.screenMarginShare));
+    let best = { start: 0, end: -1 };
+    let start = -1;
+    let lastBright = -1;
+    for (let index = 0; index < shares.length; index += 1) {
+      if (shares[index] < minimum) { continue; }
+      if (start < 0 || index - lastBright > allowedGap) { start = index; }
+      lastBright = index;
+      if (lastBright - start > best.end - best.start) { best = { start: start, end: lastBright }; }
+    }
+    return best;
+  }
+
+  /**
+   * Find the phone screen: the largest block of bright rows and columns.
+   * @param {ImageData} image  The turned frame.
+   * @returns {{left: number, top: number, width: number, height: number}}  The crop
+   *   (the whole frame when no convincing screen is found).
+   */
+  function findScreenBox(image) {
+    const width = image.width;
+    const height = image.height;
+    const whole = { left: 0, top: 0, width: width, height: height };
+    const pixels = image.data;
+    const histogram = new Uint32Array(HISTOGRAM_SIZE);
+    const gray = new Uint8ClampedArray(width * height);
+    for (let index = 0; index < width * height; index += 1) {
+      gray[index] = luma(pixels, index * BYTES_PER_PIXEL);
+      histogram[gray[index]] += 1;
+    }
+    let threshold = 0;
+    let seen = 0;
+    while (threshold < MAX_CHANNEL_VALUE && seen + histogram[threshold] < width * height * OCR.screenBrightPercentile) {
+      seen += histogram[threshold];
+      threshold += 1;
+    }
+    const rowShares = new Float32Array(height);
+    for (let row = 0; row < height; row += 1) {
+      let bright = 0;
+      for (let column = 0; column < width; column += 1) { if (gray[row * width + column] >= threshold) { bright += 1; } }
+      rowShares[row] = bright / width;
+    }
+    const rows = longestBrightRun(rowShares, OCR.screenMinBrightShare);
+    if (rows.end < rows.start) { return whole; }
+    const columnShares = new Float32Array(width);
+    for (let column = 0; column < width; column += 1) {
+      let bright = 0;
+      for (let row = rows.start; row <= rows.end; row += 1) { if (gray[row * width + column] >= threshold) { bright += 1; } }
+      columnShares[column] = bright / (rows.end - rows.start + 1);
+    }
+    const columns = longestBrightRun(columnShares, OCR.screenMinBrightShare);
+    if (columns.end < columns.start) { return whole; }
+    const marginX = Math.round(width * OCR.screenMarginShare);
+    const marginY = Math.round(height * OCR.screenMarginShare);
+    const left = Math.max(0, columns.start - marginX);
+    const top = Math.max(0, rows.start - marginY);
+    const box = {
+      left: left,
+      top: top,
+      width: Math.min(width, columns.end + marginX + 1) - left,
+      height: Math.min(height, rows.end + marginY + 1) - top,
+    };
+    return box.width * box.height >= width * height * OCR.screenMinAreaShare ? box : whole;
   }
 
   /**
@@ -117,7 +218,7 @@ window.CardScanner = (function () {
     const histogram = new Uint32Array(HISTOGRAM_SIZE);
     for (let index = 0; index < count; index += 1) {
       const offset = index * BYTES_PER_PIXEL;
-      const value = LUMA_RED * pixels[offset] + LUMA_GREEN * pixels[offset + 1] + LUMA_BLUE * pixels[offset + 2];
+      const value = luma(pixels, offset);
       gray[index] = value;
       histogram[Math.min(MAX_CHANNEL_VALUE, Math.round(value))] += 1;
     }
@@ -170,6 +271,8 @@ window.CardScanner = (function () {
    * @param {HTMLVideoElement} options.video  Preview element (the stream is attached to it).
    * @param {function(object):void} options.onProgress  Called with the server's reading after each pass.
    * @param {function(string):void} options.onStatus  Short status text for the admin.
+   * @param {function(string, number):void} [options.onCamera]  Called with the camera in use
+   *   ("Front camera (1 of 2)") and how many cameras there are, after each (re)open.
    * @param {boolean|function():boolean} options.diagnostics  Save raw frames, OCR text and
    *   timings on the device for troubleshooting (POSTed to the diagnostics route). A
    *   function is asked before every record, so ticking the box mid-scan works.
@@ -180,9 +283,13 @@ window.CardScanner = (function () {
   function scan(options) {
     let cancelled = false;
     let stream = null;
-    let facing = preferredFacing();
+    let cameraId = rememberedCameraId();
+    let facing = null;
     let lastReading = null;
-    let mirrorFrames = false;
+    // Orientation search: index into OCR.orientations, whether it is locked, and misses since.
+    let orientationIndex = 0;
+    let orientationLocked = false;
+    let missesSinceLock = 0;
     const texts = [];
 
     function stopStream() {
@@ -195,15 +302,29 @@ window.CardScanner = (function () {
 
     async function openCamera() {
       stopStream();
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false,
-      });
+      const size = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+      // A remembered camera is asked for exactly; otherwise prefer the front camera.
+      const choice = cameraId ? { deviceId: { exact: cameraId } } : { facingMode: FACING_FRONT };
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: Object.assign(choice, size), audio: false });
+      } catch (error) {
+        if (!cameraId) { throw error; }
+        cameraId = null; // that camera is gone: fall back to any camera
+        stream = await navigator.mediaDevices.getUserMedia({ video: Object.assign({ facingMode: FACING_FRONT }, size), audio: false });
+      }
       options.video.srcObject = stream;
-      // Mirror the front-camera preview so it behaves like a mirror; OCR uses the raw frame.
-      options.video.classList.toggle("mirrored", facing === FACING_FRONT);
       await options.video.play();
       const track = stream.getVideoTracks()[0];
+      const trackSettings = track.getSettings ? track.getSettings() : {};
+      facing = trackSettings.facingMode || null;
+      cameraId = trackSettings.deviceId || cameraId;
+      // Mirror the front-camera preview so it behaves like a mirror; OCR uses the raw frame.
+      options.video.classList.toggle("mirrored", facing === FACING_FRONT);
+      if (options.onCamera) {
+        listCameras().then(function (cameras) {
+          options.onCamera(describeCamera(track, cameras), cameras.length);
+        }).catch(function () { /* label only */ });
+      }
       // Ask for continuous autofocus where the camera supports it (many tablet front cameras do not).
       const capabilities = track.getCapabilities ? track.getCapabilities() : {};
       if (capabilities.focusMode && capabilities.focusMode.indexOf("continuous") >= 0) {
@@ -273,7 +394,6 @@ window.CardScanner = (function () {
     }
 
     let passCount = 0;
-    let orientationFixed = false;
     let done = false;
     let parsedTextCount = 0;
 
@@ -299,17 +419,22 @@ window.CardScanner = (function () {
         }
         const layout = OCR.pageSegmentationModes[passCount % OCR.pageSegmentationModes.length];
         passCount += 1;
-        const frameMirrored = mirrorFrames;
+        // Locked: keep the orientation that worked. Searching: each pass tries the next one.
+        const frameOrientation = orientationIndex;
+        if (!orientationLocked) { orientationIndex = (orientationIndex + 1) % OCR.orientations.length; }
+        const rotation = OCR.orientations[frameOrientation][0];
+        const frameMirrored = OCR.orientations[frameOrientation][1];
         const passNumber = passCount;
         const prepareStarted = performance.now();
         diagnose({ kind: "frame", pass: passNumber }, video);
-        const frame = prepareFrame(video, video.videoWidth, video.videoHeight, frameMirrored);
+        const frame = prepareFrame(video, video.videoWidth, video.videoHeight, rotation, frameMirrored);
         const ocrStarted = performance.now();
         const text = await recognize(worker, frame, layout);
         diagnose({
           kind: "pass",
           pass: passNumber,
           layout: layout,
+          rotation: rotation,
           mirrored: frameMirrored,
           frame_size: [frame.width, frame.height],
           prepare_ms: Math.round(ocrStarted - prepareStarted),
@@ -319,18 +444,17 @@ window.CardScanner = (function () {
         }, null);
         if (done || cancelled) { return; }
         if (!CARD_HINT.test(text)) {
-          // Lots of text but no card words: probably mirrored, so flip the next frames.
-          // Little text: the phone is not in view yet. Only the orientation this frame
-          // used is flipped (another worker may already have flipped it), and never
-          // after a card frame has fixed the orientation.
-          const letterCount = (text.match(LETTER) || []).length;
-          if (!orientationFixed && letterCount >= OCR.mirrorMinLetters && frameMirrored === mirrorFrames) {
-            mirrorFrames = !frameMirrored;
+          // No card words: the phone is not in view yet, or held another way round.
+          if (orientationLocked) {
+            missesSinceLock += 1;
+            if (missesSinceLock >= OCR.orientationUnlockMisses) { orientationLocked = false; }
           }
           continue;
         }
-        orientationFixed = true;
-        mirrorFrames = frameMirrored;
+        // Card words: keep this orientation for the following frames.
+        orientationIndex = frameOrientation;
+        orientationLocked = true;
+        missesSinceLock = 0;
         texts.push(text);
         const reading = await mergeTexts();
         diagnose({
@@ -370,12 +494,24 @@ window.CardScanner = (function () {
     return {
       result: result,
       cancel: function () { cancelled = true; },
-      switchCamera: function () {
-        facing = facing === FACING_FRONT ? FACING_BACK : FACING_FRONT;
-        rememberFacing(facing);
-        mirrorFrames = false;
-        orientationFixed = false;
-        openCamera().catch(function () { options.onStatus("Could not switch camera"); });
+      switchCamera: async function () {
+        // Step through the device's real cameras (front/back hints are not reliable on tablets).
+        try {
+          const cameras = await listCameras();
+          if (cameras.length < 2) {
+            options.onStatus("This device has only one camera");
+            return;
+          }
+          const index = cameras.findIndex(function (camera) { return camera.deviceId === cameraId; });
+          cameraId = cameras[(index + 1) % cameras.length].deviceId;
+          rememberCameraId(cameraId);
+          orientationIndex = 0;
+          orientationLocked = false;
+          missesSinceLock = 0;
+          await openCamera();
+        } catch (error) {
+          options.onStatus("Could not switch camera");
+        }
       },
     };
   }

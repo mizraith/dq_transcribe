@@ -5,6 +5,16 @@ within each section.
 
 ## Decisions
 
+- **2026-10-15: camera choice, sideways phones, screen crop.** The tablet's Chrome gave
+  the rear camera even when asked for the front, so "Switch camera" now steps through
+  the real cameras by device ID, shows which one is in use ("Front camera (1 of 2)")
+  and remembers it. The owner wants to hold phones sideways (fits the wide frame), so
+  the scanner tries upright, turned left/right and mirrored until card words appear,
+  locks that orientation, and unlocks after 2 misses. Each frame is cropped to the
+  phone screen (largest bright block): dark borders/background made Tesseract drop
+  the value column. Labels tolerate "Member ld/Ia" and "ficial". Headless Chrome at
+  4x throttle: 3.8–4.9 s for upright, sideways both ways, mirrored and screenshot.
+
 - **2026-10-15: team builder (owner's rules).** Only certified Stroke & Turn judges go
   into teams named "Team 1".."Team N"; two teams on deck (one per end), rotating every
   30 min. Team count: of 4 and 3 teams, the one leaving the fewest over wins; on a tie

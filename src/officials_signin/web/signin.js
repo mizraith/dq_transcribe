@@ -948,6 +948,10 @@ function startCamera(forOfficial) {
     video: cameraVideo,
     diagnostics: window.CardScanner.diagnosticsEnabled,
     onStatus: function (text) { cameraStatus.textContent = text; },
+    onCamera: function (name, count) {
+      element("camera-name").textContent = name;
+      element("camera-switch").hidden = count < 2;
+    },
     onProgress: function (reading) {
       lastScanReading = reading;
       drawCameraFields(reading[KEYS.card]);
