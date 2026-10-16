@@ -5,6 +5,26 @@ within each section.
 
 ## Decisions
 
+- **2026-10-15: still capture with a live guide (owner: names must be right; reads must
+  take about 5 s).** The camera window no longer OCRs live frames. About 8 times a second a
+  480-px preview frame is checked (no OCR): phone screen found (cell grid: bright
+  "background" cells, grouped, most text-like group wins; the old row/column finder
+  missed upright phones that span ~30% of the width), not touching the frame edge, long
+  side >= 45% of the frame's short side, still (motion <= 6), sharp (contrast-normalised
+  Laplacian >= 10; test photos: sharp 17-50, slight blur 12-14, blur ~5). A coloured frame
+  and hint guide the official (red/amber/green). After ~0.5 s of green a burst of 4 frames
+  is taken, the sharpest 2 kept, cropped to the screen, turned upright (text-direction
+  test: upright <= 0.09, sideways >= 6.8; the dark header bar shows which way up), turned
+  black-and-white with an adaptive threshold (Tesseract's own threshold dropped the grey
+  values next to dark phone edges), and read by both workers in parallel. Incomplete:
+  back to the guide. "Capture now" forces a capture. The OCR engine warms up with a tiny
+  recognize at page load (first passes took 18-35 s on the tablet). Tablet diagnostics:
+  front camera has manual focus only; rear has continuous AF. Headless Chrome at 4x CPU
+  throttle, from the tap: upright 4.0 s, sideways 4.2-6.3 s, mirrored 7.2 s.
+- **2026-10-15: names.** A new official's name must be read the same in two passes; a card
+  matched by member ID keeps the stored name; the sign-in sheet's name (editable) wins
+  over OCR; curly quotes and an unmatched quote at either end are tidied.
+
 - **2026-10-15: camera choice, sideways phones, screen crop.** The tablet's Chrome gave
   the rear camera even when asked for the front, so "Switch camera" now steps through
   the real cameras by device ID, shows which one is in use ("Front camera (1 of 2)")

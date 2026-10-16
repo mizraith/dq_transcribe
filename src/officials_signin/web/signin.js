@@ -941,12 +941,21 @@ function startCamera(forOfficial) {
   }
   lastScanReading = null;
   scanForOfficial = forOfficial;
+  element("camera-guide").textContent = "Starting camera…";
+  element("camera-guide").style.background = "";
   drawCameraFields(null);
   cameraOverlay.hidden = false;
   element("camera-diagnostics").checked = window.CardScanner.diagnosticsEnabled();
   activeScan = window.CardScanner.scan({
     video: cameraVideo,
     diagnostics: window.CardScanner.diagnosticsEnabled,
+    stage: element("camera-stage"),
+    overlay: element("camera-overlay-canvas"),
+    onGuide: function (state, message, colour) {
+      const guide = element("camera-guide");
+      guide.textContent = message;
+      guide.style.background = colour;
+    },
     onStatus: function (text) { cameraStatus.textContent = text; },
     onCamera: function (name, count) {
       element("camera-name").textContent = name;
@@ -955,7 +964,7 @@ function startCamera(forOfficial) {
     onProgress: function (reading) {
       lastScanReading = reading;
       drawCameraFields(reading[KEYS.card]);
-      cameraStatus.textContent = "Reading… hold still";
+      cameraStatus.textContent = "";
     },
   });
   activeScan.result.then(function (reading) {
@@ -1096,6 +1105,7 @@ element("camera-diagnostics").addEventListener("change", function () {
   window.CardScanner.setDiagnosticsEnabled(element("camera-diagnostics").checked);
   showToast(element("camera-diagnostics").checked ? "Saving frames for troubleshooting" : "Not saving frames");
 });
+element("camera-capture").addEventListener("click", function () { if (activeScan) { activeScan.captureNow(); } });
 element("camera-switch").addEventListener("click", function () { if (activeScan) { activeScan.switchCamera(); } });
 sheetTrainee.addEventListener("click", function () {
   sheet.trainee = !sheet.trainee;

@@ -60,6 +60,7 @@ _OFFICIAL_PATTERN = re.compile(constants.CARD_OFFICIAL_PATTERN, _FLAGS)
 _GOOD_STANDING_BANNER_PATTERN = re.compile(constants.CARD_GOOD_STANDING_BANNER_PATTERN, _FLAGS)
 _NAME_CHARACTERS = re.compile(r"[^A-Za-z\"'’.\- ]")
 _QUOTE = '"'
+_QUOTE_TRANSLATION = str.maketrans({"“": _QUOTE, "”": _QUOTE, "„": _QUOTE, "″": _QUOTE, "’": "'", "‘": "'"})
 _LETTER_RUN = re.compile(r"[A-Za-z]+")
 _NAME_WORD = re.compile(r"[A-Za-z][A-Za-z'’.\-]*")
 
@@ -155,7 +156,9 @@ def tidy_name(raw_name: str) -> str:
     Returns:
         The tidied name, at most ``constants.NAME_MAX_LENGTH`` characters.
     """
-    cleaned = _NAME_CHARACTERS.sub(" ", raw_name).replace("’", "'")
+    # Curly quotes (common in OCR of the nickname) count as straight ones.
+    straightened = raw_name.translate(_QUOTE_TRANSLATION)
+    cleaned = _NAME_CHARACTERS.sub(" ", straightened)
     words = [word for word in cleaned.split() if any(character.isalpha() for character in word)]
     # Capitalise each run of letters, so hyphenated names and O' names come out right.
     tidied_words = [_LETTER_RUN.sub(lambda match: match.group(0).capitalize(), word) for word in words]

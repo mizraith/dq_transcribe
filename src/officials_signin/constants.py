@@ -225,18 +225,86 @@ OCR_PAGE_SEGMENTATION_MODES = ("6", "4")
 OCR_WORKER_COUNT = 2
 # Start the second worker a little later so the two read different frames.
 OCR_WORKER_STAGGER_MILLISECONDS = 400
+# --- Still capture with a live guide ----------------------------------------------
+# The camera window checks small preview frames several times a second (no OCR):
+# is the whole phone screen in view, big enough, sharp, and held still? A coloured
+# frame and a hint guide the official; once it has been good for a moment, a short
+# burst of stills is taken and the sharpest are read by OCR.
+GUIDE_ANALYSIS_WIDTH = 480  # preview frames are checked at this width (pixels)
+GUIDE_INTERVAL_MILLISECONDS = 120
+GUIDE_GOOD_CHECKS_TO_CAPTURE = 4  # about half a second of "good" before capturing
+# The screen's long side must be at least this share of the frame's short side.
+GUIDE_MIN_SCREEN_SHARE = 0.45
+# The screen must stay this far (share of the frame) from every frame edge.
+GUIDE_EDGE_MARGIN_SHARE = 0.01
+# Sharpness score (contrast-normalised Laplacian energy) needed to capture. Measured on
+# test photos: sharp 17-50, slight blur 12-14, blur ~5, heavy blur ~1. The
+# diagnostics log the scores so it can be tuned on the tablet.
+GUIDE_MIN_SHARPNESS = 10.0
+# Mean brightness change between checks (0-255) above which the phone is "moving".
+GUIDE_MAX_MOTION = 6.0
+# Text-direction test (column change energy / row change energy) above which the
+# phone is sideways. Measured: upright 0.2-0.6, sideways 4.8-20.
+GUIDE_SIDEWAYS_RATIO = 1.0
+# Measure text direction only in the middle of the screen (this share trimmed from each
+# side), away from the phone's edges and header bar.
+GUIDE_SIDEWAYS_INNER_TRIM = 0.2
+# Which way up is a sideways phone? The app's dark header bar marks the top: compare
+# the mean brightness of this share of the screen at each end.
+GUIDE_HEADER_SHARE = 0.15
+CAPTURE_BURST_FRAMES = 4
+CAPTURE_BURST_INTERVAL_MILLISECONDS = 70
+CAPTURE_STILLS_KEPT = 2
+# Stills are cropped to the screen and scaled so the upright screen is this wide.
+OCR_UPRIGHT_SCREEN_WIDTH = 1000
+OCR_MAX_UPSCALE = 2.0
+GUIDE_STATE_NO_SCREEN = "no_screen"
+GUIDE_STATE_EDGE = "edge"
+GUIDE_STATE_SMALL = "small"
+GUIDE_STATE_BLURRY = "blurry"
+GUIDE_STATE_MOVING = "moving"
+GUIDE_STATE_GOOD = "good"
+GUIDE_STATE_READING = "reading"
+GUIDE_STATE_RETRY = "retry"
+GUIDE_MESSAGES = {
+    GUIDE_STATE_NO_SCREEN: "Show the phone's Membership card to the camera",
+    GUIDE_STATE_EDGE: "Move back a little: the whole screen must be in view",
+    GUIDE_STATE_SMALL: "Move the phone closer",
+    GUIDE_STATE_BLURRY: "Hold still: focusing",
+    GUIDE_STATE_MOVING: "Hold still",
+    GUIDE_STATE_GOOD: "Hold it there…",
+    GUIDE_STATE_READING: "Got it: reading the card…",
+    GUIDE_STATE_RETRY: "Could not read it all: hold it up again",
+}
+GUIDE_COLOURS = {
+    GUIDE_STATE_NO_SCREEN: "#dc2626",
+    GUIDE_STATE_EDGE: "#f59e0b",
+    GUIDE_STATE_SMALL: "#f59e0b",
+    GUIDE_STATE_BLURRY: "#f59e0b",
+    GUIDE_STATE_MOVING: "#f59e0b",
+    GUIDE_STATE_GOOD: "#16a34a",
+    GUIDE_STATE_READING: "#16a34a",
+    GUIDE_STATE_RETRY: "#f59e0b",
+}
+GUIDE_FRAME_LINE_WIDTH = 6
+# Diagnostics: log the guide's measurements this often while scanning.
+GUIDE_DIAGNOSTICS_EVERY_CHECKS = 4
+
 # Orientations tried, in order, until a frame shows card words: upright, phone turned
 # left, phone turned right (sideways fits the wide camera frame better), and mirrored
 # (some camera apps flip images). Each is (clockwise rotation in degrees, mirrored).
 OCR_ORIENTATIONS = ((0, False), (90, False), (270, False), (0, True))
-# Crop each frame to the phone screen (the largest bright area) before OCR: dark
-# borders, hands and background confuse Tesseract's layout detection. A row or column
-# belongs to the screen when at least this share of it is bright; "bright" means at
-# least the given percentile of the frame's brightness. Crops smaller than the minimum
-# share of the frame are ignored (the whole frame is read instead).
-OCR_SCREEN_BRIGHT_PERCENTILE = 0.6
-OCR_SCREEN_MIN_BRIGHT_SHARE = 0.35
-OCR_SCREEN_MIN_AREA_SHARE = 0.12
+# Finding the phone screen: the frame is split into small square cells; a cell is
+# "screen" when its bright pixels (the background behind any text) are nearly as bright
+# as the brightest cells in view. Touching screen cells are grouped, and the group with
+# the most text-like texture wins (a lit wall or a face is bright but smooth).
+SCREEN_CELL_PIXELS = 8
+SCREEN_CELL_BRIGHT_QUANTILE = 0.8  # a cell's "background" brightness
+SCREEN_REFERENCE_QUANTILE = 0.97  # "brightest cells in view"
+SCREEN_BRIGHT_RATIO = 0.8
+SCREEN_TEXTURE_SPREAD = 12.0  # brightness standard deviation that marks a textured cell
+SCREEN_PLAIN_CELL_WEIGHT = 0.25  # a plain bright cell counts this much toward a group's score
+OCR_SCREEN_MIN_AREA_SHARE = 0.04  # smaller groups are not a phone screen
 OCR_SCREEN_MARGIN_SHARE = 0.05  # generous: a tight crop cut off the date column on the tablet
 # Once an orientation shows card words it is kept; after this many passes in a row
 # without card words (the phone was turned or taken away) the search starts again.
@@ -245,6 +313,11 @@ OCR_ORIENTATION_UNLOCK_MISSES = 2
 OCR_CARD_HINT_PATTERN = r"member|standing|background|athlete|club|expiration|official"
 OCR_LANGUAGE = "eng"
 OCR_CONTRAST_CUTOFF_FRACTION = 0.02  # share of darkest/lightest pixels clipped by auto-contrast
+# Before OCR each still is turned into black and white by comparing every pixel with
+# the mean of the square around it (adaptive threshold): the card's grey values survive
+# even next to dark phone edges, which made Tesseract's own black/white step drop them.
+OCR_THRESHOLD_WINDOW_PIXELS = 41
+OCR_THRESHOLD_OFFSET = 12  # how much darker than its surroundings a pixel must be to be ink
 OCR_MAX_FRAME_WIDTH_PIXELS = 1600  # larger frames are scaled down before OCR (speed)
 OCR_GIVE_UP_SECONDS = 25  # after this, offer "Admin check" instead of waiting
 # Tesseract.js is bundled under web/vendor/tesseract and served from localhost,

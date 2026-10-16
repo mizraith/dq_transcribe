@@ -1,21 +1,22 @@
 /**
  * Card scanner: reads a USA Swimming membership card from the tablet camera.
  *
- * The official holds up their phone (USA Swimming app, "Membership card" tab).
- * Several Tesseract.js workers run in parallel; each one takes the newest camera
- * frame as soon as it is free, cleans it up (grayscale + auto-contrast + light
- * sharpening), reads it, and posts the text to the server, which parses and
- * merges every pass so far. Scanning stops by itself as soon as every required
- * field has been read, so the common case needs no shutter tap.
+ * Two phases, so the slow part (OCR) only ever sees a good picture:
  *
- * Passes alternate between Tesseract page layouts (each tends to read different
- * rows). Until a frame shows card words, each pass tries the next orientation:
- * upright, phone turned left or right (sideways fits the wide camera frame
- * better), mirrored. The orientation that works is kept, and the search starts
- * again if the phone is turned later.
+ * 1. Live guide (no OCR). Several times a second a small preview frame is checked:
+ *    is the whole phone screen in view, big enough, sharp, and held still? A frame
+ *    is drawn around the phone (red: no phone; amber: move back / closer / hold
+ *    still; green: good) with a hint underneath.
+ * 2. Still capture. After about half a second of green, a short burst of frames is
+ *    taken and the sharpest are kept. Each is cropped to the screen, turned upright
+ *    (a screen wider than tall is a sideways phone), cleaned up, and read by two
+ *    Tesseract.js workers in parallel. The server parses and merges the passes; the
+ *    scan ends when every field is read (and a new name agrees twice). If not, the
+ *    guide comes back for another capture.
  *
  * Everything runs on this device: the OCR engine is served from localhost
- * (web/vendor/tesseract) and frames are never uploaded or stored.
+ * (web/vendor/tesseract) and frames are never uploaded or stored (except, when
+ * "Save frames for troubleshooting" is ticked, to the local diagnostics folder).
  *
  * This file is a string.Template: the config placeholder below is replaced by
  * officials_signin.server.render_script, so never use a literal dollar sign here.
@@ -29,7 +30,6 @@ window.CardScanner = (function () {
   const CAMERA_STORAGE_KEY = "officials_signin.camera_device";
   const FACING_FRONT = "user";
   const FACING_BACK = "environment";
-  const SHARPEN_AMOUNT = 0.6; // 0 = off; weight of the 3x3 sharpening step
   const MAX_CHANNEL_VALUE = 255;
   const HISTOGRAM_SIZE = 256;
   // ITU-R BT.601 luma weights for grayscale.
@@ -42,7 +42,13 @@ window.CardScanner = (function () {
   const QUARTER_TURN = 90;
   const HALF_TURN = 180;
   const THREE_QUARTER_TURN = 270;
+  const GUIDE = OCR.guide;
+  const STATES = GUIDE.states;
   const FRAME_WAIT_MILLISECONDS = 200;
+  const LAYOUT_SPARSE = OCR.pageSegmentationModes[0];
+  const LAYOUT_COLUMN = OCR.pageSegmentationModes[1 % OCR.pageSegmentationModes.length];
+  const WARM_UP_CANVAS_SIZE = 32;
+  const SHARPNESS_SCALE = 1000;
 
   let poolPromise = null;
 
@@ -59,7 +65,15 @@ window.CardScanner = (function () {
           gzip: true,
         }));
       }
-      poolPromise = Promise.all(workers);
+      // One tiny recognize per worker finishes the engine's lazy start-up now,
+      // instead of during the first real scan (seen taking 18-35 s on the tablet).
+      poolPromise = Promise.all(workers).then(async function (ready) {
+        const blank = document.createElement("canvas");
+        blank.width = WARM_UP_CANVAS_SIZE;
+        blank.height = WARM_UP_CANVAS_SIZE;
+        await Promise.all(ready.map(function (worker) { return worker.recognize(blank); }));
+        return ready;
+      });
       poolPromise.catch(function () { poolPromise = null; });
     }
     return poolPromise;
@@ -95,38 +109,146 @@ window.CardScanner = (function () {
   }
 
   /**
-   * Draw a video frame (or image), scaled down and turned upright, crop it to the
-   * phone screen, and clean it up for OCR.
-   * @param {CanvasImageSource} source  Video element or image.
-   * @param {number} width  Source width in pixels.
-   * @param {number} height  Source height in pixels.
-   * @param {number} rotation  Clockwise turn to apply: 0, 90, 180 or 270 degrees.
+   * Crop a still to the phone screen, turn it upright, scale it for OCR and clean it up.
+   * @param {HTMLCanvasElement} still  Full-resolution camera frame.
+   * @param {{left: number, top: number, width: number, height: number}} box  Screen box in
+   *   still pixels (with margin).
+   * @param {number} rotation  Clockwise turn: 0, 90, 180 or 270 degrees.
    * @param {boolean} mirror  Flip left-right (after turning).
    * @returns {HTMLCanvasElement}
    */
-  function prepareFrame(source, width, height, rotation, mirror) {
-    const scale = Math.min(1, OCR.maxFrameWidth / Math.max(width, height));
-    const scaledWidth = Math.round(width * scale);
-    const scaledHeight = Math.round(height * scale);
+  function prepareStill(still, box, rotation, mirror) {
     const sideways = rotation === QUARTER_TURN || rotation === THREE_QUARTER_TURN;
-    const turned = document.createElement("canvas");
-    turned.width = sideways ? scaledHeight : scaledWidth;
-    turned.height = sideways ? scaledWidth : scaledHeight;
-    const turnedContext = turned.getContext("2d", { willReadFrequently: true });
-    turnedContext.translate(turned.width / 2, turned.height / 2);
-    if (mirror) { turnedContext.scale(-1, 1); }
-    turnedContext.rotate(rotation * Math.PI / HALF_TURN);
-    turnedContext.drawImage(source, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
-    const box = findScreenBox(turnedContext.getImageData(0, 0, turned.width, turned.height));
+    const uprightWidth = sideways ? box.height : box.width;
+    const scale = Math.min(GUIDE.maxUpscale, GUIDE.uprightScreenWidth / uprightWidth);
+    const scaledWidth = Math.round(box.width * scale);
+    const scaledHeight = Math.round(box.height * scale);
     const canvas = document.createElement("canvas");
-    canvas.width = box.width;
-    canvas.height = box.height;
+    canvas.width = sideways ? scaledHeight : scaledWidth;
+    canvas.height = sideways ? scaledWidth : scaledHeight;
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    context.drawImage(turned, box.left, box.top, box.width, box.height, 0, 0, box.width, box.height);
+    context.translate(canvas.width / 2, canvas.height / 2);
+    if (mirror) { context.scale(-1, 1); }
+    context.rotate(rotation * Math.PI / HALF_TURN);
+    context.drawImage(still, box.left, box.top, box.width, box.height,
+      -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
+    context.setTransform(1, 0, 0, 1, 0, 0);
     const image = context.getImageData(0, 0, canvas.width, canvas.height);
     cleanUp(image);
     context.putImageData(image, 0, 0);
     return canvas;
+  }
+
+  /** Copy the current video frame at full resolution. */
+  function grabFrame(video) {
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    return canvas;
+  }
+
+  /** Grayscale values of a small copy of a frame (or canvas), for the live guide. */
+  function smallGray(source, sourceWidth, sourceHeight, analysisCanvas) {
+    const scale = GUIDE.analysisWidth / sourceWidth;
+    analysisCanvas.width = GUIDE.analysisWidth;
+    analysisCanvas.height = Math.round(sourceHeight * scale);
+    const context = analysisCanvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(source, 0, 0, analysisCanvas.width, analysisCanvas.height);
+    const image = context.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
+    const gray = new Uint8ClampedArray(image.width * image.height);
+    for (let index = 0; index < gray.length; index += 1) { gray[index] = luma(image.data, index * BYTES_PER_PIXEL); }
+    return { gray: gray, width: image.width, height: image.height };
+  }
+
+  /**
+   * Sharpness of the screen area: Laplacian energy divided by the contrast squared,
+   * so a dim and a bright screen score alike. Blur lowers it sharply.
+   */
+  function sharpness(frame, area) {
+    const gray = frame.gray;
+    const width = frame.width;
+    let energy = 0;
+    let count = 0;
+    let low = MAX_CHANNEL_VALUE;
+    let high = 0;
+    for (let row = area.top + 1; row < area.top + area.height - 1; row += 1) {
+      for (let column = area.left + 1; column < area.left + area.width - 1; column += 1) {
+        const index = row * width + column;
+        const value = gray[index];
+        const laplacian = 4 * value - gray[index - 1] - gray[index + 1] - gray[index - width] - gray[index + width];
+        energy += laplacian * laplacian;
+        count += 1;
+        if (value < low) { low = value; }
+        if (value > high) { high = value; }
+      }
+    }
+    const contrast = Math.max(1, high - low);
+    return count ? (energy / count) / (contrast * contrast) * SHARPNESS_SCALE : 0;
+  }
+
+  /**
+   * Is the text running sideways? Lines of text make the brightness change sharply
+   * from one row to the next (upright) or from one column to the next (sideways).
+   * @returns {number}  Column change energy divided by row change energy: above 1
+   *   means the text runs up/down, so the phone is turned sideways.
+   */
+  function sidewaysRatio(frame, screen) {
+    const trimX = Math.round(screen.width * GUIDE.sidewaysInnerTrim);
+    const trimY = Math.round(screen.height * GUIDE.sidewaysInnerTrim);
+    const area = {
+      left: screen.left + trimX,
+      top: screen.top + trimY,
+      width: Math.max(2, screen.width - 2 * trimX),
+      height: Math.max(2, screen.height - 2 * trimY),
+    };
+    const gray = frame.gray;
+    const width = frame.width;
+    const rowMeans = new Float32Array(area.height);
+    const columnMeans = new Float32Array(area.width);
+    for (let row = 0; row < area.height; row += 1) {
+      for (let column = 0; column < area.width; column += 1) {
+        const value = gray[(area.top + row) * width + area.left + column];
+        rowMeans[row] += value / area.width;
+        columnMeans[column] += value / area.height;
+      }
+    }
+    const changeEnergy = function (means) {
+      let total = 0;
+      for (let index = 1; index < means.length; index += 1) {
+        const change = means[index] - means[index - 1];
+        total += change * change;
+      }
+      return total / Math.max(1, means.length - 1);
+    };
+    return changeEnergy(columnMeans) / Math.max(1e-6, changeEnergy(rowMeans));
+  }
+
+  /**
+   * Which way to turn a sideways phone upright. The app's dark header bar is the top:
+   * darker on the right means the top is on the right, so turn a quarter anticlockwise
+   * (270 degrees clockwise); darker on the left means turn 90 degrees clockwise.
+   */
+  function sidewaysTurn(frame, screen) {
+    const band = Math.max(1, Math.round(screen.width * GUIDE.headerShare));
+    const meanOfColumns = function (firstColumn) {
+      let total = 0;
+      for (let row = screen.top; row < screen.top + screen.height; row += 1) {
+        for (let column = firstColumn; column < firstColumn + band; column += 1) { total += frame.gray[row * frame.width + column]; }
+      }
+      return total / (band * screen.height);
+    };
+    return meanOfColumns(screen.left + screen.width - band) < meanOfColumns(screen.left) ? THREE_QUARTER_TURN : QUARTER_TURN;
+  }
+
+  /** Mean brightness change between two small frames of the same size. */
+  function motion(previous, current) {
+    if (!previous || previous.gray.length !== current.gray.length) { return 0; }
+    let total = 0;
+    for (let index = 0; index < current.gray.length; index += 1) {
+      total += Math.abs(current.gray[index] - previous.gray[index]);
+    }
+    return total / current.gray.length;
   }
 
   /** Brightness of one pixel (ITU-R BT.601 luma). */
@@ -134,118 +256,194 @@ window.CardScanner = (function () {
     return LUMA_RED * pixels[offset] + LUMA_GREEN * pixels[offset + 1] + LUMA_BLUE * pixels[offset + 2];
   }
 
-  /**
-   * The longest run of indexes whose share is at least ``minimum``, allowing short gaps.
-   * @param {Float32Array} shares  Bright share per row (or column).
-   * @param {number} minimum  Share needed to count as screen.
-   * @returns {{start: number, end: number}}  Inclusive range; end < start when none.
-   */
-  function longestBrightRun(shares, minimum) {
-    const allowedGap = Math.max(1, Math.round(shares.length * OCR.screenMarginShare));
-    let best = { start: 0, end: -1 };
-    let start = -1;
-    let lastBright = -1;
-    for (let index = 0; index < shares.length; index += 1) {
-      if (shares[index] < minimum) { continue; }
-      if (start < 0 || index - lastBright > allowedGap) { start = index; }
-      lastBright = index;
-      if (lastBright - start > best.end - best.start) { best = { start: start, end: lastBright }; }
-    }
-    return best;
+  /** Value at a quantile (0-1) of an array of numbers (the array is sorted in place). */
+  function quantile(values, fraction) {
+    values.sort(function (first, second) { return first - second; });
+    return values[Math.min(values.length - 1, Math.floor(fraction * (values.length - 1)))];
   }
 
   /**
-   * Find the phone screen: the largest block of bright rows and columns.
-   * @param {ImageData} image  The turned frame.
-   * @returns {{left: number, top: number, width: number, height: number}}  The crop
-   *   (the whole frame when no convincing screen is found).
+   * Find the phone screen in a small gray frame.
+   *
+   * The frame is split into square cells. A cell is "screen" when its bright pixels
+   * (the background behind any text) are nearly as bright as the brightest cells in
+   * view. Touching screen cells are grouped; the group with the most text-like
+   * texture wins, so a lit wall or a face (bright but smooth) loses to the card.
+   *
+   * @param {{gray: Uint8ClampedArray, width: number, height: number}} frame  Small gray frame.
+   * @returns {{found: boolean, left: number, top: number, width: number, height: number,
+   *   touchesEdge: boolean}}  The screen in frame pixels (without margin).
    */
-  function findScreenBox(image) {
-    const width = image.width;
-    const height = image.height;
-    const whole = { left: 0, top: 0, width: width, height: height };
-    const pixels = image.data;
-    const histogram = new Uint32Array(HISTOGRAM_SIZE);
-    const gray = new Uint8ClampedArray(width * height);
-    for (let index = 0; index < width * height; index += 1) {
-      gray[index] = luma(pixels, index * BYTES_PER_PIXEL);
-      histogram[gray[index]] += 1;
+  function findScreen(frame) {
+    const size = OCR.screenCellPixels;
+    const columns = Math.floor(frame.width / size);
+    const rows = Math.floor(frame.height / size);
+    const none = { found: false, left: 0, top: 0, width: frame.width, height: frame.height, touchesEdge: false };
+    if (columns < 2 || rows < 2) { return none; }
+    const backgrounds = new Float32Array(columns * rows);
+    const spreads = new Float32Array(columns * rows);
+    const cellValues = new Array(size * size);
+    for (let cellRow = 0; cellRow < rows; cellRow += 1) {
+      for (let cellColumn = 0; cellColumn < columns; cellColumn += 1) {
+        let sum = 0;
+        let sumSquares = 0;
+        let count = 0;
+        for (let y = 0; y < size; y += 1) {
+          const offset = (cellRow * size + y) * frame.width + cellColumn * size;
+          for (let x = 0; x < size; x += 1) {
+            const value = frame.gray[offset + x];
+            cellValues[count] = value;
+            sum += value;
+            sumSquares += value * value;
+            count += 1;
+          }
+        }
+        const cell = cellRow * columns + cellColumn;
+        const mean = sum / count;
+        spreads[cell] = Math.sqrt(Math.max(0, sumSquares / count - mean * mean));
+        backgrounds[cell] = quantile(cellValues, OCR.screenCellBrightQuantile);
+      }
     }
-    let threshold = 0;
-    let seen = 0;
-    while (threshold < MAX_CHANNEL_VALUE && seen + histogram[threshold] < width * height * OCR.screenBrightPercentile) {
-      seen += histogram[threshold];
-      threshold += 1;
+    const threshold = OCR.screenBrightRatio * quantile(Array.from(backgrounds), OCR.screenReferenceQuantile);
+    const visited = new Uint8Array(columns * rows);
+    let best = null;
+    for (let start = 0; start < columns * rows; start += 1) {
+      if (visited[start] || backgrounds[start] < threshold) { continue; }
+      // Flood-fill one group of touching screen cells.
+      const queue = [start];
+      visited[start] = 1;
+      let cells = 0;
+      let textured = 0;
+      let minColumn = columns;
+      let maxColumn = -1;
+      let minRow = rows;
+      let maxRow = -1;
+      while (queue.length) {
+        const cell = queue.pop();
+        const cellRow = Math.floor(cell / columns);
+        const cellColumn = cell % columns;
+        cells += 1;
+        if (spreads[cell] >= OCR.screenTextureSpread) { textured += 1; }
+        minColumn = Math.min(minColumn, cellColumn);
+        maxColumn = Math.max(maxColumn, cellColumn);
+        minRow = Math.min(minRow, cellRow);
+        maxRow = Math.max(maxRow, cellRow);
+        const neighbours = [
+          cellColumn > 0 ? cell - 1 : -1,
+          cellColumn < columns - 1 ? cell + 1 : -1,
+          cellRow > 0 ? cell - columns : -1,
+          cellRow < rows - 1 ? cell + columns : -1,
+        ];
+        neighbours.forEach(function (next) {
+          if (next >= 0 && !visited[next] && backgrounds[next] >= threshold) {
+            visited[next] = 1;
+            queue.push(next);
+          }
+        });
+      }
+      const score = textured + OCR.screenPlainCellWeight * cells;
+      if (best === null || score > best.score) {
+        best = { score: score, minColumn: minColumn, maxColumn: maxColumn, minRow: minRow, maxRow: maxRow };
+      }
     }
-    const rowShares = new Float32Array(height);
-    for (let row = 0; row < height; row += 1) {
-      let bright = 0;
-      for (let column = 0; column < width; column += 1) { if (gray[row * width + column] >= threshold) { bright += 1; } }
-      rowShares[row] = bright / width;
-    }
-    const rows = longestBrightRun(rowShares, OCR.screenMinBrightShare);
-    if (rows.end < rows.start) { return whole; }
-    const columnShares = new Float32Array(width);
-    for (let column = 0; column < width; column += 1) {
-      let bright = 0;
-      for (let row = rows.start; row <= rows.end; row += 1) { if (gray[row * width + column] >= threshold) { bright += 1; } }
-      columnShares[column] = bright / (rows.end - rows.start + 1);
-    }
-    const columns = longestBrightRun(columnShares, OCR.screenMinBrightShare);
-    if (columns.end < columns.start) { return whole; }
-    const marginX = Math.round(width * OCR.screenMarginShare);
-    const marginY = Math.round(height * OCR.screenMarginShare);
-    const left = Math.max(0, columns.start - marginX);
-    const top = Math.max(0, rows.start - marginY);
-    const box = {
+    if (best === null) { return none; }
+    const screen = {
+      found: true,
+      left: best.minColumn * size,
+      top: best.minRow * size,
+      width: (best.maxColumn - best.minColumn + 1) * size,
+      height: (best.maxRow - best.minRow + 1) * size,
+    };
+    if (screen.width * screen.height < frame.width * frame.height * OCR.screenMinAreaShare) { return none; }
+    // Cells cover the frame only up to a whole number of cells; measure edges against that.
+    const coveredWidth = columns * size;
+    const coveredHeight = rows * size;
+    const edgeX = Math.max(1, Math.round(coveredWidth * GUIDE.edgeMarginShare));
+    const edgeY = Math.max(1, Math.round(coveredHeight * GUIDE.edgeMarginShare));
+    screen.touchesEdge = screen.left < edgeX || screen.top < edgeY
+      || screen.left + screen.width > coveredWidth - edgeX || screen.top + screen.height > coveredHeight - edgeY;
+    return screen;
+  }
+
+  /** A screen box grown by the crop margin and scaled to another frame size. */
+  function scaleBox(screen, fromWidth, fromHeight, toWidth, toHeight) {
+    const scaleX = toWidth / fromWidth;
+    const scaleY = toHeight / fromHeight;
+    const marginX = Math.round(toWidth * OCR.screenMarginShare);
+    const marginY = Math.round(toHeight * OCR.screenMarginShare);
+    const left = Math.max(0, Math.round(screen.left * scaleX) - marginX);
+    const top = Math.max(0, Math.round(screen.top * scaleY) - marginY);
+    return {
       left: left,
       top: top,
-      width: Math.min(width, columns.end + marginX + 1) - left,
-      height: Math.min(height, rows.end + marginY + 1) - top,
+      width: Math.min(toWidth, Math.round((screen.left + screen.width) * scaleX) + marginX) - left,
+      height: Math.min(toHeight, Math.round((screen.top + screen.height) * scaleY) + marginY) - top,
     };
-    return box.width * box.height >= width * height * OCR.screenMinAreaShare ? box : whole;
   }
 
   /**
-   * Grayscale, stretch contrast (clipping a small share of the darkest and
-   * lightest pixels), then sharpen lightly. Works in place.
+   * Judge one small frame for the live guide.
+   * @returns {{state: string, screen: object, sharpness: number, motion: number}}
+   */
+  function judgeFrame(frame, previous) {
+    const screen = findScreen(frame);
+    const moved = motion(previous, frame);
+    if (!screen.found) { return { state: STATES.noScreen, screen: screen, sharpness: 0, motion: moved }; }
+    const score = sharpness(frame, screen);
+    const longSide = Math.max(screen.width, screen.height);
+    let state = STATES.good;
+    if (screen.touchesEdge) {
+      state = STATES.edge;
+    } else if (longSide < Math.min(frame.width, frame.height) * GUIDE.minScreenShare) {
+      state = STATES.small;
+    } else if (moved > GUIDE.maxMotion) {
+      state = STATES.moving;
+    } else if (score < GUIDE.minSharpness) {
+      state = STATES.blurry;
+    }
+    return { state: state, screen: screen, sharpness: score, motion: moved };
+  }
+
+  /**
+   * Turn an image into black text on white for OCR, in place (adaptive threshold):
+   * a pixel is ink when it is darker than the mean of the square around it by more
+   * than ``OCR.thresholdOffset``. Grey text next to dark phone edges survives, which a
+   * single threshold for the whole image would lose.
    * @param {ImageData} image
    */
   function cleanUp(image) {
-    const pixels = image.data;
-    const count = image.width * image.height;
-    const gray = new Float32Array(count);
-    const histogram = new Uint32Array(HISTOGRAM_SIZE);
-    for (let index = 0; index < count; index += 1) {
-      const offset = index * BYTES_PER_PIXEL;
-      const value = luma(pixels, offset);
-      gray[index] = value;
-      histogram[Math.min(MAX_CHANNEL_VALUE, Math.round(value))] += 1;
-    }
-    const clip = count * OCR.contrastCutoffFraction;
-    let low = 0;
-    let seen = 0;
-    while (low < MAX_CHANNEL_VALUE && seen + histogram[low] <= clip) { seen += histogram[low]; low += 1; }
-    let high = MAX_CHANNEL_VALUE;
-    seen = 0;
-    while (high > low && seen + histogram[high] <= clip) { seen += histogram[high]; high -= 1; }
-    const range = Math.max(1, high - low);
-    for (let index = 0; index < count; index += 1) {
-      gray[index] = Math.max(0, Math.min(MAX_CHANNEL_VALUE, (gray[index] - low) * MAX_CHANNEL_VALUE / range));
-    }
     const width = image.width;
-    for (let index = 0; index < count; index += 1) {
-      let value = gray[index];
-      const column = index % width;
-      if (SHARPEN_AMOUNT > 0 && column > 0 && column < width - 1 && index >= width && index < count - width) {
-        const neighbours = gray[index - 1] + gray[index + 1] + gray[index - width] + gray[index + width];
-        value = value + SHARPEN_AMOUNT * (4 * value - neighbours);
+    const height = image.height;
+    const pixels = image.data;
+    const gray = new Float32Array(width * height);
+    for (let index = 0; index < gray.length; index += 1) { gray[index] = luma(pixels, index * BYTES_PER_PIXEL); }
+    // Summed-area table, one extra row and column of zeros.
+    const stride = width + 1;
+    const sums = new Float64Array(stride * (height + 1));
+    for (let row = 0; row < height; row += 1) {
+      let rowSum = 0;
+      for (let column = 0; column < width; column += 1) {
+        rowSum += gray[row * width + column];
+        sums[(row + 1) * stride + column + 1] = sums[row * stride + column + 1] + rowSum;
       }
-      const clamped = Math.max(0, Math.min(MAX_CHANNEL_VALUE, value));
-      const offset = index * BYTES_PER_PIXEL;
-      pixels[offset] = clamped;
-      pixels[offset + 1] = clamped;
-      pixels[offset + 2] = clamped;
+    }
+    const half = Math.floor(OCR.thresholdWindow / 2);
+    for (let row = 0; row < height; row += 1) {
+      const top = Math.max(0, row - half);
+      const bottom = Math.min(height, row + half + 1);
+      for (let column = 0; column < width; column += 1) {
+        const left = Math.max(0, column - half);
+        const right = Math.min(width, column + half + 1);
+        const area = (bottom - top) * (right - left);
+        const total = sums[bottom * stride + right] - sums[top * stride + right]
+          - sums[bottom * stride + left] + sums[top * stride + left];
+        const index = row * width + column;
+        const value = gray[index] < total / area - OCR.thresholdOffset ? 0 : MAX_CHANNEL_VALUE;
+        const offset = index * BYTES_PER_PIXEL;
+        pixels[offset] = value;
+        pixels[offset + 1] = value;
+        pixels[offset + 2] = value;
+      }
     }
   }
 
@@ -271,12 +469,17 @@ window.CardScanner = (function () {
    * @param {HTMLVideoElement} options.video  Preview element (the stream is attached to it).
    * @param {function(object):void} options.onProgress  Called with the server's reading after each pass.
    * @param {function(string):void} options.onStatus  Short status text for the admin.
+   * @param {HTMLElement} [options.stage]  Element holding the video and overlay (mirrored together).
+   * @param {HTMLCanvasElement} [options.overlay]  Canvas over the video for the guide frame.
+   * @param {function(string, string, string):void} [options.onGuide]  Called with the guide
+   *   state, its hint text and colour after every check.
    * @param {function(string, number):void} [options.onCamera]  Called with the camera in use
    *   ("Front camera (1 of 2)") and how many cameras there are, after each (re)open.
    * @param {boolean|function():boolean} options.diagnostics  Save raw frames, OCR text and
    *   timings on the device for troubleshooting (POSTed to the diagnostics route). A
    *   function is asked before every record, so ticking the box mid-scan works.
-   * @returns {{result: Promise<object|null>, cancel: function():void, switchCamera: function():void}}
+   * @returns {{result: Promise<object|null>, cancel: function():void, captureNow: function():void,
+   *   switchCamera: function():void}}
    *   ``result`` resolves to the last server reading (complete, or the best so far
    *   when the time limit is reached or the scan is cancelled; null if nothing was read).
    */
@@ -286,10 +489,6 @@ window.CardScanner = (function () {
     let cameraId = rememberedCameraId();
     let facing = null;
     let lastReading = null;
-    // Orientation search: index into OCR.orientations, whether it is locked, and misses since.
-    let orientationIndex = 0;
-    let orientationLocked = false;
-    let missesSinceLock = 0;
     const texts = [];
 
     function stopStream() {
@@ -319,7 +518,7 @@ window.CardScanner = (function () {
       facing = trackSettings.facingMode || null;
       cameraId = trackSettings.deviceId || cameraId;
       // Mirror the front-camera preview so it behaves like a mirror; OCR uses the raw frame.
-      options.video.classList.toggle("mirrored", facing === FACING_FRONT);
+      (options.stage || options.video).classList.toggle("mirrored", facing === FACING_FRONT);
       if (options.onCamera) {
         listCameras().then(function (cameras) {
           options.onCamera(describeCamera(track, cameras), cameras.length);
@@ -395,90 +594,211 @@ window.CardScanner = (function () {
 
     let passCount = 0;
     let done = false;
-    let parsedTextCount = 0;
 
-    /** Post every card text so far; keep the reply if it covers the most texts yet. */
-    async function mergeTexts() {
-      const count = texts.length;
-      const reading = await parseTexts(texts.slice());
-      if (count >= parsedTextCount) {
-        parsedTextCount = count;
-        lastReading = reading;
-        if (!done && !cancelled) { options.onProgress(reading); }
+    // --- Live guide ------------------------------------------------------------
+
+    const analysisCanvas = document.createElement("canvas");
+    const overlay = options.overlay || null;
+    let captureRequested = false;
+
+    /** Draw the coloured frame around the screen (or around the whole view) on the overlay. */
+    function drawGuide(judgement, frame) {
+      if (!overlay) { return; }
+      overlay.width = frame.width;
+      overlay.height = frame.height;
+      const context = overlay.getContext("2d");
+      context.clearRect(0, 0, overlay.width, overlay.height);
+      context.strokeStyle = GUIDE.colours[judgement.state];
+      context.lineWidth = GUIDE.lineWidth;
+      const screen = judgement.screen;
+      const area = screen.found ? screen : { left: 0, top: 0, width: frame.width, height: frame.height };
+      context.strokeRect(area.left, area.top, area.width, area.height);
+    }
+
+    /** Freeze the preview on a captured still while it is read. */
+    function showStill(still) {
+      if (!overlay) { return; }
+      const context = overlay.getContext("2d");
+      context.drawImage(still, 0, 0, overlay.width, overlay.height);
+      context.strokeStyle = GUIDE.colours[STATES.reading];
+      context.lineWidth = GUIDE.lineWidth;
+      context.strokeRect(0, 0, overlay.width, overlay.height);
+    }
+
+    function guide(state) {
+      if (options.onGuide) { options.onGuide(state, GUIDE.messages[state], GUIDE.colours[state]); }
+    }
+
+    /**
+     * Watch the preview until the phone has been in view, sharp and still for a moment
+     * (or the admin taps "Capture now").
+     * @returns {Promise<object|null>}  The last good judgement (screen in small-frame
+     *   pixels), or null if cancelled / out of time.
+     */
+    async function waitForGoodView(deadline) {
+      let previous = null;
+      let goodChecks = 0;
+      let checks = 0;
+      let lastJudgement = null;
+      while (!cancelled && Date.now() < deadline) {
+        const video = options.video;
+        if (!video.videoWidth) { await sleep(FRAME_WAIT_MILLISECONDS); continue; }
+        const frame = smallGray(video, video.videoWidth, video.videoHeight, analysisCanvas);
+        const judgement = judgeFrame(frame, previous);
+        previous = frame;
+        checks += 1;
+        drawGuide(judgement, frame);
+        guide(judgement.state);
+        if (checks % GUIDE.diagnosticsEveryChecks === 0) {
+          diagnose({
+            kind: "guide",
+            state: judgement.state,
+            sharpness: Math.round(judgement.sharpness * 10) / 10,
+            motion: Math.round(judgement.motion * 10) / 10,
+            screen: judgement.screen.found
+              ? [judgement.screen.left, judgement.screen.top, judgement.screen.width, judgement.screen.height] : null,
+            frame: [frame.width, frame.height],
+          }, null);
+        }
+        if (judgement.screen.found) { lastJudgement = { judgement: judgement, frame: frame }; }
+        goodChecks = judgement.state === STATES.good ? goodChecks + 1 : 0;
+        if (goodChecks >= GUIDE.goodChecksToCapture) { return lastJudgement; }
+        if (captureRequested) {
+          captureRequested = false;
+          return lastJudgement || { judgement: judgement, frame: frame };
+        }
+        await sleep(GUIDE.intervalMilliseconds);
       }
+      return null;
+    }
+
+    /**
+     * Take a short burst of full-resolution frames and keep the sharpest.
+     * @returns {Promise<{stills: HTMLCanvasElement[], box: object, sideways: boolean}>}
+     */
+    async function captureStills(view) {
+      const video = options.video;
+      const candidates = [];
+      for (let index = 0; index < GUIDE.burstFrames; index += 1) {
+        const still = grabFrame(video);
+        const small = smallGray(still, still.width, still.height, analysisCanvas);
+        const screen = findScreen(small);
+        const area = screen.found ? screen : view.judgement.screen;
+        candidates.push({ still: still, score: sharpness(small, area), screen: area, small: small });
+        if (index < GUIDE.burstFrames - 1) { await sleep(GUIDE.burstIntervalMilliseconds); }
+      }
+      candidates.sort(function (first, second) { return second.score - first.score; });
+      const kept = candidates.slice(0, GUIDE.stillsKept);
+      const best = kept[0];
+      const box = scaleBox(best.screen, best.small.width, best.small.height, best.still.width, best.still.height);
+      kept.forEach(function (candidate, index) {
+        diagnose({ kind: "still", rank: index + 1, sharpness: Math.round(candidate.score * 10) / 10, box: [box.left, box.top, box.width, box.height] }, candidate.still);
+      });
+      const ratio = sidewaysRatio(best.small, best.screen);
+      const sideways = ratio > GUIDE.sidewaysRatio;
+      const rotation = sideways ? sidewaysTurn(best.small, best.screen) : 0;
+      diagnose({ kind: "orientation", sideways_ratio: Math.round(ratio * 100) / 100, rotation: rotation }, null);
+      return {
+        stills: kept.map(function (candidate) { return candidate.still; }),
+        box: box,
+        sideways: sideways,
+        rotation: rotation,
+      };
+    }
+
+    /** OCR one prepared still on one worker and merge the result; returns the text. */
+    async function readStill(worker, still, box, rotation, mirror, layout) {
+      passCount += 1;
+      const passNumber = passCount;
+      const started = performance.now();
+      const prepared = prepareStill(still, box, rotation, mirror);
+      const ocrStarted = performance.now();
+      const text = await recognize(worker, prepared, layout);
+      diagnose({
+        kind: "pass", pass: passNumber, layout: layout, rotation: rotation, mirrored: mirror,
+        frame_size: [prepared.width, prepared.height], prepare_ms: Math.round(ocrStarted - started),
+        ocr_ms: Math.round(performance.now() - ocrStarted), card_words: CARD_HINT.test(text), text: text,
+      }, null);
+      return text;
+    }
+
+    /** Merge a batch of new texts (those with card words) and report progress. */
+    async function mergeNew(newTexts) {
+      newTexts.filter(function (text) { return CARD_HINT.test(text); }).forEach(function (text) { texts.push(text); });
+      if (texts.length === 0) { return null; }
+      const reading = await parseTexts(texts.slice());
+      lastReading = reading;
+      if (!cancelled) { options.onProgress(reading); }
+      diagnose({ kind: "merged", passes: texts.length, complete: reading[KEYS.card][KEYS.complete], missing: reading[KEYS.card][KEYS.missing] }, null);
+      if (reading[KEYS.card][KEYS.complete]) { done = true; }
       return reading;
     }
 
-    /** One worker's loop: read the newest frame, again and again, until done. */
-    async function readFrames(worker, deadline) {
-      while (!done && !cancelled && Date.now() < deadline) {
-        const video = options.video;
-        if (!video.videoWidth) {
-          await sleep(FRAME_WAIT_MILLISECONDS);
-          continue;
+    /**
+     * Read the captured stills with both workers in parallel, stopping as soon as the
+     * card is complete. Sideways screens are tried turned both ways first.
+     */
+    async function readCapture(workers, capture) {
+      const first = capture.stills[0];
+      const second = capture.stills[1] || first;
+      const worker = function (index) { return workers[index % workers.length]; };
+      let rotation = 0;
+      let mirror = false;
+      if (capture.sideways) {
+        // Read both stills the way the header says is up; if neither shows card words,
+        // the guess was wrong, so read them the other way round.
+        rotation = capture.rotation;
+        await mergeNew(await Promise.all([
+          readStill(worker(0), first, capture.box, rotation, false, LAYOUT_SPARSE),
+          readStill(worker(1), second, capture.box, rotation, false, LAYOUT_COLUMN),
+        ]));
+        if (texts.length === 0 && !done && !cancelled) {
+          rotation = rotation === QUARTER_TURN ? THREE_QUARTER_TURN : QUARTER_TURN;
+          await mergeNew(await Promise.all([
+            readStill(worker(0), first, capture.box, rotation, false, LAYOUT_SPARSE),
+            readStill(worker(1), second, capture.box, rotation, false, LAYOUT_COLUMN),
+          ]));
         }
-        const layout = OCR.pageSegmentationModes[passCount % OCR.pageSegmentationModes.length];
-        passCount += 1;
-        // Locked: keep the orientation that worked. Searching: each pass tries the next one.
-        const frameOrientation = orientationIndex;
-        if (!orientationLocked) { orientationIndex = (orientationIndex + 1) % OCR.orientations.length; }
-        const rotation = OCR.orientations[frameOrientation][0];
-        const frameMirrored = OCR.orientations[frameOrientation][1];
-        const passNumber = passCount;
-        const prepareStarted = performance.now();
-        diagnose({ kind: "frame", pass: passNumber }, video);
-        const frame = prepareFrame(video, video.videoWidth, video.videoHeight, rotation, frameMirrored);
-        const ocrStarted = performance.now();
-        const text = await recognize(worker, frame, layout);
-        diagnose({
-          kind: "pass",
-          pass: passNumber,
-          layout: layout,
-          rotation: rotation,
-          mirrored: frameMirrored,
-          frame_size: [frame.width, frame.height],
-          prepare_ms: Math.round(ocrStarted - prepareStarted),
-          ocr_ms: Math.round(performance.now() - ocrStarted),
-          card_words: CARD_HINT.test(text),
-          text: text,
-        }, null);
-        if (done || cancelled) { return; }
-        if (!CARD_HINT.test(text)) {
-          // No card words: the phone is not in view yet, or held another way round.
-          if (orientationLocked) {
-            missesSinceLock += 1;
-            if (missesSinceLock >= OCR.orientationUnlockMisses) { orientationLocked = false; }
-          }
-          continue;
-        }
-        // Card words: keep this orientation for the following frames.
-        orientationIndex = frameOrientation;
-        orientationLocked = true;
-        missesSinceLock = 0;
-        texts.push(text);
-        const reading = await mergeTexts();
-        diagnose({
-          kind: "merged",
-          pass: passNumber,
-          complete: reading[KEYS.card][KEYS.complete],
-          missing: reading[KEYS.card][KEYS.missing],
-        }, null);
-        if (reading[KEYS.card][KEYS.complete]) {
-          done = true;
-        }
+      } else {
+        await mergeNew(await Promise.all([
+          readStill(worker(0), first, capture.box, 0, false, LAYOUT_SPARSE),
+          readStill(worker(1), second, capture.box, 0, false, LAYOUT_SPARSE),
+        ]));
+      }
+      if (done || cancelled) { return; }
+      if (texts.length === 0) {
+        // No card words either way up: maybe a mirrored image.
+        mirror = true;
+        await mergeNew([await readStill(worker(0), first, capture.box, rotation, mirror, LAYOUT_SPARSE)]);
+        if (done || cancelled || texts.length === 0) { return; }
+      }
+      const followUps = capture.sideways
+        ? [[second, LAYOUT_SPARSE], [first, LAYOUT_COLUMN]]
+        : [[first, LAYOUT_COLUMN], [second, LAYOUT_COLUMN]];
+      for (let index = 0; index < followUps.length && !done && !cancelled; index += workers.length) {
+        const batch = followUps.slice(index, index + workers.length);
+        await mergeNew(await Promise.all(batch.map(function (job, offset) {
+          return readStill(worker(offset), job[0], capture.box, rotation, mirror, job[1]);
+        })));
       }
     }
 
     async function run() {
       options.onStatus("Starting camera…");
       await openCamera();
-      options.onStatus("Loading the card reader…");
-      const workers = await warmUp();
+      options.onStatus("");
+      const workersReady = warmUp();
       const deadline = Date.now() + OCR.giveUpSeconds * 1000;
-      options.onStatus("Hold the Membership card tab up to the camera");
-      await Promise.all(workers.map(function (worker, index) {
-        return sleep(index * OCR.workerStaggerMilliseconds).then(function () { return readFrames(worker, deadline); });
-      }));
+      while (!done && !cancelled && Date.now() < deadline) {
+        const view = await waitForGoodView(deadline);
+        if (view === null) { break; }
+        const capture = await captureStills(view);
+        showStill(capture.stills[0]);
+        guide(STATES.reading);
+        const workers = await workersReady;
+        await readCapture(workers, capture);
+        if (!done && !cancelled) { guide(STATES.retry); await sleep(GUIDE.intervalMilliseconds * GUIDE.goodChecksToCapture); }
+      }
       diagnose({
         kind: "result",
         passes: passCount,
@@ -494,6 +814,7 @@ window.CardScanner = (function () {
     return {
       result: result,
       cancel: function () { cancelled = true; },
+      captureNow: function () { captureRequested = true; },
       switchCamera: async function () {
         // Step through the device's real cameras (front/back hints are not reliable on tablets).
         try {
@@ -505,9 +826,6 @@ window.CardScanner = (function () {
           const index = cameras.findIndex(function (camera) { return camera.deviceId === cameraId; });
           cameraId = cameras[(index + 1) % cameras.length].deviceId;
           rememberCameraId(cameraId);
-          orientationIndex = 0;
-          orientationLocked = false;
-          missesSinceLock = 0;
           await openCamera();
         } catch (error) {
           options.onStatus("Could not switch camera");
@@ -528,7 +846,11 @@ window.CardScanner = (function () {
   return {
     warmUp: warmUp,
     scan: scan,
-    prepareFrame: prepareFrame,
+    prepareStill: prepareStill,
+    smallGray: smallGray,
+    sidewaysRatio: sidewaysRatio,
+    sidewaysTurn: sidewaysTurn,
+    judgeFrame: judgeFrame,
     diagnosticsEnabled: diagnosticsEnabled,
     setDiagnosticsEnabled: setDiagnosticsEnabled,
   };
