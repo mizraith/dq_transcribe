@@ -88,26 +88,65 @@ async function loadMeetFile(file, url) {
   renderMeetView();
 }
 
-/** The training meet's card: what it is, and a rebuild with fresh times (protest windows count from now). */
-function buildTrainingMeetCard() {
-  const card = makeElement("section", "meet-card training-meet");
-  card.append(makeElement("h3", "", "Training meet"));
-  card.append(makeElement("p", "note",
-    "Made-up data for practice: 25 events in progress, closing in event order, with DQs in every stage. Rebuild it to start a session with fresh times (the protest windows of the latest events open again). Only this meet is changed."));
-  const rebuild = makeButton("primary", "Rebuild training meet", async () => {
-    rebuild.disabled = true;
-    rebuild.textContent = "Rebuilding\u2026";
+/** Seconds the "Reset Demo" warning stays open before it closes by itself. */
+const RESET_DEMO_WARNING_MS = 10000;
+
+/**
+ * The top of the meet setup page: its title and, for the demo (training) meet
+ * only, a red "Reset Demo" button at the top right.
+ *
+ * Reset asks first: a warning panel opens under the header with
+ * "Yes, reset demo" and "Cancel" (it closes by itself after a few seconds).
+ * Resetting rebuilds the demo meet with fresh times and erases every change made
+ * to it; no other meet is touched.
+ */
+function buildMeetSetupHeader() {
+  const header = makeElement("div", "meet-setup-header");
+  header.append(makeElement("h2", "", "Meet setup"));
+  if (activeMeet.name !== CONFIG.trainingMeetName) {
+    return [header];
+  }
+  const warning = makeElement("section", "meet-card reset-demo-warning");
+  warning.hidden = true;
+  let closeTimer = null;
+  const closeWarning = () => {
+    warning.hidden = true;
+    clearTimeout(closeTimer);
+  };
+  const resetButton = makeButton("danger reset-demo", "Reset Demo", () => {
+    warning.hidden = !warning.hidden;
+    clearTimeout(closeTimer);
+    if (!warning.hidden) {
+      closeTimer = setTimeout(closeWarning, RESET_DEMO_WARNING_MS);
+    }
+  });
+  header.append(resetButton);
+
+  warning.append(makeElement("h3", "", "\u26A0 Are you sure?"));
+  warning.append(makeElement("p", "",
+    "This erases everything done in the demo meet (DQs, edits, notifications, protests, trash) and rebuilds it with fresh times: 25 events closing in event order, with DQs in every stage. No other meet is changed."));
+  const row = makeElement("div", "meet-file-actions");
+  const confirmButton = makeButton("danger", "Yes, reset demo", async () => {
+    clearTimeout(closeTimer);
+    confirmButton.disabled = true;
+    resetButton.disabled = true;
+    confirmButton.textContent = "Resetting\u2026";
     try {
       await postJson(CONFIG.rebuildTrainingMeetRoute, {});
-      notify("\u2713 Training meet rebuilt with fresh times");
+      notify("\u2713 Demo meet reset with fresh times");
     } catch (error) {
-      notify("Could not rebuild the training meet: " + error.message, "error");
+      notify("Could not reset the demo meet: " + error.message, "error");
     }
     await loadMeets();
-    renderMeetView();
+    if (activeMeet !== null && activeMeet.name === CONFIG.trainingMeetName) {
+      openMeetSetup(); // reload the page from the rebuilt meet
+    } else {
+      renderMeetView();
+    }
   });
-  card.append(rebuild);
-  return card;
+  row.append(confirmButton, makeButton("", "Cancel", closeWarning));
+  warning.append(row);
+  return [header, warning];
 }
 
 /**
@@ -240,6 +279,7 @@ function renderMeetView() {
     return;
   }
   const page = makeElement("div", "meet-setup");
+  page.append(...buildMeetSetupHeader());
 
   const details = makeElement("section", "meet-card");
   details.append(makeElement("h3", "", "Meet"));
@@ -260,9 +300,6 @@ function renderMeetView() {
   dateLabel.append(dateInput);
   details.append(nameLabel, dateLabel);
   page.append(details);
-  if (activeMeet.name === CONFIG.trainingMeetName) {
-    page.append(buildTrainingMeetCard());
-  }
   page.append(buildMeetFileCard());
   page.append(buildEndOfMeetCard());
 
