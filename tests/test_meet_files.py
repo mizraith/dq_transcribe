@@ -205,3 +205,35 @@ class ProgramStoreAndDqTests(unittest.TestCase):
         self.programs.save(self.meet_id, newer, constants.MEET_FILE_FORMAT_TEXT, "heats2.txt")
         self.assertEqual(self.programs.lookup(self.meet_id, "12", "2", "4")["swimmer"], "Mai Tran")
         self.assertEqual(len(self.programs.summary(self.meet_id)["history"]), 1)
+
+
+class MeetSheetTests(unittest.TestCase):
+    """Reading meet sheets (announcements) to set up a meet."""
+
+    def test_two_column_candy_sheet(self) -> None:
+        from dq_transcribe.meet_files.meet_sheet import read_meet_sheet_text
+        sheet = read_meet_sheet_text((Path(__file__).parent / "data" / "sample_meet_sheet_candy.txt").read_text())
+        self.assertEqual((sheet.name, sheet.start_date.isoformat(), sheet.course), ("PASA All Treats No Tricks Candy Meet Block Party", "2026-10-16", "Yard"))
+        self.assertEqual(len(sheet.events), 26)  # 13 lines, girls' and boys' numbers
+        self.assertEqual((sheet.events[0].short_label, sheet.events[3].short_label, sheet.events[25].short_label),
+                         ("Girls Open 100 Freestyle", "Boys 8 & Under 25 Freestyle", "Boys Open 100 Individual Medley"))
+        self.assertEqual((sheet.sessions[0].start_time, sheet.sessions[0].name), ("16:45", "Session 1 (warm-up 4:00 PM)"))
+        self.assertEqual(sheet.officials, [])
+        self.assertEqual(len(sheet.dates), 1)  # the entry deadline (October 14) is not a meet day
+
+    def test_sheet_with_officials_and_sessions(self) -> None:
+        from dq_transcribe.meet_files.meet_sheet import read_meet_sheet_text
+        sheet = read_meet_sheet_text((Path(__file__).parent / "data" / "sample_meet_sheet_full.txt").read_text())
+        self.assertEqual([day.isoformat() for day in sheet.dates], ["2026-11-06", "2026-11-07", "2026-11-08"])
+        self.assertEqual([(item["name"], item["role"]) for item in sheet.officials],
+                         [("Jordan Example", None), ("Pat Sample", "Meet Referee"), ("Robin Placeholder", "Admin Official"), ("Casey Demo", "Starter")])
+        self.assertEqual([(session.day, session.start_time) for session in sheet.sessions],
+                         [("2026-11-06", "17:00"), ("2026-11-07", "08:00"), ("2026-11-08", "08:00")])
+        self.assertEqual(sheet.missing, [])
+
+    def test_google_links_become_downloads(self) -> None:
+        from dq_transcribe.meet_files.meet_sheet import download_address
+        self.assertEqual(download_address("https://docs.google.com/document/u/0/d/AbC_1-x/mobilebasic"),
+                         "https://docs.google.com/document/d/AbC_1-x/export?format=txt")
+        self.assertEqual(download_address("https://drive.google.com/file/d/XyZ/view?usp=sharing"),
+                         "https://drive.google.com/uc?export=download&id=XyZ")

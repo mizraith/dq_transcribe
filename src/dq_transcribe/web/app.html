@@ -202,6 +202,7 @@
     #view-tabs { position: sticky; top: -0.8rem; z-index: 3; display: flex; align-items: flex-end; gap: 0.25rem; margin: -0.8rem -1rem 0.7rem; padding: 0.5rem 1rem 0; background: #e3e6eb; border-bottom: 1px solid #9aa1ac; }
     .view-tab { position: relative; top: 1px; font-size: 1.02rem; font-weight: 600; padding: 0.55rem 1.4rem; min-height: 2.7rem; border: 1px solid #b8bec8; border-bottom: 0; border-radius: 0.6rem 0.6rem 0 0; background: #d3d7de; color: #4b5260; }
     .view-tab.active { background: var(--paper); color: var(--ink); border-color: #9aa1ac; font-weight: 700; padding-top: 0.7rem; box-shadow: inset 0 3px 0 var(--go); }
+    #sheet-source { display: block; width: 100%; box-sizing: border-box; font: inherit; font-size: 0.9rem; padding: 0.4rem; border: 1px solid var(--line); border-radius: 0.4rem; resize: vertical; }
     .link-button { display: inline-block; margin-top: 0.35rem; padding: 0.2rem 0; border: 0; background: none; color: #1d4ed8; font-size: 0.85rem; text-decoration: underline; cursor: pointer; }
     /* Left column: compact, so everything fits on the tablet without scrolling. */
     #controls { font-size: 0.86rem; padding: 0.55rem; }
@@ -265,11 +266,17 @@
     <button id="edit-meet-button" class="wide" type="button" hidden>Meet setup: officials &amp; meet file</button>
     <button id="new-meet-button" class="link-button" type="button">+ New meet</button>
     <div id="new-meet-form" hidden>
+      <label for="sheet-source">From the meet sheet</label>
+      <textarea id="sheet-source" rows="2" placeholder="Paste its web address (a Google Doc link works) or its text"></textarea>
+      <button id="sheet-create-button" class="wide primary" type="button">Create from meet sheet</button>
+      <button id="sheet-file-button" class="link-button" type="button">or pick the meet sheet file (PDF, Word, HTML)</button>
+      <input id="sheet-file" type="file" hidden>
+      <p class="hint">Or type the name and first day:</p>
       <label for="meet-name">Meet name</label>
       <input id="meet-name" type="text" maxlength="100" placeholder="Candy Meet">
       <label for="meet-date">First day</label>
       <input id="meet-date" type="date">
-      <button id="create-meet-button" class="wide primary" type="button">Create and use this meet</button>
+      <button id="create-meet-button" class="wide" type="button">Create and use this meet</button>
       <button id="cancel-meet-button" class="wide" type="button">Cancel</button>
     </div>
   </section>

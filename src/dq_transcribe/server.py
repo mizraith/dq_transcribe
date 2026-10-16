@@ -35,6 +35,7 @@ from dq_transcribe.demo_data import DEMO_MEET_NAME
 from dq_transcribe.officials_roster import RosterError, read_roster
 from dq_transcribe.slip_page import render_slips
 from dq_transcribe.meet_files import MeetFileError, read_meet_file
+from dq_transcribe.meet_files.meet_sheet import download_address, read_meet_sheet_file, today
 from dq_transcribe.meet_files.store import MeetProgramStore
 from dq_transcribe.transcript import format_transcript_text
 from dq_transcribe.worker import TranscriptionWorker
@@ -72,6 +73,10 @@ _MEET_EMPTY_TRASH_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\
 _SAFE_FILENAME_CHARACTERS = re.compile(r"[^A-Za-z0-9._-]+")
 _WEB_ADDRESS_SCHEMES = ("http://", "https://")
 _DEFAULT_DOWNLOAD_NAME = "meet_file"
+_DEFAULT_SHEET_NAME = "meet_sheet.txt"
+_PASTED_SHEET_NAME = "pasted meet sheet"
+_SHEETS_FOLDER = "meet_sheets"
+_SIGN_IN_PAGE_MARKER = b"accounts.google.com"
 _MAX_STORED_NAME_CHARS = 80
 _MEET_ASSIGN_PATTERN = re.compile(rf"^{re.escape(constants.ROUTE_MEETS)}/(\d+){re.escape(constants.MEET_ASSIGN_SUFFIX)}$")
 _NON_FILENAME_CHARACTERS = re.compile(r"[^a-z0-9]+")
@@ -181,6 +186,9 @@ def build_web_config() -> dict[str, Any]:
         "dqTrashSuffix": constants.DQ_TRASH_SUFFIX,
         "importOfficialsRoute": constants.ROUTE_IMPORT_OFFICIALS,
         "rebuildTrainingMeetRoute": constants.ROUTE_REBUILD_TRAINING_MEET,
+        "meetFromSheetRoute": constants.ROUTE_MEET_FROM_SHEET,
+        "sheetTextKey": constants.REQUEST_KEY_SHEET_TEXT,
+        "sheetKey": constants.RESPONSE_KEY_SHEET,
         "trainingMeetName": DEMO_MEET_NAME,
         "signinRosterUrl": constants.OFFICIALS_SIGNIN_ROSTER_URL,
         "officialsResponseKey": constants.RESPONSE_KEY_OFFICIALS,
@@ -441,6 +449,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_reprocess(int(match.group(1)))
         elif path == constants.ROUTE_MEETS:
             self._handle_create_meet()
+        elif path == constants.ROUTE_MEET_FROM_SHEET:
+            self._handle_meet_from_sheet(urlsplit(self.path).query)
         elif path == constants.ROUTE_DQS:
             self._handle_create_dq()
         elif path == constants.ROUTE_DISMISS_CANDIDATE:
@@ -627,6 +637,71 @@ class RequestHandler(BaseHTTPRequestHandler):
         meet_id = self.server.database.create_meet(name.strip(), str(start_date))
         LOGGER.info("Created meet %d: %s (%s)", meet_id, name.strip(), start_date)
         self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id})
+
+    def _handle_meet_from_sheet(self, query: str) -> None:
+        """Create a meet from its meet sheet: the file as the body (``?name=``), or {"url"} or {"text"}.
+
+        The meet gets the sheet's name and first day, the named officials (in their
+        roster roles), and the events and sessions as its first program version.
+        It becomes the active meet. The reply says what was found and what is missing.
+        """
+        media_type = self.headers.get(constants.CONTENT_TYPE_HEADER, "").split(";")[0].strip().lower()
+        original_name = parse_qs(query).get(constants.QUERY_KEY_FILENAME, [_DEFAULT_SHEET_NAME])[0]
+        source = original_name
+        if media_type == constants.JSON_CONTENT_TYPE:
+            payload = self._read_json_object()
+            if payload is None:
+                return
+            text = payload.get(constants.REQUEST_KEY_SHEET_TEXT)
+            url = str(payload.get(constants.REQUEST_KEY_URL) or "").strip()
+            if isinstance(text, str) and text.strip():
+                sheet_bytes, original_name, source = text.encode("utf-8"), _PASTED_SHEET_NAME, _PASTED_SHEET_NAME
+            elif url.lower().startswith(_WEB_ADDRESS_SCHEMES):
+                try:
+                    with urllib.request.urlopen(download_address(url), timeout=constants.MEET_FILE_DOWNLOAD_TIMEOUT_SECONDS) as response:
+                        sheet_bytes = response.read(constants.MAX_MEET_FILE_BYTES + 1)
+                except (urllib.error.URLError, OSError, ValueError) as error:
+                    self._send_json_error(HTTPStatus.BAD_GATEWAY, f"Could not download the meet sheet: {error}")
+                    return
+                if _SIGN_IN_PAGE_MARKER in sheet_bytes[:20000]:
+                    self._send_json_error(HTTPStatus.UNPROCESSABLE_ENTITY, "That document is not shared publicly. Download it and pick the file instead.")
+                    return
+                original_name, source = Path(urlsplit(url).path).name or _DEFAULT_SHEET_NAME, url
+            else:
+                self._send_json_error(HTTPStatus.BAD_REQUEST, "Paste the meet sheet's web address or its text, or pick the file")
+                return
+        else:
+            sheet_bytes = self._read_request_body()
+            if sheet_bytes is None:
+                return
+        if len(sheet_bytes) > constants.MAX_MEET_FILE_BYTES:
+            self._send_json_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "The meet sheet is too large")
+            return
+        folder = self.server.meet_files_directory / _SHEETS_FOLDER
+        folder.mkdir(parents=True, exist_ok=True)
+        safe_name = _SAFE_FILENAME_CHARACTERS.sub("_", original_name)[:_MAX_STORED_NAME_CHARS] or _DEFAULT_SHEET_NAME
+        stored_path = folder / f"{datetime.now().strftime(constants.RECORDING_TIMESTAMP_FORMAT)}_{safe_name}"
+        stored_path.write_bytes(sheet_bytes)
+        try:
+            sheet = read_meet_sheet_file(stored_path, original_name)
+        except MeetFileError as error:
+            stored_path.unlink(missing_ok=True)
+            self._send_json_error(HTTPStatus.UNPROCESSABLE_ENTITY, str(error))
+            return
+        if not sheet.name:
+            stored_path.unlink(missing_ok=True)
+            self._send_json_error(HTTPStatus.UNPROCESSABLE_ENTITY, "No meet name found on the sheet")
+            return
+        database = self.server.database
+        start_date = (sheet.start_date or today()).isoformat()
+        meet_id = database.create_meet(sheet.name, start_date)
+        roster = [(official["name"], official["role"]) for official in sheet.officials if official["role"]]
+        if roster:
+            database.update_meet(meet_id, sheet.name, start_date, roster)
+        if sheet.events or sheet.sessions:
+            self.server.program_store.save(meet_id, sheet.program(), constants.MEET_FILE_FORMAT_SHEET, source, original_name, str(stored_path))
+        LOGGER.info("Created meet %d from a meet sheet: %s", meet_id, sheet.summary())
+        self._send_json(HTTPStatus.OK, {constants.RESPONSE_KEY_MEET_ID: meet_id, constants.RESPONSE_KEY_SHEET: sheet.summary()})
 
     def _send_slips(self, query: dict[str, list[str]]) -> None:
         """Send printable slips: ``?ids=3,4`` for those DQs, or ``?event=12`` for an event of the active meet."""

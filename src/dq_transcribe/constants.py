@@ -301,11 +301,18 @@ MEET_FILE_FORMAT_DATABASE = "meet_manager_database"  # Hy-Tek Meet Manager backu
 MEET_FILE_FORMAT_PDF = "pdf_report"  # a Meet Manager report printed to PDF (heat sheet, entries)
 MEET_FILE_FORMAT_HTML = "html_report"  # a Meet Manager report saved as HTML
 MEET_FILE_FORMAT_TEXT = "text_report"  # the same report as plain text
+MEET_FILE_FORMAT_SHEET = "meet_sheet"  # the meet announcement: events and sessions, no swimmers yet
+MEET_SHEET_MAX_MEET_DAYS = 5  # dates further from the first one are deadlines, not meet days
+MEET_SHEET_MAX_EVENT_CHARS = 80
+ROUTE_MEET_FROM_SHEET = "/api/meets/from-sheet"  # POST the sheet (raw body, ?name=), or {"url"} or {"text"}
+REQUEST_KEY_SHEET_TEXT = "text"
+RESPONSE_KEY_SHEET = "sheet"
 MEET_FILE_FORMAT_LABELS = {
     MEET_FILE_FORMAT_DATABASE: "Meet Manager database",
     MEET_FILE_FORMAT_PDF: "PDF report",
     MEET_FILE_FORMAT_HTML: "HTML report",
     MEET_FILE_FORMAT_TEXT: "Text report",
+    MEET_FILE_FORMAT_SHEET: "Meet sheet",
 }
 # External programs used to read some formats (Termux: pkg install poppler mdbtools).
 PDF_TO_TEXT_COMMAND = "pdftotext"

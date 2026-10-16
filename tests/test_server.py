@@ -290,6 +290,24 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(bad.status, 422)
         self.assertIn("No events", json.loads(bad.read())["error"])
 
+    def test_meet_from_sheet(self) -> None:
+        text = (Path(__file__).parent / "data" / "sample_meet_sheet_full.txt").read_text()
+        response = self._post_json(constants.ROUTE_MEET_FROM_SHEET, {constants.REQUEST_KEY_SHEET_TEXT: text})
+        self.assertEqual(response.status, 200)
+        reply = json.loads(response.read())
+        meet_id = reply[constants.RESPONSE_KEY_MEET_ID]
+        self.assertEqual(reply[constants.RESPONSE_KEY_SHEET]["events"], 3)
+        meets = json.loads(self._request("GET", constants.ROUTE_MEETS).read())
+        meet = next(item for item in meets[constants.RESPONSE_KEY_MEETS] if item["id"] == meet_id)
+        self.assertEqual((meet["name"], meet["start_date"], meets[constants.RESPONSE_KEY_ACTIVE_MEET_ID]),
+                         ("2026 Fall Classic Invitational", "2026-11-06", meet_id))
+        self.assertEqual([official["role"] for official in meet["officials"]], ["Meet Referee", "Admin Official", "Starter"])
+        program = json.loads(self._request("GET", f"{constants.ROUTE_MEETS}/{meet_id}{constants.ROUTE_MEET_PROGRAM_SUFFIX}").read())
+        self.assertEqual((program[constants.RESPONSE_KEY_PROGRAM]["active"]["file_format"], len(program[constants.RESPONSE_KEY_PROGRAM]["sessions"])),
+                         (constants.MEET_FILE_FORMAT_SHEET, 3))
+        bad = self._post_json(constants.ROUTE_MEET_FROM_SHEET, {constants.REQUEST_KEY_SHEET_TEXT: " "})
+        self.assertEqual(bad.status, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -161,6 +161,7 @@ function setStatus(message) {
 
 const TOAST_SECONDS = 3;
 const TOAST_ACTION_SECONDS = 7;
+const TOAST_READING_CHARS_PER_SECOND = 20;
 let toastTimer = null;
 
 /**
@@ -180,7 +181,8 @@ function notify(message, kind, actionLabel, action) {
   }
   toast.textContent = message;
   toast.className = "show " + (kind || "ok");
-  let seconds = TOAST_SECONDS;
+  // Longer messages stay up longer (about 20 characters a second).
+  let seconds = Math.max(TOAST_SECONDS, Math.ceil(message.length / TOAST_READING_CHARS_PER_SECOND));
   if (actionLabel && action) {
     // An action in the toast (such as Undo) stays a little longer and can be tapped.
     const button = makeButton("toast-action", actionLabel, () => {
@@ -189,7 +191,7 @@ function notify(message, kind, actionLabel, action) {
     });
     toast.append(button);
     toast.classList.add("with-action");
-    seconds = TOAST_ACTION_SECONDS;
+    seconds = Math.max(seconds, TOAST_ACTION_SECONDS);
   }
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toast.className = ""; }, seconds * 1000);
@@ -880,6 +882,61 @@ function showNewMeetForm(visible) {
   }
 }
 
+// Create a meet from its meet sheet (the buttons are wired up in startApp).
+const sheetSource = document.getElementById("sheet-source");
+const sheetCreateButton = document.getElementById("sheet-create-button");
+const sheetFileButton = document.getElementById("sheet-file-button");
+const sheetFile = document.getElementById("sheet-file");
+const WEB_ADDRESS_START = /^https?:\/\//i;
+const WHITESPACE = /\s/;
+
+/** True if the pasted text is a single web address (not the sheet's text). */
+function isWebAddress(text) {
+  return WEB_ADDRESS_START.test(text) && !WHITESPACE.test(text);
+}
+
+/**
+ * Create a meet from its meet sheet: a picked file, or the web address or text
+ * pasted in the box. The meet becomes active and Meet setup opens to review it.
+ */
+async function createMeetFromSheet(file) {
+  const pasted = sheetSource.value.trim();
+  if (!file && !pasted) {
+    notify("Paste the meet sheet's web address or text, or pick its file.", "error");
+    return;
+  }
+  sheetCreateButton.disabled = true;
+  sheetCreateButton.textContent = "Reading the meet sheet\u2026";
+  try {
+    let response;
+    if (file) {
+      response = await fetch(CONFIG.meetFromSheetRoute + "?" + CONFIG.filenameQueryKey + "=" + encodeURIComponent(file.name), {
+        method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file,
+      });
+    } else {
+      const body = {};
+      body[isWebAddress(pasted) ? CONFIG.urlKey : CONFIG.sheetTextKey] = pasted;
+      response = await fetch(CONFIG.meetFromSheetRoute, { method: "POST", headers: { "Content-Type": CONFIG.jsonMediaType }, body: JSON.stringify(body) });
+    }
+    const reply = await response.json();
+    if (!response.ok) {
+      throw new Error(reply.error || "server answered " + response.status);
+    }
+    const sheet = reply[CONFIG.sheetKey];
+    const found = [sheet.events + " events", sheet.sessions.length + " session(s)", sheet.officials.length + " official(s)"];
+    notify("\u2713 Created " + sheet.name + ": " + found.join(", ") + (sheet.missing.length ? ". Not on the sheet: " + sheet.missing.join("; ") : ""));
+    sheetSource.value = "";
+    showNewMeetForm(false);
+    lastClipsSignature = "";
+    await loadMeets();
+    openMeetSetup();
+  } catch (error) {
+    notify("Could not read the meet sheet: " + error.message, "error");
+  }
+  sheetCreateButton.disabled = false;
+  sheetCreateButton.textContent = "Create from meet sheet";
+}
+
 /** Create a meet from the form and make it the active meet. */
 async function createMeet() {
   const body = {};
@@ -1402,6 +1459,14 @@ function startApp() {
   newMeetButton.addEventListener("click", () => showNewMeetForm(true));
   cancelMeetButton.addEventListener("click", () => showNewMeetForm(false));
   createMeetButton.addEventListener("click", createMeet);
+  sheetCreateButton.addEventListener("click", () => createMeetFromSheet(null));
+  sheetFileButton.addEventListener("click", () => sheetFile.click());
+  sheetFile.addEventListener("change", () => {
+    if (sheetFile.files.length) {
+      createMeetFromSheet(sheetFile.files[0]);
+      sheetFile.value = "";
+    }
+  });
   editMeetButton.addEventListener("click", openMeetSetup);
   loadMeets();
   audioInputSelect.addEventListener("change", onAudioInputChange);

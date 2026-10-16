@@ -32,6 +32,8 @@ _STROKE_PATTERNS = (
     (re.compile(r"\b(?:freestyle|free)\b", re.IGNORECASE), constants.STROKE_FREESTYLE),
 )
 _DISTANCE_PATTERN = re.compile(r"\b(\d{2,4})\s*(Yard|Yd|Y|Meter|M|LC\s*Meter|SC\s*Meter)\b", re.IGNORECASE)
+# A distance written without a unit, right before the stroke ("Open 100 free" on a meet sheet).
+_BARE_DISTANCE_PATTERN = re.compile(r"\b(\d{2,4})\s+(?=(?:free|back|breast|fly|butterfly|im\b|individual|medley))", re.IGNORECASE)
 _GENDER_PATTERN = re.compile(r"\b(Girls|Boys|Women|Men|Mixed|Female|Male)\b", re.IGNORECASE)
 _AGE_GROUP_PATTERN = re.compile(
     r"\b(\d{1,2}\s*(?:&|and)\s*(?:Under|Over|Up)|\d{1,2}\s*-\s*\d{1,2}|Open|Senior)\b", re.IGNORECASE
@@ -97,20 +99,28 @@ class ProgramEvent:
 
     @classmethod
     def from_description(cls, number: str, description: str, **extra: Any) -> ProgramEvent:
-        """Build an event, reading gender, age group, distance and stroke from its description."""
+        """Build an event, reading gender, age group, distance and stroke from its description.
+
+        ``course`` may be passed in ``extra`` for descriptions without a unit
+        ("Open 100 free" on a meet sheet that says the pool is 25 yards).
+        """
         description = " ".join(description.split())
         gender = _GENDER_PATTERN.search(description)
         age = _AGE_GROUP_PATTERN.search(description)
         distance = _DISTANCE_PATTERN.search(description)
-        course = None
+        course = extra.pop("course", None)
+        distance_value = None
         if distance:
             course = "Yard" if distance.group(2).lower().startswith("y") else "Meter"
+            distance_value = int(distance.group(1))
+        elif (bare := _BARE_DISTANCE_PATTERN.search(description)) is not None:
+            distance_value = int(bare.group(1))
         return cls(
             number=normalize_event_number(number),
             description=description,
             gender=gender.group(1).title() if gender else None,
-            age_group=" ".join(age.group(1).split()) if age else None,
-            distance=int(distance.group(1)) if distance else None,
+            age_group=" ".join(age.group(1).split()).title() if age else None,
+            distance=distance_value,
             course=course,
             stroke=stroke_from_description(description),
             relay=_RELAY_WORD in description.lower(),
