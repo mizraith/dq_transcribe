@@ -711,27 +711,39 @@ async function teamsRequest(route, body) {
   }
 }
 
+/**
+ * One name on the Teams screen: tap to place them, drag to move or swap, and (for a
+ * team member) the ☆ star to make them the Team Lead.
+ */
 function memberButton(member, isTrainee) {
-  const button = makeButton("", "member" + (isTrainee ? " trainee" : ""), function () {
+  const chip = document.createElement("div");
+  chip.className = "member" + (isTrainee ? " trainee" : "");
+  chip.setAttribute("role", "button");
+  chip.tabIndex = 0;
+  const openPlace = function () {
     if (dragJustEnded) { return; } // the tap that ended a drag is not a "place" tap
     placeTarget = { id: member[KEYS.id], trainee: isTrainee };
     drawPlace();
     placeOverlay.hidden = false;
+  };
+  chip.addEventListener("click", function (event) {
+    if (event.target.closest(".star-toggle")) { return; }
+    openPlace();
+  });
+  chip.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openPlace(); }
   });
   const label = document.createElement("span");
+  label.className = "member-name";
   label.textContent = (isTrainee ? "↳ " : "") + member[KEYS.name];
-  if (member[KEYS.teamLead]) {
-    const tag = document.createElement("span");
-    tag.className = "tag lead";
-    tag.textContent = "★ Lead";
-    label.appendChild(tag);
-  }
   if (member[KEYS.assignment] === CONFIG.assignmentFifteenMeter && member[KEYS.team]) {
     const tag = document.createElement("span");
     tag.className = "tag fifteen";
     tag.textContent = "15 m";
     label.appendChild(tag);
   }
+  const end = document.createElement("span");
+  end.className = "member-end";
   const detail = document.createElement("span");
   detail.className = "years";
   if (isTrainee) {
@@ -740,11 +752,23 @@ function memberButton(member, isTrainee) {
     const years = member[KEYS.yearsCertified];
     detail.textContent = years === null || years === undefined ? "? yr" : years + " yr";
   }
-  button.append(label, detail);
-  button.dataset.signinId = String(member[KEYS.id]);
-  if (isTrainee) { button.dataset.trainee = "1"; }
-  enableDrag(button);
-  return button;
+  end.appendChild(detail);
+  if (!isTrainee && member[KEYS.team]) {
+    const isLead = Boolean(member[KEYS.teamLead]);
+    const star = makeButton(isLead ? "★ Lead" : "☆", "star-toggle" + (isLead ? " on" : ""), function (event) {
+      event.stopPropagation();
+      const body = {};
+      body[KEYS.teamLead] = !isLead;
+      teamsRequest(ROUTES.signinPrefix + member[KEYS.id] + ROUTES.teamSuffix, body);
+    });
+    star.setAttribute("aria-label", isLead ? "Team Lead (tap to remove)" : "Make Team Lead");
+    end.appendChild(star);
+  }
+  chip.append(label, end);
+  chip.dataset.signinId = String(member[KEYS.id]);
+  if (isTrainee) { chip.dataset.trainee = "1"; }
+  enableDrag(chip);
+  return chip;
 }
 
 function teamCard(title, subtitle, className) {
@@ -811,6 +835,7 @@ function drawTeams() {
     modes.appendChild(chip);
   });
   element("teams-fifteen").checked = view[KEYS.fifteenMeterOnTeams];
+  drawJurisdiction(view);
   element("teams-rotation").textContent = view[KEYS.rotation];
   element("teams-display-link").href = ROUTES.teamDisplay + "?" + KEYS.sessionId + "=" + pageState.activeSessionId;
   // Alerts
@@ -844,8 +869,7 @@ function drawTeams() {
   const grid = element("teams-grid");
   grid.replaceChildren();
   view[KEYS.teams].forEach(function (team) {
-    const pattern = team[KEYS.jurisdiction][KEYS.pattern];
-    const card = teamCard(team[KEYS.name], pattern ? "lanes " + pattern : "", "");
+    const card = teamCard(team[KEYS.name], "", "");
     card.dataset.dropTeam = team[KEYS.name];
     team[KEYS.members].forEach(function (member) { card.appendChild(memberButton(member, false)); });
     team[KEYS.trainees].forEach(function (trainee) { card.appendChild(memberButton(trainee, true)); });
@@ -924,6 +948,7 @@ function enableDrag(button) {
 
 function startPress(event) {
   if (event.button !== undefined && event.button > 0) { return; }
+  if (event.target.closest(".star-toggle")) { return; } // the star is a tap, not a drag
   cancelDrag();
   drag = {
     button: event.currentTarget,
@@ -1062,6 +1087,38 @@ function dropOn(button, target) {
     body[KEYS.assignment] = CONFIG.assignmentRelief;
   }
   teamsRequest(ROUTES.signinPrefix + signinId + ROUTES.teamSuffix, body);
+}
+
+/**
+ * The Jurisdiction box: lanes at each end, e.g. "Start end 1-8: 3-3-2" and
+ * "Turn end 1-8: 2-3-3" (always opposite when uneven, to balance the deck).
+ * "Flip jurisdiction" swaps the two ends; it only matters for an uneven split.
+ */
+function jurisdictionLines(view) {
+  const entries = view[KEYS.jurisdictions] || [];
+  return entries.map(function (entry) {
+    const prefix = entries.length > 1 ? "Teams of " + entry[KEYS.judgeCount] + ": " : "";
+    return prefix + "Start end " + entry[KEYS.laneRange] + ": " + entry[KEYS.startEnd]
+      + "   ·   Turn end " + entry[KEYS.laneRange] + ": " + entry[KEYS.turnEnd];
+  });
+}
+
+function drawJurisdiction(view) {
+  const box = element("teams-jurisdiction");
+  box.replaceChildren();
+  const lines = jurisdictionLines(view);
+  if (!lines.length) { box.textContent = "Build the teams to see the lanes."; }
+  lines.forEach(function (text) {
+    const line = document.createElement("div");
+    line.className = "jurisdiction-line";
+    line.textContent = text;
+    box.appendChild(line);
+  });
+  const uneven = (view[KEYS.jurisdictions] || []).some(function (entry) { return entry[KEYS.uneven]; });
+  const flip = element("teams-flip");
+  flip.checked = Boolean(view[KEYS.jurisdictionFlipped]);
+  flip.disabled = !uneven;
+  flip.closest("label").title = uneven ? "" : "Both ends are the same, so there is nothing to flip";
 }
 
 /** Find an official in the team view by sign-in ID. */
@@ -1634,6 +1691,11 @@ element("teams-check-continue").addEventListener("click", function () {
 });
 element("teams-close").addEventListener("click", closeTeams);
 element("teams-rebuild").addEventListener("click", rebuildTeams);
+element("teams-flip").addEventListener("change", function () {
+  const body = {};
+  body[KEYS.jurisdictionFlipped] = element("teams-flip").checked;
+  teamsRequest(ROUTES.teamsSettings, body);
+});
 element("teams-fifteen").addEventListener("change", function () {
   const body = {};
   body[KEYS.fifteenMeterOnTeams] = element("teams-fifteen").checked;

@@ -95,11 +95,13 @@ _ADDED_COLUMNS = {
         "teams_built_at": "TEXT",
         "estimated_minutes": "INTEGER",
         "rotation_mode": "TEXT",
+        "jurisdiction_flipped": "INTEGER NOT NULL DEFAULT 0",
     },
     "signins": {
         "assignment": "TEXT",
         "team_lead": "INTEGER NOT NULL DEFAULT 0",
         "mentor_signin_id": "INTEGER",
+        "team_position": "INTEGER",
     },
 }
 
@@ -784,14 +786,15 @@ class Database:
             Dictionaries with ``id``, ``official_id``, ``name``, ``club``, ``lsc``,
             ``zone``, ``years_certified``, ``roles``, ``trainee``, ``validated``,
             ``validation_method``, ``problems``, ``team``, ``assignment`` (ACJ,
-            15 m, Relief or None), ``team_lead`` and ``mentor_signin_id``.
+            15 m, Relief or None), ``team_lead``, ``mentor_signin_id`` and
+            ``team_position`` (order within the team).
         """
         session = self.get_session(session_id)
         on_date = date.today() if session is None else date.fromisoformat(session["date"])
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT g.id, g.official_id, g.roles_json, g.trainee, g.validated, g.validation_method, "
-                "g.problems_json, g.team, g.assignment, g.team_lead, g.mentor_signin_id, "
+                "g.problems_json, g.team, g.assignment, g.team_lead, g.mentor_signin_id, g.team_position, "
                 "o.name, o.lsc, o.club, o.certified_since_year "
                 "FROM signins g JOIN officials o ON o.id = g.official_id "
                 "WHERE g.session_id = ? ORDER BY g.signed_in_at DESC, g.id DESC",
@@ -815,6 +818,7 @@ class Database:
                 constants.KEY_ASSIGNMENT: row["assignment"],
                 constants.KEY_TEAM_LEAD: bool(row["team_lead"]),
                 constants.KEY_MENTOR_SIGNIN_ID: row["mentor_signin_id"],
+                constants.KEY_TEAM_POSITION: row["team_position"],
             }
             for row in rows
         ]
@@ -923,6 +927,7 @@ class Database:
         team_count: int | None = None,
         fifteen_meter_on_teams: bool | None = None,
         rotation_mode: str | None = None,
+        jurisdiction_flipped: bool | None = None,
     ) -> None:
         """Store team-builder settings for a session (None leaves a value as it is).
 
@@ -933,6 +938,7 @@ class Database:
             "team_count": team_count,
             "fifteen_meter_on_teams": None if fifteen_meter_on_teams is None else int(fifteen_meter_on_teams),
             "rotation_mode": rotation_mode,
+            "jurisdiction_flipped": None if jurisdiction_flipped is None else int(jurisdiction_flipped),
         }
         with self._connect() as connection:
             for column, value in changes.items():
@@ -956,14 +962,18 @@ class Database:
         """
         with self._connect() as connection:
             connection.execute(
-                "UPDATE signins SET team = NULL, assignment = NULL, team_lead = 0, mentor_signin_id = NULL "
-                "WHERE session_id = ?",
+                "UPDATE signins SET team = NULL, assignment = NULL, team_lead = 0, mentor_signin_id = NULL, "
+                "team_position = NULL WHERE session_id = ?",
                 (session_id,),
             )
+            next_position: dict[str | None, int] = {}
             for signin_id, team, assignment in placements:
+                # Positions follow the plan's order (most senior first within each team).
+                position = next_position.get(team, 0)
+                next_position[team] = position + 1
                 connection.execute(
-                    "UPDATE signins SET team = ?, assignment = ? WHERE id = ? AND session_id = ?",
-                    (team, assignment, signin_id, session_id),
+                    "UPDATE signins SET team = ?, assignment = ?, team_position = ? WHERE id = ? AND session_id = ?",
+                    (team, assignment, position, signin_id, session_id),
                 )
             for trainee_id, mentor_id in mentors.items():
                 connection.execute(
@@ -989,9 +999,19 @@ class Database:
             constants.KEY_MENTOR_SIGNIN_ID: "mentor_signin_id",
         }
         with self._connect() as connection:
-            row = connection.execute("SELECT id FROM signins WHERE id = ?", (signin_id,)).fetchone()
+            row = connection.execute("SELECT id, session_id, team FROM signins WHERE id = ?", (signin_id,)).fetchone()
             if row is None:
                 return False
+            new_team = changes.get(constants.KEY_TEAM, row["team"])
+            if constants.KEY_TEAM in changes and new_team != row["team"]:
+                # A move to another team (or off the teams) goes to the bottom of that list.
+                last = connection.execute(
+                    "SELECT MAX(team_position) AS last FROM signins WHERE session_id = ? AND team IS ?",
+                    (row["session_id"], new_team),
+                ).fetchone()["last"]
+                connection.execute(
+                    "UPDATE signins SET team_position = ? WHERE id = ?", (0 if last is None else last + 1, signin_id)
+                )
             for key, column in allowed.items():
                 if key in changes:
                     value = changes[key]
@@ -1001,11 +1021,12 @@ class Database:
         return True
 
     def swap_signin_places(self, session_id: int, first_id: int, second_id: int) -> None:
-        """Swap two certified officials' places (team and job), in one transaction.
+        """Swap two certified officials' places (team, job and order), in one transaction.
 
-        Used when the admin drags one name onto another on the Teams screen. Both
-        lose a Team Lead star (they are on a new team); trainees they mentor move
-        with them.
+        Used when the admin drags one name onto another on the Teams screen. Between
+        teams, both lose a Team Lead star (they are on a new team) and trainees they
+        mentor move with them. Within one team only their order changes (a Team Lead
+        star or a 15 m job stays with the person).
 
         Args:
             session_id: The session both sign-ins belong to.
@@ -1019,7 +1040,7 @@ class Database:
             rows = {
                 row["id"]: row
                 for row in connection.execute(
-                    "SELECT id, team, assignment, trainee FROM signins WHERE session_id = ? AND id IN (?, ?)",
+                    "SELECT id, team, assignment, trainee, team_position FROM signins WHERE session_id = ? AND id IN (?, ?)",
                     (session_id, first_id, second_id),
                 )
             }
@@ -1027,10 +1048,33 @@ class Database:
                 raise SigninError("Both officials must be signed in to this session")
             if any(row["trainee"] for row in rows.values()):
                 raise SigninError("Trainees move with their mentor: drop a trainee on their new mentor")
+            same_team = rows[first_id]["team"] is not None and rows[first_id]["team"] == rows[second_id]["team"]
+            if same_team and (rows[first_id]["team_position"] is None or rows[second_id]["team_position"] is None):
+                # Teams built before positions were stored: number the team first.
+                members = connection.execute(
+                    "SELECT id FROM signins WHERE session_id = ? AND team = ? AND trainee = 0 "
+                    "ORDER BY team_position IS NULL, team_position, id",
+                    (session_id, rows[first_id]["team"]),
+                ).fetchall()
+                for position, member in enumerate(members):
+                    connection.execute("UPDATE signins SET team_position = ? WHERE id = ?", (position, member["id"]))
+                rows = {
+                    row["id"]: row
+                    for row in connection.execute(
+                        "SELECT id, team, assignment, trainee, team_position FROM signins WHERE id IN (?, ?)",
+                        (first_id, second_id),
+                    )
+                }
             for moving, other in ((first_id, second_id), (second_id, first_id)):
+                if same_team:
+                    # Within a team only the order changes (star and 15 m stay with the person).
+                    connection.execute(
+                        "UPDATE signins SET team_position = ? WHERE id = ?", (rows[other]["team_position"], moving)
+                    )
+                    continue
                 connection.execute(
-                    "UPDATE signins SET team = ?, assignment = ?, team_lead = 0 WHERE id = ?",
-                    (rows[other]["team"], rows[other]["assignment"], moving),
+                    "UPDATE signins SET team = ?, assignment = ?, team_lead = 0, team_position = ? WHERE id = ?",
+                    (rows[other]["team"], rows[other]["assignment"], rows[other]["team_position"], moving),
                 )
                 connection.execute(
                     "UPDATE signins SET team = ? WHERE mentor_signin_id = ? AND session_id = ?",

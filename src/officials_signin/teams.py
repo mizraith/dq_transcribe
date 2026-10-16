@@ -123,6 +123,42 @@ def alternative_team_count(judge_count: int, chosen: int) -> int | None:
     return others[0] if others else None
 
 
+def lane_pattern(ranges: list[tuple[int, int]] | list[list[int]]) -> str:
+    """``[(1, 3), (4, 6), (7, 8)]`` -> ``"3-3-2"``."""
+    return constants.LANE_PATTERN_SEPARATOR.join(str(last - first + 1) for first, last in ranges)
+
+
+def session_jurisdictions(lane_count: int, lane_judge_counts: list[int], flipped: bool) -> list[dict[str, Any]]:
+    """The jurisdiction box: lanes at the start and turn ends, once per team size.
+
+    Teams normally have the same number of judges with lanes, so this is usually a
+    single entry. An uneven split is always opposite at the two ends (3-3-2 at the
+    start, 2-3-3 at the turn) to balance the deck; ``flipped`` swaps them.
+
+    Args:
+        lane_count: Lanes in the pool.
+        lane_judge_counts: For each team with members, how many have lanes (15 m excluded).
+        flipped: The session's "flip jurisdiction" setting.
+
+    Returns:
+        ``{"judge_count", "lane_range": "1-8", "start_end": "3-3-2", "turn_end": "2-3-3",
+        "uneven": True}`` per distinct team size, largest teams first.
+    """
+    entries = []
+    for count in sorted({count for count in lane_judge_counts if count > 0}, reverse=True):
+        summary = jurisdiction_summary(lane_count, count, flipped)
+        start = lane_pattern(summary[constants.KEY_THIS_END])
+        turn = lane_pattern(summary[constants.KEY_OTHER_END])
+        entries.append({
+            constants.KEY_JUDGE_COUNT: count,
+            constants.KEY_LANE_RANGE: f"1{constants.LANE_PATTERN_SEPARATOR}{lane_count}",
+            constants.KEY_START_END: start,
+            constants.KEY_TURN_END: turn,
+            constants.KEY_UNEVEN: start != turn,
+        })
+    return entries
+
+
 def describe_layout(judge_count: int, team_count: int) -> dict[str, int]:
     """Team size and number of officials left over for a team count."""
     if team_count <= 0:
@@ -278,19 +314,25 @@ def mirror_lanes(ranges: list[tuple[int, int]], lane_count: int) -> list[tuple[i
     return mirrored
 
 
-def jurisdiction_summary(lane_count: int, jurisdiction_judges: int) -> dict[str, Any]:
+def jurisdiction_summary(lane_count: int, jurisdiction_judges: int, flipped: bool = False) -> dict[str, Any]:
     """Lane jurisdictions for one team at either end of the pool.
+
+    The start end gets the larger jurisdictions first (3-3-2) and the turn end the
+    opposite (2-3-3), so the deck is balanced; ``flipped`` swaps the two ends.
 
     Args:
         lane_count: Lanes in the pool.
         jurisdiction_judges: Team members with lanes (members on 15 m excluded).
+        flipped: Give the start end the turn end's pattern and the other way round.
 
     Returns:
         ``{"pattern": "3-3-2 / 2-3-3", "this_end": [[1, 3], ...], "other_end": [...]}``
-        (keys from ``constants.KEY_PATTERN`` and friends).
+        (keys from ``constants.KEY_PATTERN`` and friends); ``this_end`` is the start end.
     """
     this_end = split_lanes(lane_count, jurisdiction_judges)
     other_end = mirror_lanes(this_end, lane_count)
+    if flipped:
+        this_end, other_end = other_end, this_end
 
     def sizes(ranges: list[tuple[int, int]]) -> str:
         return constants.LANE_PATTERN_SEPARATOR.join(str(last - first + 1) for first, last in ranges)
@@ -477,6 +519,7 @@ def build_team_view(signins: list[dict[str, Any]], session: dict[str, Any]) -> d
     """
     lanes = session.get(constants.KEY_LANES) or constants.DEFAULT_LANES
     fifteen = bool(session.get(constants.KEY_FIFTEEN_METER_ON_TEAMS))
+    flipped = bool(session.get(constants.KEY_JURISDICTION_FLIPPED))
     judges = judges_from_signins(signins)
     judge_count = len(judges)
     proposed = propose_team_count(judge_count)
@@ -495,18 +538,27 @@ def build_team_view(signins: list[dict[str, Any]], session: dict[str, Any]) -> d
             constants.KEY_TEAM_LEAD: signin[constants.KEY_TEAM_LEAD],
         }
 
+    def team_order(signin: dict[str, Any]) -> tuple[bool, int, int]:
+        """The admin's order within a team (dragged), else seniority."""
+        position = signin.get(constants.KEY_TEAM_POSITION)
+        return (position is None, position or 0, rank[signin[constants.KEY_ID]])
+
     team_judges = sorted((signin for signin in signins if is_team_judge(signin)), key=lambda item: rank[item[constants.KEY_ID]])
     team_names_in_use = {signin[constants.KEY_TEAM] for signin in team_judges if signin[constants.KEY_TEAM]}
     team_names = [team_name(number) for number in range(1, team_count + 1)]
     team_names += sorted(team_names_in_use - set(team_names), key=team_number)
     teams = []
     for name in team_names:
-        members = [member(signin) for signin in team_judges if signin[constants.KEY_TEAM] == name]
+        members = [
+            member(signin)
+            for signin in sorted((item for item in team_judges if item[constants.KEY_TEAM] == name), key=team_order)
+        ]
         lane_judges = sum(1 for item in members if item[constants.KEY_ASSIGNMENT] != constants.ASSIGNMENT_FIFTEEN_METER)
         teams.append({
             constants.KEY_NAME: name,
             constants.KEY_MEMBERS: members,
-            constants.KEY_JURISDICTION: jurisdiction_summary(lanes, lane_judges),
+            constants.KEY_JURISDICTION: jurisdiction_summary(lanes, lane_judges, flipped),
+            constants.KEY_LANE_JUDGE_COUNT: lane_judges,
             constants.KEY_TRAINEES: [
                 {
                     constants.KEY_ID: signin[constants.KEY_ID],
@@ -551,6 +603,10 @@ def build_team_view(signins: list[dict[str, Any]], session: dict[str, Any]) -> d
         ),
         constants.KEY_ESTIMATED_MINUTES: session.get(constants.KEY_ESTIMATED_MINUTES) or constants.DEFAULT_SESSION_MINUTES,
         constants.KEY_EXTRA_ASSIGNMENTS: list(constants.EXTRA_ASSIGNMENTS),
+        constants.KEY_JURISDICTION_FLIPPED: flipped,
+        constants.KEY_JURISDICTIONS: session_jurisdictions(
+            lanes, [team[constants.KEY_LANE_JUDGE_COUNT] for team in teams if team[constants.KEY_MEMBERS]], flipped
+        ),
         constants.KEY_AWAITING_CHECK: [
             {constants.KEY_ID: signin[constants.KEY_ID], constants.KEY_NAME: signin[constants.KEY_NAME]}
             for signin in signins

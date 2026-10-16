@@ -104,6 +104,38 @@ class TeamServerTests(unittest.TestCase):
                      if any(t[constants.KEY_NAME] == trainee[constants.KEY_NAME] for t in team[constants.KEY_TRAINEES]))
         self.assertIn(mentor_name, self.team_names(view, moved[constants.KEY_NAME]))
 
+    def test_reorder_within_a_team_keeps_the_star(self) -> None:
+        view = self.build()
+        self.assertEqual(self.team_names(view, "Team 1"), ["Judge 01", "Judge 02", "Judge 03"])
+        self.change("Judge 01", {constants.KEY_TEAM_LEAD: True})
+        status, view = self.swap("Judge 03", "Judge 01")
+        self.assertEqual(status, 200, view)
+        self.assertEqual(self.team_names(view, "Team 1"), ["Judge 03", "Judge 02", "Judge 01"])
+        team_one = next(team for team in view[constants.KEY_TEAMS] if team[constants.KEY_NAME] == "Team 1")
+        leads = [member[constants.KEY_NAME] for member in team_one[constants.KEY_MEMBERS] if member[constants.KEY_TEAM_LEAD]]
+        self.assertEqual(leads, ["Judge 01"])
+
+    def test_moved_judge_goes_to_the_bottom(self) -> None:
+        self.build()
+        _, view = self.change("Judge 04", {constants.KEY_TEAM: "Team 1", constants.KEY_ASSIGNMENT: None})
+        self.assertEqual(self.team_names(view, "Team 1")[-1], "Judge 04")
+
+    def test_jurisdiction_box_and_flip(self) -> None:
+        view = self.build()
+        box = view[constants.KEY_JURISDICTIONS]
+        self.assertEqual(len(box), 1)
+        self.assertEqual((box[0][constants.KEY_START_END], box[0][constants.KEY_TURN_END]), ("3-3-2", "2-3-3"))
+        self.assertTrue(box[0][constants.KEY_UNEVEN])
+        status, view, _ = self.request("POST", constants.ROUTE_TEAMS_SETTINGS, {constants.KEY_JURISDICTION_FLIPPED: True})
+        self.assertEqual(status, 200)
+        self.assertTrue(view[constants.KEY_JURISDICTION_FLIPPED])
+        box = view[constants.KEY_JURISDICTIONS][0]
+        self.assertEqual((box[constants.KEY_START_END], box[constants.KEY_TURN_END]), ("2-3-3", "3-3-2"))
+        self.assertEqual(self.team_names(view, "Team 1"), ["Judge 01", "Judge 02", "Judge 03"])  # teams kept
+        status, page, _ = self.request("GET", constants.ROUTE_TEAM_DISPLAY)
+        self.assertIn(b"Start end 1-8: <strong>2-3-3</strong>", page)
+        self.assertNotIn(b"lanes 3-3-2", page)
+
     def test_trainee_cannot_be_swapped(self) -> None:
         self.build()
         status, _ = self.swap(TRAINEE_NAMES[0], "Judge 03")

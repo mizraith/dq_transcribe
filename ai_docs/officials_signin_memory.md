@@ -5,6 +5,16 @@ within each section.
 
 ## Decisions
 
+- **2026-10-16 (00:25): Team Lead star, reorder within a team, jurisdiction box.**
+  - Each name on a team has a ☆ star (★ Lead when set); tap it to make that person the
+    lead (one per team). The lead is still the admin's choice, not "whoever is on top".
+  - Drag a name onto a teammate to swap their order (`team_position`, stored per sign-in;
+    build numbers each team most senior first; a judge moved to another team goes to the
+    bottom). The star and a 15 m job stay with the person.
+  - Lanes are no longer shown on each team. A **Jurisdiction** box (Teams screen and team
+    page) reads "Start end 1-8: 3-3-2 · Turn end 1-8: 2-3-3", once per team size. An
+    uneven split is always opposite at the two ends; **Flip jurisdiction** (per session,
+    `jurisdiction_flipped`) swaps them (2-3-3 at the start).
 - **2026-10-16 (00:15): who goes on teams, demo per session, Back to Teams.**
   - Only **checked** stroke & turn officials (card or "Looks good") are put on teams;
     unchecked ones are listed on Teams as "not checked yet" and appear as "not placed yet"

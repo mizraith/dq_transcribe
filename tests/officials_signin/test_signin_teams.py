@@ -22,6 +22,7 @@ from officials_signin.teams import (
     propose_team_count,
     rotation_description,
     seniority_order,
+    session_jurisdictions,
     split_lanes,
 )
 
@@ -155,6 +156,23 @@ class TieBreakTests(unittest.TestCase):
             for seed in range(10)
         }
         self.assertGreater(len(first_teams), 1)
+
+
+class SessionJurisdictionTests(unittest.TestCase):
+    """The Jurisdiction box: ends always opposite when uneven; flip swaps them."""
+
+    def test_uneven_split_is_opposite_at_the_ends(self) -> None:
+        entry = session_jurisdictions(8, [3, 3, 3, 3], flipped=False)[0]
+        self.assertEqual((entry[constants.KEY_START_END], entry[constants.KEY_TURN_END]), ("3-3-2", "2-3-3"))
+        self.assertEqual(entry[constants.KEY_LANE_RANGE], "1-8")
+        flipped = session_jurisdictions(8, [3, 3, 3, 3], flipped=True)[0]
+        self.assertEqual((flipped[constants.KEY_START_END], flipped[constants.KEY_TURN_END]), ("2-3-3", "3-3-2"))
+
+    def test_even_split_and_mixed_sizes(self) -> None:
+        entries = session_jurisdictions(8, [4, 2, 2], flipped=False)
+        self.assertEqual([entry[constants.KEY_JUDGE_COUNT] for entry in entries], [4, 2])
+        self.assertFalse(entries[1][constants.KEY_UNEVEN])
+        self.assertEqual(session_jurisdictions(8, [], flipped=False), [])
 
 
 class RotationTests(unittest.TestCase):

@@ -38,6 +38,9 @@ td.number, th.number { text-align: right; width: 2.5em; }
 .team li.trainee { font-size: 1.05rem; color: var(--muted); padding-left: 1rem; }
 .display-columns { display: grid; grid-template-columns: 1fr 16rem; gap: 1rem; align-items: start; }
 .rotation-line strong { color: var(--ink); }
+.jurisdiction { border: 2px solid var(--line); border-radius: 0.6rem; padding: 0.3rem 0.6rem 0.5rem; margin-bottom: 0.8rem; font-size: 0.95em; }
+.jurisdiction .rotation-heading { margin-top: 0; }
+.jurisdiction-size { color: var(--muted); font-size: 0.85em; margin-top: 0.3rem; }
 .rotation-heading { margin-bottom: 0; font-size: 1.3em; }
 .rotation-key { margin: 0 0 0.4rem; color: var(--muted); font-size: 0.75em; }
 .rotation-table td, .rotation-table th { font-size: 1.15rem; text-align: center; }

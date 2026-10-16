@@ -159,7 +159,16 @@
     .chip.small { min-height: 2.2rem; padding: 0.15rem 0.7rem; font-size: 0.9rem; }
     .drop-hint { color: var(--muted); font-size: 0.9rem; margin: 0.5rem 0 0; }
     .check-names { margin: 0.3rem 0 0.6rem; padding-left: 1.2rem; font-weight: 600; }
-    .member { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; margin-top: 0.35rem; min-height: 2.8rem; background: #fff; }
+    .member { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; width: 100%; text-align: left; margin-top: 0.35rem; min-height: 2.8rem; background: #fff; border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.35rem 0.5rem 0.35rem 0.8rem; cursor: grab; }
+    .member .member-name { flex: 1; }
+    .member .member-end { display: flex; align-items: center; gap: 0.4rem; }
+    /* Team Lead star: tap it on the name (★ = this team's lead). */
+    .star-toggle { min-height: 2.3rem; min-width: 2.3rem; padding: 0 0.45rem; border-radius: 0.5rem; font-size: 1.15rem; line-height: 1; color: #9ca3af; background: #fff; border: 1px solid var(--line); }
+    .star-toggle.on { color: #92400e; background: #fef3c7; border-color: #f59e0b; font-size: 0.95rem; font-weight: 700; }
+    .jurisdiction-box { border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.2rem 0.7rem 0.4rem; background: #fafbfc; font-size: 0.95rem; }
+    .jurisdiction-box .sheet-label { margin-top: 0.3rem; }
+    .jurisdiction-line { margin: 0.1rem 0; }
+    .check-option.small { font-size: 0.9rem; min-height: 2.4rem; }
     .member .years { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
     .member.trainee { margin-left: 1.2rem; width: calc(100% - 1.2rem); border-style: dashed; font-size: 0.95rem; flex-direction: column; align-items: flex-start; gap: 0.1rem; }
     .tag { display: inline-block; padding: 0 0.4rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; margin-left: 0.3rem; background: #e5e7eb; }
@@ -394,6 +403,11 @@
         <div><span class="sheet-label">Teams</span><div id="teams-layouts" class="chips"></div></div>
         <div><span class="sheet-label">Ends</span><div id="teams-rotation-modes" class="chips"></div></div>
         <label class="check-option"><input id="teams-fifteen" type="checkbox"> Include 15 m on every team</label>
+        <div class="jurisdiction-box">
+          <span class="sheet-label">Jurisdiction</span>
+          <div id="teams-jurisdiction"></div>
+          <label class="check-option small"><input id="teams-flip" type="checkbox"> Flip jurisdiction</label>
+        </div>
       </div>
       <div id="teams-rotation" class="rotation"></div>
       <div class="teams-print-actions">

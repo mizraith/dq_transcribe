@@ -194,6 +194,12 @@ def build_web_config() -> dict[str, Any]:
             "built": constants.KEY_BUILT,
             "unplaced": constants.KEY_UNPLACED,
             "awaitingCheck": constants.KEY_AWAITING_CHECK,
+            "jurisdictionFlipped": constants.KEY_JURISDICTION_FLIPPED,
+            "jurisdictions": constants.KEY_JURISDICTIONS,
+            "startEnd": constants.KEY_START_END,
+            "turnEnd": constants.KEY_TURN_END,
+            "laneRange": constants.KEY_LANE_RANGE,
+            "uneven": constants.KEY_UNEVEN,
             "unpairedTrainees": constants.KEY_UNPAIRED_TRAINEES,
             "rotation": constants.KEY_ROTATION,
             "extraAssignments": constants.KEY_EXTRA_ASSIGNMENTS,
@@ -984,7 +990,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         return lanes
 
     def _handle_team_settings(self, payload: dict[str, Any]) -> None:
-        """Change lanes, rotation (fixed or rotating ends) or "15 m on every team", keeping the teams."""
+        """Change lanes, rotation, "flip jurisdiction" or "15 m on every team", keeping the teams."""
         database = self.database
         session = self._active_session()
         session_id = session[constants.KEY_ID]
@@ -992,11 +998,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         rotation_mode = payload.get(constants.KEY_ROTATION_MODE)
         if rotation_mode is not None and rotation_mode not in constants.ROTATION_MODES:
             raise SigninError("Unknown rotation")
+        flipped = payload.get(constants.KEY_JURISDICTION_FLIPPED)
         database.save_team_settings(
             session_id,
             lanes=self._lanes_from(payload),
             fifteen_meter_on_teams=None if fifteen is None else bool(fifteen),
             rotation_mode=rotation_mode,
+            jurisdiction_flipped=None if flipped is None else bool(flipped),
         )
         if fifteen is not None:
             for signin_id, assignment in fifteen_meter_changes(database.list_signins(session_id), bool(fifteen)).items():

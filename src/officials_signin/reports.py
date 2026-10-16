@@ -194,7 +194,7 @@ def render_meet_summary(meet: dict[str, Any], sessions: list[tuple[dict[str, Any
 def render_team_display(
     meet: dict[str, Any], session: dict[str, Any], view: dict[str, Any], signin_count: int | None = None
 ) -> bytes:
-    """Big-screen team page (fits one printed page): teams, jobs off the teams, rotation.
+    """Big-screen team page (fits one printed page): teams, jobs off the teams, jurisdiction, rotation.
 
     Args:
         meet: The meet.
@@ -222,12 +222,7 @@ def render_team_display(
             mentor = trainee.get(constants.KEY_MENTOR)
             suffix = f" (with {escape(mentor)})" if mentor else ""
             items.append(f"<li class='trainee'>↳ {escape(trainee[constants.KEY_NAME])}, trainee{suffix}</li>")
-        lanes = team[constants.KEY_JURISDICTION][constants.KEY_PATTERN]
-        cards.append(
-            f"<div class='team'><h2>{escape(team[constants.KEY_NAME])}"
-            f"<span class='lanes'>{'lanes ' + escape(lanes) if lanes else ''}</span></h2>"
-            f"<ul>{''.join(items)}</ul></div>"
-        )
+        cards.append(f"<div class='team'><h2>{escape(team[constants.KEY_NAME])}</h2><ul>{''.join(items)}</ul></div>")
     if view[constants.KEY_EXTRAS]:
         items = "".join(
             f"<li>{escape(member[constants.KEY_NAME])}<span class='tag'>{escape(member[constants.KEY_ASSIGNMENT])}</span></li>"
@@ -264,13 +259,33 @@ def render_team_display(
         f"<p class='subtitle'>{escape(meet[constants.KEY_NAME])} · {escape(subtitle)} · {view[constants.KEY_LANES]} lanes</p>"
         f"<p class='subtitle rotation-line'>{mode_label}{escape(view[constants.KEY_ROTATION])}</p>"
         f"<div class='display-columns'><div class='team-grid'>{''.join(cards)}</div>"
-        f"<div><h2 class='rotation-heading'>Rotation</h2><p class='rotation-key'>S = start end, T = turn end</p>"
+        f"<div>{jurisdiction_box(view)}<h2 class='rotation-heading'>Rotation</h2><p class='rotation-key'>S = start end, T = turn end</p>"
         f"{schedule}</div></div>"
     )
     back_to_teams = (
         f"<a href='/?{constants.OPEN_QUERY_KEY}={constants.OPEN_TEAMS_VALUE}'>Back to Teams</a>"
     )
     return _page(title, body, body_class="display", extra_links=back_to_teams)
+
+
+def jurisdiction_box(view: dict[str, Any]) -> str:
+    """The Jurisdiction box for the team page: lanes at the start and turn ends.
+
+    For example "Start end 1-8: 3-3-2" and "Turn end 1-8: 2-3-3" (prefixed with
+    "Teams of N" when teams differ in size). Empty when there are no teams yet.
+    """
+    entries = view.get(constants.KEY_JURISDICTIONS) or []
+    if not entries:
+        return ""
+    lines = []
+    for entry in entries:
+        prefix = f"<div class='jurisdiction-size'>Teams of {entry[constants.KEY_JUDGE_COUNT]}</div>" if len(entries) > 1 else ""
+        lanes = escape(entry[constants.KEY_LANE_RANGE])
+        lines.append(
+            f"{prefix}<div>Start end {lanes}: <strong>{escape(entry[constants.KEY_START_END])}</strong></div>"
+            f"<div>Turn end {lanes}: <strong>{escape(entry[constants.KEY_TURN_END])}</strong></div>"
+        )
+    return f"<div class='jurisdiction'><h2 class='rotation-heading'>Jurisdiction</h2>{''.join(lines)}</div>"
 
 
 def _team_number(name: str | None) -> str:
